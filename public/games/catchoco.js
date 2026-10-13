@@ -1,0 +1,203 @@
+// キャット＆チョコレート風の大喜利ゲーム（サーバーとブラウザで共通）
+// 2〜6人。全員が「ねこチーム」か「チョコチーム」に秘密で分かれる。
+// 手番の人はピンチ（イベント）を、手札のアイテムを指定の数だけ使って解決する方法を文章で説明する。
+// ほかの全員が成功／失敗を投票し、成功が過半数ならイベントを獲得。最後にチームごとの獲得数で勝敗を決める。
+// 手: { explain: { items: [手札の番号...], text } } / { giveUp: true } / { vote: true|false } / { resign: true }
+// カードの文章はこのアプリのオリジナル。
+export const id = 'catchoco';
+export const title = 'キャット＆チョコレート';
+export const sideNames = ['プレイヤー1', 'プレイヤー2', 'プレイヤー3', 'プレイヤー4', 'プレイヤー5', 'プレイヤー6'];
+export const minPlayers = 2;
+export const maxPlayers = 6;
+export const HAND_SIZE = 3;
+export const LAPS = 2; // 全員が2回ずつ手番をしたら終了
+export const TEAM_NAMES = ['ねこチーム', 'チョコチーム'];
+export const MAX_TEXT = 400;
+
+const EVENTS = [
+  ['寝坊した！大事な会議まであと10分', 2], ['家の鍵をなくして締め出された', 2], ['無人島に流れ着いてしまった', 3],
+  ['ゾンビの群れに囲まれた', 3], ['好きな人に告白したい', 2], ['財布を忘れて高級レストランで食べてしまった', 2],
+  ['宇宙人にさらわれた', 3], ['試験は明日なのに何も勉強していない', 1], ['迷子の子犬を見つけた', 1],
+  ['雪山で遭難した', 3], ['大事な花瓶を割ってしまった', 2], ['ライオンが動物園から逃げてきた', 2],
+  ['停電で真っ暗になった', 1], ['仮病で休んだのが上司にバレそう', 2], ['結婚式のスピーチ原稿をなくした', 2],
+  ['巨大なクモが部屋に出た', 1], ['乗っている船が沈みかけている', 3], ['幽霊に取りつかれた', 2],
+  ['冷蔵庫が空なのに友だちが10人来る', 2], ['満員電車でくしゃみが止まらない', 1], ['密室事件の犯人を見つけなければ', 3],
+  ['銀行強盗の人質になってしまった', 3], ['タイムマシンで江戸時代に来てしまった', 3], ['大事なプレゼン直前にパソコンが壊れた', 2],
+  ['夏休みの宿題が最終日に全部残っている', 2], ['ペットのハムスターが逃げた', 1], ['雨なのに傘がない', 1],
+  ['有名人と間違えられてファンに追われている', 2], ['魔王を倒す勇者に選ばれてしまった', 3], ['隣の家がうるさくて眠れない', 1],
+];
+const ITEMS = [
+  '輪ゴム', 'バナナ', 'スマートフォン', '傘', 'ガムテープ', '段ボール', '懐中電灯', '消しゴム', '毛布', '自転車',
+  'ペットボトル', 'ハサミ', '鏡', '新聞紙', 'カップラーメン', '風船', 'ロープ', '双眼鏡', 'ほうき', '腕時計',
+  '招き猫', 'ハンバーガー', '金づち', '釣りざお', 'ラジカセ', 'フライパン', '絆創膏', '地図', '枕', 'トランプ',
+  '磁石', '花火', 'サングラス', 'スケートボード', '掃除機', '歯ブラシ', 'チョコレート', '黒猫', 'リコーダー', '扇風機',
+  '着ぐるみ', '消火器', '水鉄砲', 'ドローン', '宝くじ', '植木鉢', '辞書', 'マッチ', 'ラブレター', '王冠',
+  '笛', '野球のバット', 'はちみつ', '浮き輪', 'カメラ', '鈴', '寝袋', 'ギター', '手品のステッキ', '大きな岩',
+];
+
+function shuffle(arr, rng) {
+  const rand = rng ? (n) => rng(n) - 1 : (n) => Math.floor(Math.random() * n);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rand(i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function drawItem(s, rng) {
+  if (!s.itemDeck.length) { s.itemDeck = shuffle(s.itemDiscard, rng); s.itemDiscard = []; }
+  return s.itemDeck.pop();
+}
+
+export function init(options, players = 2, rng) {
+  const order = shuffle([...Array(players).keys()], rng);
+  const teams = Array(players).fill(0);
+  order.forEach((seat, i) => { teams[seat] = i % 2; });
+  const s = {
+    players, teams, out: Array(players).fill(false),
+    itemDeck: shuffle(ITEMS.map((name, i) => ({ id: i, name })), rng), itemDiscard: [],
+    events: shuffle(EVENTS.map(([text, count], i) => ({ id: i, text, count })), rng),
+    hands: [], won: Array.from({ length: players }, () => []),
+    turn: 0, turnNo: 0, totalTurns: Math.min(players * LAPS, EVENTS.length),
+    event: null, phase: 'explain', story: null, votes: Array(players).fill(null),
+    log: [], result: null, history: [],
+  };
+  for (let p = 0; p < players; p++) s.hands.push(Array.from({ length: HAND_SIZE }, () => drawItem(s, rng)));
+  s.event = s.events.pop();
+  return s;
+}
+
+const active = (s) => s.out.map((o, i) => (o ? -1 : i)).filter((i) => i >= 0);
+const voters = (s) => active(s).filter((p) => p !== s.turn);
+
+// 投票中は手番以外の人が操作する
+export const canActOutOfTurn = (s) => s.phase === 'vote';
+
+export function teamScores(s) {
+  const score = [0, 0];
+  s.won.forEach((events, seat) => { score[s.teams[seat]] += events.length; });
+  return score;
+}
+
+// 他の人の手札・チーム・投票内容は隠す（終局後はチームを公開）
+export function viewFor(s, seat) {
+  return {
+    ...s,
+    hands: s.hands.map((h, i) => (i === seat ? h : null)),
+    handCounts: s.hands.map((h) => h.length),
+    teams: s.teams.map((t, i) => (i === seat || s.result ? t : null)),
+    votes: s.votes.map((v, i) => (v === null ? null : i === seat ? v : 'voted')),
+    itemDeck: null, itemDiscard: null, events: null, eventsLeft: s.events.length,
+  };
+}
+
+export function phaseText(s, you) {
+  if (s.result) return null;
+  const mine = you === s.turn;
+  if (s.phase === 'explain') return mine ? `あなたの番：アイテムを${s.event.count}個使ってピンチを切り抜けよう！` : '解決方法を考えています…';
+  if (mine) return 'みんなの判定を待っています…';
+  if (you >= 0 && !s.out[you]) return s.votes[you] === null ? 'この解決方法は成功？ 失敗？ 投票してください' : 'ほかの人の投票を待っています…';
+  return '投票中です';
+}
+
+export const scoreOf = (s, seat) => `獲得 ${s.won[seat].length}`;
+
+const clone = (s) => ({
+  ...s, out: s.out.slice(), itemDeck: s.itemDeck.slice(), itemDiscard: s.itemDiscard.slice(), events: s.events.slice(),
+  hands: s.hands.map((h) => h.slice()), won: s.won.map((w) => w.slice()), votes: s.votes.slice(),
+  log: s.log.slice(), history: s.history.slice(),
+});
+
+// 手番を終えて次の人へ。規定のターン数かイベントがなくなったら終了
+function nextTurn(ns, entry, rng) {
+  ns.log.push(entry);
+  ns.history.push(`${ns.event.text}：${entry.success ? '成功' : entry.gaveUp ? 'ギブアップ' : '失敗'}`);
+  if (entry.usedIds) {
+    const hand = ns.hands[entry.seat];
+    for (const id of entry.usedIds) {
+      const i = hand.findIndex((c) => c.id === id);
+      if (i >= 0) ns.itemDiscard.push(...hand.splice(i, 1));
+    }
+    while (hand.length < HAND_SIZE) hand.push(drawItem(ns, rng));
+  }
+  ns.turnNo++;
+  ns.story = null;
+  ns.votes = Array(ns.players).fill(null);
+  ns.phase = 'explain';
+  const left = active(ns);
+  if (ns.turnNo >= ns.totalTurns || !ns.events.length || left.length < 2) return finish(ns);
+  let next = ns.turn;
+  do next = (next + 1) % ns.players; while (ns.out[next]);
+  ns.turn = next;
+  ns.event = ns.events.pop();
+  return ns;
+}
+
+function finish(ns) {
+  const [a, b] = teamScores(ns);
+  const reason = `${TEAM_NAMES[0]} ${a} 対 ${TEAM_NAMES[1]} ${b}`;
+  const team = a === b ? null : a > b ? 0 : 1;
+  ns.result = {
+    winner: null, reason,
+    winners: team === null ? [] : ns.teams.map((t, i) => (t === team ? i : -1)).filter((i) => i >= 0),
+    team,
+  };
+  return ns;
+}
+
+export function applyMove(s, mv, seat, rng) {
+  if (s.result) throw new Error('ゲームは終了しています');
+  mv = mv || {};
+  if (s.out[seat]) throw new Error('投了しています');
+  const ns = clone(s);
+
+  if (mv.resign) {
+    ns.out[seat] = true;
+    ns.history.push(`プレイヤー${seat + 1}が抜けました`);
+    if (active(ns).length < 2) return finish(ns);
+    if (seat === ns.turn) return nextTurn(ns, { seat, event: ns.event, gaveUp: true, success: false, items: [], text: '' }, rng);
+    if (ns.phase === 'vote') return resolveIfVoted(ns, rng);
+    return ns;
+  }
+
+  if (mv.explain) {
+    if (s.phase !== 'explain' || seat !== s.turn) throw new Error('あなたの番ではありません');
+    const idx = Array.isArray(mv.explain.items) ? mv.explain.items : [];
+    const hand = s.hands[seat];
+    if (new Set(idx).size !== idx.length || idx.some((i) => !hand[i])) throw new Error('アイテムの選び方が正しくありません');
+    if (idx.length !== s.event.count) throw new Error(`アイテムをちょうど${s.event.count}個選んでください`);
+    const text = String(mv.explain.text || '').trim().slice(0, MAX_TEXT);
+    if (text.length < 5) throw new Error('解決方法をもう少し詳しく書いてください');
+    ns.story = { items: idx.map((i) => hand[i]), text };
+    ns.phase = 'vote';
+    ns.votes = Array(ns.players).fill(null);
+    return voters(ns).length ? ns : resolveIfVoted(ns, rng);
+  }
+
+  if (mv.giveUp) {
+    if (s.phase !== 'explain' || seat !== s.turn) throw new Error('あなたの番ではありません');
+    return nextTurn(ns, { seat, event: s.event, gaveUp: true, success: false, items: [], text: '' }, rng);
+  }
+
+  if (mv.vote != null) {
+    if (s.phase !== 'vote') throw new Error('今は投票できません');
+    if (seat === s.turn) throw new Error('自分の解決方法には投票できません');
+    if (s.votes[seat] !== null) throw new Error('もう投票しました');
+    ns.votes[seat] = !!mv.vote;
+    return resolveIfVoted(ns, rng);
+  }
+  throw new Error('不明な操作です');
+}
+
+// 全員が投票したら判定。成功票が過半数なら成功（同数は失敗）
+function resolveIfVoted(ns, rng) {
+  const vs = voters(ns);
+  if (vs.some((p) => ns.votes[p] === null)) return ns;
+  const ok = vs.filter((p) => ns.votes[p]).length, ng = vs.length - ok;
+  const success = ok > ng || vs.length === 0;
+  if (success) ns.won[ns.turn].push(ns.event);
+  return nextTurn(ns, {
+    seat: ns.turn, event: ns.event, items: ns.story.items, text: ns.story.text,
+    usedIds: ns.story.items.map((c) => c.id), ok, ng, success,
+  }, rng);
+}
