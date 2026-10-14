@@ -9,15 +9,16 @@ import * as shogi from './public/games/shogi.js';
 import * as gobblet from './public/games/gobblet.js';
 import * as gomoku from './public/games/gomoku.js';
 import * as othello from './public/games/othello.js';
-import * as go from './public/games/go.js';
-import * as backgammon from './public/games/backgammon.js';
 import * as wordbasket from './public/games/wordbasket.js';
 import * as catchoco from './public/games/catchoco.js';
 import * as uno from './public/games/uno.js';
 import * as werewolf from './public/games/werewolf.js';
 import * as ito from './public/games/ito.js';
+import * as daifugo from './public/games/daifugo.js';
+import * as poker from './public/games/poker.js';
+import * as blokus from './public/games/blokus.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf, ito };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus };
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
@@ -104,7 +105,7 @@ function scheduleTick(room) {
   if (!room.state || !room.state.tickAfter || !g.tick) return;
   room.tickTimer = setTimeout(() => {
     if (!rooms.has(room.code) || !room.state) return;
-    room.state = g.tick(room.state);
+    room.state = g.tick(room.state, rng);
     broadcastRoom(room);
   }, room.state.tickAfter);
 }

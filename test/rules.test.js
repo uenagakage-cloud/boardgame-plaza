@@ -4,13 +4,14 @@ import * as shogi from '../public/games/shogi.js';
 import * as gobblet from '../public/games/gobblet.js';
 import * as gomoku from '../public/games/gomoku.js';
 import * as othello from '../public/games/othello.js';
-import * as igo from '../public/games/go.js';
-import * as bg from '../public/games/backgammon.js';
 import * as wbk from '../public/games/wordbasket.js';
 import * as cc from '../public/games/catchoco.js';
 import * as uno from '../public/games/uno.js';
 import * as ww from '../public/games/werewolf.js';
 import * as ito from '../public/games/ito.js';
+import * as df from '../public/games/daifugo.js';
+import * as pk from '../public/games/poker.js';
+import * as bk from '../public/games/blokus.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -216,136 +217,6 @@ test('othello: 打てない側は自動パス・両者打てなければ終局',
   assert.ok(passes > 0, 'パスが一度も発生していない');
 });
 
-
-
-// 囲碁: 'D4' 形式の座標で打つ
-const gp = (s, m) => {
-  if (m === 'pass') return igo.applyMove(s, { pass: true });
-  const c = 'ABCDEFGHJKLMNOPQRST'.indexOf(m[0]), r = s.size - Number(m.slice(1));
-  return igo.applyMove(s, { to: [r, c] });
-};
-const gseq = (s, ms) => ms.reduce(gp, s);
-test('go: 盤サイズの選択', () => {
-  assert.equal(igo.init({ size: 9 }).board.length, 9);
-  assert.equal(igo.init({ size: 7 }).size, 19);
-});
-test('go: 石を取る・アゲハマ', () => {
-  // 白 E5 を黒が4方向から囲む
-  const s = gseq(igo.init({ size: 9 }), ['D5', 'E5', 'F5', 'A1', 'E4', 'A2', 'E6']);
-  assert.equal(s.board[4][4], null);
-  assert.equal(s.captures[0], 1);
-});
-test('go: 自殺手は打てない', () => {
-  const s = gseq(igo.init({ size: 9 }), ['A2', 'J9', 'B1']);
-  assert.throws(() => gp(s, 'A1'), /自殺手/);
-});
-test('go: コウはすぐ取り返せない', () => {
-  // 黒 D5 E6 E4・白 F6 F4 G5 の典型的なコウ形
-  let s = gseq(igo.init({ size: 9 }), ['D5', 'F6', 'E6', 'F4', 'E4', 'G5', 'J1', 'E5']);
-  // 白が E5 に打ち、黒は F5 で E5 を取れる
-  s = gp(s, 'F5');
-  assert.equal(s.board[4][4], null);
-  assert.throws(() => gp(s, 'E5'), /コウ/);
-  s = gseq(s, ['A9', 'B9']); // コウ立てとその応手
-  s = gp(s, 'E5');           // 1手おけば取り返せる
-  assert.equal(s.board[4][5], null);
-});
-test('go: 2回パスで終局処理、死に石指定と合意で勝敗', () => {
-  let s = gseq(igo.init({ size: 9 }), ['E5', 'pass', 'pass']);
-  assert.equal(s.phase, 'scoring');
-  assert.ok(igo.canActOutOfTurn(s));
-  // 黒1子で盤全体が黒地: 80目、白はコミのみ
-  assert.deepEqual(igo.score(s), [80, 6.5]);
-  s = igo.applyMove(s, { accept: true }, 0);
-  assert.equal(s.result, null);
-  s = igo.applyMove(s, { accept: true }, 1);
-  assert.equal(s.result.winner, 0);
-});
-test('go: 死に石は相手の地とアゲハマになる', () => {
-  let s = gseq(igo.init({ size: 9 }), ['E5', 'A1', 'pass', 'pass']);
-  s = igo.applyMove(s, { toggle: [8, 0] }, 0);
-  assert.deepEqual(igo.score(s), [81, 6.5]); // 地80 + 死に石1
-  s = igo.applyMove(s, { toggle: [8, 0] }, 1); // 解除
-  assert.equal(s.dead.length, 0);
-  s = igo.applyMove(s, { resume: true }, 1);
-  assert.equal(s.phase, 'play');
-  assert.equal(s.turn, 0);
-});
-
-
-// バックギャモン: 指定した目を返す rng
-const fixedDice = (...ds) => () => ds.shift();
-const bgState = (setup) => Object.assign(bg.init(), setup);
-test('backgammon: 初期配置と振り出し', () => {
-  const s0 = bg.init();
-  assert.equal(bg.pips(s0, 0), 167);
-  assert.equal(bg.pips(s0, 1), 167);
-  const s = bg.applyMove(s0, { roll: true }, 0, fixedDice(3, 1));
-  assert.deepEqual(s.dice, [3, 1]);
-  assert.ok(bg.legalSteps(s).some((x) => x.from === 8 && x.to === 5));
-  let t = bg.applyMove(s, { from: 8, to: 5 });
-  t = bg.applyMove(t, { from: 6, to: 5 });
-  assert.equal(t.pts[5], 2);
-  assert.equal(t.turn, 1);
-  assert.equal(t.phase, 'roll');
-  assert.equal(t.history.at(-1), '○3-1: 8/5 6/5');
-});
-test('backgammon: ゾロ目は4回', () => {
-  const s = bg.applyMove(bg.init(), { roll: true }, 0, fixedDice(6, 6));
-  assert.deepEqual(s.dice, [6, 6, 6, 6]);
-});
-test('backgammon: ヒットとバーからのエントリー', () => {
-  const pts = Array(26).fill(0);
-  pts[10] = 1; pts[7] = -1; pts[20] = -14;
-  let s = bgState({ pts, off: [14, 0] });
-  s = bg.applyMove(s, { roll: true }, 0, fixedDice(3, 1));
-  s = bg.applyMove(s, { from: 10, to: 7 });
-  assert.equal(s.bar[1], 1);
-  assert.ok(s.history.at(-1).includes('*'));
-  s = bg.applyMove(s, { from: 7, to: 6 });
-  s = bg.applyMove(s, { roll: true }, 1, fixedDice(2, 5));
-  const steps = bg.legalSteps(s);
-  assert.ok(steps.length && steps.every((x) => x.from === 'bar'), 'バーにある駒を先に入れる');
-});
-test('backgammon: 片方しか使えないなら大きい目', () => {
-  // 白の駒は 13 に1つだけ。6 でも 5 でも動けるが、どちらの後も 2 がふさがれていて両方は使えない
-  const pts = Array(26).fill(0);
-  pts[13] = 1; pts[1] = -2; pts[2] = -2;
-  const s = bg.applyMove(bgState({ pts, off: [14, 11] }), { roll: true }, 0, fixedDice(5, 6));
-  const steps = bg.legalSteps(s);
-  assert.ok(steps.length > 0);
-  assert.ok(steps.every((x) => x.die === 6), JSON.stringify(steps));
-});
-test('backgammon: ベアオフと勝ちの種類', () => {
-  const pts = Array(26).fill(0);
-  pts[1] = 1; pts[2] = 1; pts[20] = -15;
-  let s = bgState({ pts, off: [13, 0] });
-  s = bg.applyMove(s, { roll: true }, 0, fixedDice(6, 5)); // 大きい目で奥の駒から上がれる
-  s = bg.applyMove(s, { from: 2, to: 'off' });
-  s = bg.applyMove(s, { from: 1, to: 'off' });
-  assert.deepEqual(s.result, { winner: 0, reason: 'ギャモン勝ち' });
-});
-test('backgammon: ランダム対局が必ず終わり、駒数が保たれる', () => {
-  let seed = 11;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const die = () => 1 + Math.floor(rnd() * 6);
-  for (let game = 0; game < 30; game++) {
-    let s = bg.init(), guard = 0;
-    while (!s.result && guard++ < 5000) {
-      if (s.phase === 'roll') { s = bg.applyMove(s, { roll: true }, s.turn, die); continue; }
-      const steps = bg.legalSteps(s);
-      assert.ok(steps.length, 'move フェーズでは必ず動かせる');
-      const st = steps[Math.floor(rnd() * steps.length)];
-      s = bg.applyMove(s, { from: st.from, to: st.to });
-      for (const p of [0, 1]) {
-        let n = s.bar[p] + s.off[p];
-        for (let i = 1; i <= 24; i++) n += Math.max(s.pts[i] * (p === 0 ? 1 : -1), 0);
-        assert.equal(n, 15);
-      }
-    }
-    assert.ok(s.result, '対局が終わらない');
-  }
-});
 
 
 // ワードバスケット: 場と手札を指定した状態を作る
@@ -770,6 +641,221 @@ test('ito: 外されたプレイヤーのカードは場から消え、次のラ
   s = ito.applyMove(s, { forceReveal: true }, 0, null, itoCtx(3));
   s = ito.applyMove(itoTickAll(s), { next: true }, 0, null, itoCtx(3));
   assert.equal(s.cards.length, 4);
+});
+
+
+// ---------- 大富豪 ----------
+let dfId = 500;
+const dc = (spec) => spec.split(' ').map((x) => (x === 'JK' ? { id: dfId++, s: 'j', r: 16 } : { id: dfId++, s: x[0], r: { J: 11, Q: 12, K: 13, A: 14, 2: 15 }[x.slice(1)] || Number(x.slice(1)) }));
+const dfState = (hands, extra = {}) => Object.assign(df.init({}, hands.length), { hands: hands.map(dc), phase: 'play', turn: 0, field: null, finished: [], passed: hands.map(() => false), revolution: false }, extra);
+const dfLabel = (x) => (x === 'JK' ? 'JOKER' : df.SUIT_MARK[x[0]] + x.slice(1));
+const ids = (s, seat, spec) => spec.split(' ').map((x) => s.hands[seat].find((c) => df.cardLabel(c) === dfLabel(x)).id);
+test('daifugo: 配り切り・♦3から', () => {
+  const s = df.init({}, 4);
+  assert.equal(s.hands.flat().length, 53);
+  assert.ok(s.hands[s.turn].some((c) => c.s === 'd' && c.r === 3));
+});
+test('daifugo: 組の判定（ペア・階段・ジョーカー）', () => {
+  assert.deepEqual(df.combos(dc('s5 h5')).map((c) => c.type), ['set']);
+  assert.ok(df.combos(dc('s5 s6 s7')).some((c) => c.type === 'seq' && c.key === 5));
+  assert.ok(df.combos(dc('s5 JK s7')).some((c) => c.type === 'seq' && c.key === 5), 'ジョーカーで穴埋め');
+  assert.equal(df.combos(dc('s5 h6 s7')).length, 0, 'マークが違う階段はだめ');
+  assert.equal(df.combos(dc('s5 h6')).length, 0);
+});
+test('daifugo: 強い方しか出せない・パスで場が流れる', () => {
+  let s = dfState(['s5 sK', 'h4 h9', 'c3 c6']);
+  s = df.applyMove(s, { play: ids(s, 0, 's5') }, 0);
+  assert.throws(() => df.applyMove(s, { play: ids(s, 1, 'h4') }, 1), /強い/);
+  s = df.applyMove(s, { play: ids(s, 1, 'h9') }, 1);
+  s = df.applyMove(s, { pass: true }, 2);
+  s = df.applyMove(s, { pass: true }, 0);
+  assert.equal(s.field, null, '全員パスで流れる');
+  assert.equal(s.turn, 1, '最後に出した人から');
+});
+test('daifugo: 8切り・革命・スペ3返し', () => {
+  let s = dfState(['s8 sK', 'h4 h9', 'c3 c6']);
+  s = df.applyMove(s, { play: ids(s, 0, 's8') }, 0);
+  assert.equal(s.field, null);
+  assert.equal(s.turn, 0, '8切りで同じ人から');
+  let r = dfState(['s5 h5 d5 c5 s3', 'h4 h9', 'c3 c6']);
+  r = df.applyMove(r, { play: ids(r, 0, 's5 h5 d5 c5') }, 0);
+  assert.equal(r.revolution, true);
+  let j = dfState(['JK s9', 's3 h9', 'c4 c6']);
+  j = df.applyMove(j, { play: ids(j, 0, 'JK') }, 0);
+  j = df.applyMove(j, { play: ids(j, 1, 's3') }, 1);
+  assert.equal(j.field.key, 3, 'スペ3でジョーカーに勝てる');
+});
+test('daifugo: 上がり順で順位・次のラウンドでカード交換', () => {
+  let s = dfState(['s9', 'h4 h5', 'c3 c6 c7']);
+  s = df.applyMove(s, { play: ids(s, 0, 's9') }, 0);
+  assert.deepEqual(s.finished, [0]);
+  s = df.applyMove(s, { pass: true }, 1);
+  s = df.applyMove(s, { pass: true }, 2);
+  assert.equal(s.turn, 1, '上がった人の次から');
+  s = df.applyMove(s, { play: ids(s, 1, 'h4') }, 1);
+  s = df.applyMove(s, { play: ids(s, 2, 'c6') }, 2);
+  s = df.applyMove(s, { pass: true }, 1);
+  s = df.applyMove(s, { play: ids(s, 2, 'c3') }, 2);
+  s = df.applyMove(s, { play: ids(s, 1, 'h5') }, 1);
+  assert.equal(s.phase, 'result');
+  assert.deepEqual(s.lastRanks, [0, 1, 2]);
+  assert.deepEqual(s.points, [2, 1, 0]);
+  assert.throws(() => df.applyMove(s, { next: true }, 1, null, { hostSeat: 0 }), /ホストだけ/);
+  s = df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
+  assert.equal(s.phase, 'exchange');
+  assert.equal(s.turn, 2, '大貧民から');
+  assert.equal(s.hands[0].length, 20, '大富豪は2枚もらう');
+  s = df.applyMove(s, { give: s.hands[0].slice(0, 2).map((c) => c.id) }, 0);
+  assert.equal(s.phase, 'play');
+  assert.equal(s.hands.flat().length, 53);
+});
+test('daifugo: ランダム対局が必ず終わる', () => {
+  let seed = 3;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let g = 0; g < 30; g++) {
+    let s = df.init({}, 2 + (g % 5)), guard = 0;
+    while (s.phase !== 'result' && guard++ < 2000) {
+      const p = s.turn, hand = s.hands[p];
+      let played = false;
+      for (const k of [2, 1]) {
+        for (let i = 0; i + k <= hand.length && !played; i++) {
+          const pick = hand.slice(i, i + k).map((c) => c.id);
+          try {
+            df.checkPlay(s, p, pick);
+            if (rnd() < 0.8 || !s.field) { s = df.applyMove(s, { play: pick }, p); played = true; }
+          } catch { /* 出せない組 */ }
+        }
+        if (played) break;
+      }
+      if (!played) s = s.field ? df.applyMove(s, { pass: true }, p) : df.applyMove(s, { play: [hand[0].id] }, p);
+    }
+    assert.equal(s.phase, 'result', '終わらない');
+    assert.equal(s.lastRanks.length, s.players);
+  }
+});
+
+// ---------- ポーカー ----------
+const pc = (spec) => spec.split(' ').map((x) => ({ s: x.at(-1).toLowerCase(), r: { A: 14, K: 13, Q: 12, J: 11, T: 10 }[x[0]] || Number(x.slice(0, -1)) }));
+const chips = (s) => s.stacks.reduce((a, b) => a + b, 0) + s.pot;
+test('poker: 役の強さ', () => {
+  const name = (x) => pk.bestHand(pc(x)).name;
+  assert.equal(name('AS KS QS JS TS 2D 3C'), 'ロイヤルフラッシュ');
+  assert.equal(name('5H 4D 3C 2S AH KD KC'), 'ストレート');
+  assert.equal(name('9S 9H 9D 4C 4S 2D 7H'), 'フルハウス');
+  assert.equal(name('2H 2D 9C 9D KH 3S 4D'), 'ツーペア');
+  const a = pk.bestHand(pc('AS AH KD 7C 3S 2D 9H')).score, b = pk.bestHand(pc('AD AC QD 7H 3D 2C 9S')).score;
+  assert.ok(pk.compareScore(a, b) > 0, 'キッカーで勝つ');
+});
+test('poker: ブラインド・フォールドで勝つ・次のハンド', () => {
+  let s = pk.init({}, 3);
+  const bb = s.bb;
+  assert.equal(s.stacks[s.sb], 990);
+  assert.equal(s.stacks[bb], 980);
+  assert.equal(s.turn, s.button, '3人ならボタンから');
+  s = pk.applyMove(s, { fold: true }, s.turn);
+  s = pk.applyMove(s, { fold: true }, s.turn);
+  assert.equal(s.phase, 'showdown');
+  assert.equal(s.stacks[bb], 1010);
+  assert.equal(s.tickAfter, pk.NEXT_HAND_MS);
+  const next = pk.tick(s);
+  assert.equal(next.handNo, 2);
+  assert.equal(chips(next), 3000);
+});
+test('poker: コールとチェックで最後まで進みショーダウン', () => {
+  let s = pk.init({}, 2);
+  s = pk.applyMove(s, { call: true }, s.turn);
+  s = pk.applyMove(s, { check: true }, s.turn);
+  assert.equal(s.phase, 'flop');
+  assert.equal(s.board.length, 3);
+  for (let i = 0; i < 6 && s.phase !== 'showdown'; i++) s = pk.applyMove(s, { check: true }, s.turn);
+  assert.equal(s.phase, 'showdown');
+  assert.equal(s.stacks[0] + s.stacks[1], 2000);
+  assert.equal(Object.keys(s.showdown.hands).length, 2);
+  assert.notEqual(pk.viewFor(s, 0).holes[1], 'hidden', 'ショーダウンでは相手の手札が見える');
+});
+test('poker: レイズの最小額・オールインでサイドポット', () => {
+  let s = pk.init({}, 3);
+  assert.throws(() => pk.applyMove(s, { raise: 30 }, s.turn), /40〜/);
+  const short = s.turn;
+  s.stacks[short] = 100; // 少ないチップにしてオールインさせる
+  const total = chips(s);
+  s = pk.applyMove(s, { raise: 100 }, short);
+  assert.ok(s.allIn[short]);
+  s = pk.applyMove(s, { raise: 500 }, s.turn);
+  s = pk.applyMove(s, { call: true }, s.turn);
+  for (let i = 0; i < 10 && s.phase !== 'showdown'; i++) s = pk.applyMove(s, { check: true }, s.turn);
+  assert.equal(s.phase, 'showdown');
+  assert.equal(s.showdown.pots.length, 2, 'メインポットとサイドポット');
+  assert.equal(s.stacks.reduce((a, b) => a + b, 0), total, 'チップの合計が変わらない');
+});
+test('poker: ランダム対局でチップが保たれ、勝者が決まる', () => {
+  let seed = 9;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rng = (n = 6) => 1 + Math.floor(rnd() * n);
+  for (let g = 0; g < 15; g++) {
+    const n = 2 + (g % 5);
+    let s = pk.init({}, n, rng), guard = 0;
+    while (!s.result && guard++ < 20000) {
+      if (s.phase === 'showdown') { s = pk.tick(s, rng); continue; }
+      const p = s.turn, o = pk.options(s, p);
+      const x = rnd();
+      if (x < 0.15 && !o.canCheck) s = pk.applyMove(s, { fold: true }, p);
+      else if (x < 0.35 && o.canRaise) s = pk.applyMove(s, { raise: o.maxRaiseTo }, p);
+      else if (x < 0.5 && o.canRaise) s = pk.applyMove(s, { raise: o.minRaiseTo }, p);
+      else s = pk.applyMove(s, o.canCheck ? { check: true } : { call: true }, p);
+      assert.equal(chips(s), n * pk.START_CHIPS, 'チップの合計が変わらない');
+    }
+    assert.ok(s.result, '勝者が決まらない');
+  }
+});
+
+// ---------- ブロックス ----------
+test('blokus: ピースは21個・89マス、向きの変換', () => {
+  assert.equal(bk.PIECES.length, 21);
+  assert.equal(bk.TOTAL, 89);
+  assert.deepEqual(bk.orient([[0, 0], [0, 1]], 1), [[0, 0], [1, 0]]);
+});
+test('blokus: 最初は角・2個目は角で接して辺で接しない', () => {
+  let s = bk.init({}, 4);
+  assert.throws(() => bk.applyMove(s, { piece: 0, t: 0, r: 5, c: 5 }, 0), /角のマス/);
+  s = bk.applyMove(s, { piece: 1, t: 0, r: 0, c: 0 }, 0);
+  assert.equal(s.color, 1);
+  s = bk.applyMove(s, { piece: 0, t: 0, r: 0, c: 19 }, 1);
+  s = bk.applyMove(s, { piece: 0, t: 0, r: 19, c: 19 }, 2);
+  s = bk.applyMove(s, { piece: 0, t: 0, r: 19, c: 0 }, 3);
+  assert.throws(() => bk.applyMove(s, { piece: 0, t: 0, r: 0, c: 2 }, 0), /辺で接して/);
+  assert.throws(() => bk.applyMove(s, { piece: 0, t: 0, r: 3, c: 3 }, 0), /角で接する/);
+  s = bk.applyMove(s, { piece: 0, t: 0, r: 1, c: 2 }, 0);
+  assert.equal(s.board[1][2], 0);
+});
+test('blokus: 2人なら1人2色・3人なら緑なし・点数', () => {
+  const s = bk.init({}, 2);
+  assert.deepEqual(bk.colorsOf(2, 0), [0, 2]);
+  assert.equal(bk.ownerOf(2, 3), 1);
+  assert.equal(bk.seatScore(s, 0), -178);
+  assert.equal(bk.init({}, 3).done[3], true);
+});
+test('blokus: ランダム対局で盤とピースの数が合う', () => {
+  let seed = 21;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (const n of [2, 3, 4]) {
+    let s = bk.init({}, n), guard = 0;
+    while (!s.result && guard++ < 200) {
+      const color = s.color, seat = bk.ownerOf(n, color);
+      let placed = false;
+      for (let tries = 0; tries < 4000 && !placed; tries++) {
+        const piece = Math.floor(rnd() * 21);
+        if (!s.remaining[color][piece]) continue;
+        const t = Math.floor(rnd() * 8), r = Math.floor(rnd() * 20), c = Math.floor(rnd() * 20);
+        if (!bk.placementError(s, color, bk.placeCells(piece, t, r, c))) { s = bk.applyMove(s, { piece, t, r, c }, seat); placed = true; }
+      }
+      if (!placed) break;
+    }
+    const squares = s.board.flat().filter((x) => x !== null).length;
+    const used = [0, 1, 2, 3].reduce((a, c) => a + bk.PIECES.reduce((b, p, i) => b + (s.remaining[c][i] ? 0 : p.length), 0), 0);
+    assert.equal(squares, used, '盤のマス数と使ったピースが一致');
+    assert.ok(squares > 40, '何手も置けている');
+  }
 });
 
 console.log(`\n${n} tests passed`);

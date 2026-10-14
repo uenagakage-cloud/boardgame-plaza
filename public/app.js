@@ -3,28 +3,30 @@ import * as shogi from './games/shogi.js';
 import * as gobblet from './games/gobblet.js';
 import * as gomoku from './games/gomoku.js';
 import * as othello from './games/othello.js';
-import * as go from './games/go.js';
-import * as backgammon from './games/backgammon.js';
 import * as wordbasket from './games/wordbasket.js';
 import * as catchoco from './games/catchoco.js';
 import * as uno from './games/uno.js';
 import * as werewolf from './games/werewolf.js';
 import * as ito from './games/ito.js';
+import * as daifugo from './games/daifugo.js';
+import * as poker from './games/poker.js';
+import * as blokus from './games/blokus.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf, ito };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
   gobblet: { icon: '◉', desc: '大きいコマで小さいコマをかぶせる三目並べ。' },
   gomoku: { icon: '⚫', desc: '15×15の盤で縦・横・斜めに5つ並べたら勝ち。' },
   othello: { icon: '◐', desc: '相手の石をはさんで裏返す。最後に多い方が勝ち。' },
-  go: { icon: '◎', desc: '石で陣地を囲み合う。日本ルール・コミ6目半。' },
-  backgammon: { icon: '⚄', desc: 'ダイスを振って駒を進め、先に全部上がった方が勝ち。' },
   wordbasket: { icon: '🧺', desc: '場の文字で始まり手札の文字で終わる言葉を早い者勝ちで。2〜6人。' },
   catchoco: { icon: '🐈‍⬛', desc: '手持ちのアイテムでピンチを切り抜ける大喜利。チーム戦・2〜6人。' },
   uno: { icon: '🃏', desc: '色か数字を合わせてカードを出し、先に手札をなくそう。2〜6人。' },
   werewolf: { icon: '🐺', desc: '夜は1回だけ。話し合いで人狼を見つけて処刑しよう。3〜6人。' },
   ito: { icon: '🔢', desc: '数字を言葉で表して、みんなで小さい順に並べる協力ゲーム。2〜10人。' },
+  daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
+  poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
+  blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -167,20 +169,6 @@ function renderLobby() {
         toggle.title = '黒の三三・四四・長連を禁止';
         card.append(toggle);
         getOptions = () => ({ renju: cb.checked });
-      }
-      if (key === 'go') {
-        const label = h('label', 'option-toggle');
-        const select = h('select', 'size-select');
-        for (const n of go.SIZES) {
-          const o = h('option', null, `${n}路盤`);
-          o.value = String(n);
-          select.append(o);
-        }
-        select.value = store.get('goSize', '19');
-        select.onchange = () => store.set('goSize', select.value);
-        label.append(h('span', null, '盤の大きさ'), select);
-        card.append(label);
-        getOptions = () => ({ size: Number(select.value) });
       }
       const row = h('div', 'side-pick');
       const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
@@ -646,149 +634,6 @@ function renderOthello(el, v, act) {
     board.append(cell);
   }
   el.replaceChildren(board);
-}
-
-// ---------- 囲碁 ----------
-function renderGo(el, v, act) {
-  const s = v.state, N = s.size;
-  const scoring = s.phase === 'scoring' && !s.result;
-  const owner = s.phase !== 'play' ? go.territory(s).owner : null;
-  const dead = new Set(s.dead.map(([r, c]) => r * N + c));
-  const stars = go.starPoints(N);
-  const board = h('div', 'board go-board' + (act ? ' active' : '') + (act && !scoring ? ` turn${v.you}` : ''));
-  board.style.setProperty('--n', N);
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    const here = [r, c], stone = s.board[r][c];
-    const cell = h('div', 'sq');
-    if (stars.some((p) => eq(p, here))) cell.append(h('span', 'star'));
-    if (stone !== null) {
-      const st = h('span', 'stone s' + stone);
-      if (s.lastMove && eq(s.lastMove.to, here)) st.classList.add('last');
-      if (dead.has(r * N + c)) st.classList.add('dead');
-      cell.append(st);
-      if (act && scoring) cell.onclick = () => sendMove({ toggle: here });
-    } else if (act && !scoring) {
-      cell.classList.add('empty');
-      cell.onclick = () => sendMove({ to: here });
-    }
-    const t = owner && owner[r][c];
-    if (t === 0 || t === 1) cell.append(h('span', 'terr t' + t));
-    if (c === 0) cell.append(h('span', 'coord rank', String(N - r)));
-    if (r === N - 1) cell.append(h('span', 'coord file', 'ABCDEFGHJKLMNOPQRST'[c]));
-    board.append(cell);
-  }
-  board.append(gomokuLines(N));
-
-  const tools = h('div', 'go-tools');
-  if (s.phase === 'play' && act) {
-    const pass = h('button', 'btn', 'パス');
-    pass.onclick = () => sendMove({ pass: true });
-    tools.append(pass);
-  }
-  if (scoring) {
-    const [b, w] = go.score(s);
-    tools.append(h('span', 'go-score', `黒 ${b}目 ／ 白 ${w}目（コミ${go.KOMI}込み）`));
-    if (v.you >= 0) {
-      const ok = h('button', 'btn primary', s.agreed[v.you] ? '合意済み' : '合意');
-      ok.disabled = s.agreed[v.you];
-      ok.onclick = () => sendMove({ accept: true });
-      const resume = h('button', 'btn', '対局再開');
-      resume.onclick = () => sendMove({ resume: true });
-      tools.append(ok, resume);
-    }
-  }
-  const wrap = h('div', 'go-wrap');
-  wrap.append(board);
-  if (tools.childElementCount) wrap.append(tools);
-  el.replaceChildren(wrap);
-}
-
-// ---------- バックギャモン ----------
-const DIE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-
-function renderBackgammon(el, v, act) {
-  const s = v.state, me = v.you === 1 ? 1 : 0;
-  const steps = act ? backgammon.legalSteps(s) : [];
-  const isFrom = (x) => steps.some((st) => st.from === x);
-  const targets = sel ? steps.filter((st) => st.from === sel.from).map((st) => st.to) : [];
-  const click = (x) => {
-    if (sel && targets.includes(x)) { sendMove({ from: sel.from, to: x }); return; }
-    sel = isFrom(x) && !(sel && sel.from === x) ? { from: x } : null;
-    render();
-  };
-  const checkers = (box, owner, n) => {
-    const shown = Math.min(n, 5);
-    for (let k = 0; k < shown; k++) {
-      const ck = h('span', 'ck c' + owner);
-      if (k === shown - 1 && n > 5) ck.textContent = String(n);
-      box.append(ck);
-    }
-  };
-  // プレイヤー0が下なら上段 13→24、下段 12→1。プレイヤー1が下なら上下を入れ替える
-  const topRow = [13, 14, 15, 16, 17, 18, 'bar', 19, 20, 21, 22, 23, 24];
-  const bottomRow = [12, 11, 10, 9, 8, 7, 'bar', 6, 5, 4, 3, 2, 1];
-  const rows = me === 0 ? [topRow, bottomRow] : [bottomRow, topRow];
-  const board = h('div', 'board bg-board' + (act ? ' active' : ''));
-  rows.forEach((row, ri) => {
-    const half = ri === 0 ? 'top' : 'bottom';
-    const barOwner = ri === 0 ? 1 - me : me;
-    for (const x of row) {
-      if (x === 'bar') {
-        const bar = h('div', `bg-bar ${half}`);
-        checkers(bar, barOwner, s.bar[barOwner]);
-        if (barOwner === me) {
-          if (isFrom('bar')) bar.classList.add('movable');
-          if (sel && sel.from === 'bar') bar.classList.add('sel');
-          bar.onclick = () => click('bar');
-        }
-        board.append(bar);
-        continue;
-      }
-      const v0 = s.pts[x], owner = v0 > 0 ? 0 : 1, n = Math.abs(v0);
-      const pt = h('div', `pt ${half} ${x % 2 ? 'odd' : 'even'}`);
-      const stack = h('div', 'stack');
-      if (n) checkers(stack, owner, n);
-      pt.append(stack, h('span', 'pt-num', String(me === 0 ? x : 25 - x)));
-      if (isFrom(x)) pt.classList.add('movable');
-      if (sel && sel.from === x) pt.classList.add('sel');
-      if (targets.includes(x)) pt.classList.add('target');
-      if (s.lastMove && (s.lastMove.to === x || s.lastMove.from === x)) pt.classList.add('last');
-      pt.onclick = () => click(x);
-      board.append(pt);
-    }
-    const offOwner = ri === 0 ? 1 - me : me;
-    const off = h('div', `bg-off ${half}`);
-    off.append(h('span', 'off-count', `上がり ${s.off[offOwner]}`));
-    const tray = h('div', 'off-tray');
-    for (let k = 0; k < s.off[offOwner]; k++) tray.append(h('span', 'off-ck c' + offOwner));
-    off.append(tray);
-    if (offOwner === me && targets.includes('off')) {
-      off.classList.add('target');
-      off.onclick = () => click('off');
-    }
-    board.append(off);
-  });
-
-  const tools = h('div', 'bg-tools');
-  if (s.rolled) {
-    const dice = h('div', 'dice' + (s.rolled.by === me ? ' mine' : ''));
-    // まだ使っていない目を濃く、使った目を薄く表示
-    const left = s.phase === 'move' && s.rolled.by === s.turn ? s.dice.slice() : [];
-    for (const d of s.rolled.dice) {
-      const i = left.indexOf(d);
-      if (i >= 0) left.splice(i, 1);
-      dice.append(h('span', 'die c' + s.rolled.by + (i < 0 ? ' used' : ''), DIE_FACES[d]));
-    }
-    tools.append(dice);
-  }
-  if (act && s.phase === 'roll') {
-    const roll = h('button', 'btn primary', 'ダイスを振る');
-    roll.onclick = () => send({ type: 'move', move: { roll: true } });
-    tools.append(roll);
-  }
-  const wrap = h('div', 'bg-wrap');
-  wrap.append(board, tools);
-  el.replaceChildren(wrap);
 }
 
 // ---------- ワードバスケット ----------
@@ -1651,7 +1496,388 @@ function renderItoSettings(box, v) {
   if (!host) box.append(h('p', 'muted small', '設定はホストが変更できます'));
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, go: renderGo, backgammon: renderBackgammon, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto };
+// ---------- トランプの絵（大富豪・ポーカー共通） ----------
+function playingCard(card, extra = '') {
+  if (!card || card === 'back') return h('span', 'pcard back ' + extra);
+  if (card.s === 'j') return h('span', 'pcard joker ' + extra, 'JOKER');
+  const red = card.s === 'h' || card.s === 'd';
+  const e = h('span', `pcard ${red ? 'red' : 'black'} ${extra}`);
+  e.append(h('span', 'pc-rank', daifugo.rankLabel(card.r)), h('span', 'pc-suit', daifugo.SUIT_MARK[card.s]));
+  return e;
+}
+// ポーカーのカードは 2〜14（A=14）。大富豪は 3〜15（2=15）
+const pokerCard = (card, extra = '') => {
+  if (!card || card === 'hidden') return h('span', 'pcard back ' + extra);
+  const red = card.s === 'h' || card.s === 'd';
+  const e = h('span', `pcard ${red ? 'red' : 'black'} ${extra}`);
+  e.append(h('span', 'pc-rank', poker.rankLabel(card.r)), h('span', 'pc-suit', poker.SUIT_MARK[card.s]));
+  return e;
+};
+
+// ---------- 大富豪 ----------
+let dfSel = [];
+let dfKey = '';
+
+function renderDaifugo(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const key = `${v.code}:${v.gameNo}:${s.round}:${s.phase}:${s.turnNo}`;
+  if (key !== dfKey) { dfKey = key; dfSel = []; }
+  const myHand = me >= 0 && s.hands[me] ? s.hands[me] : [];
+  dfSel = dfSel.filter((id) => myHand.some((c) => c.id === id));
+  const host = me >= 0 && me === v.hostSeat;
+  const prevTitle = (p) => {
+    if (!s.lastRanks) return null;
+    const order = s.lastRanks.filter((q) => !s.out[q]);
+    const i = order.indexOf(p);
+    return i >= 0 ? daifugo.titleOf(i, order.length) : null;
+  };
+  const root = h('div', 'df');
+
+  // 参加者
+  const players = h('div', 'uno-players');
+  for (let i = 0; i < s.players; i++) {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.phase === 'play' && i === s.turn ? ' turn' : ''));
+    chip.append(h('span', 'pname', name(i)));
+    if (v.seats[i]) chip.append(h('span', 'dot ' + (v.seats[i].online ? 'on' : 'off')));
+    const t = s.phase === 'result' ? null : prevTitle(i);
+    if (t) chip.append(h('span', 'df-title', t));
+    const fin = s.finished.indexOf(i);
+    chip.append(h('span', 'wb-count', s.out[i] ? '投了' : fin >= 0 ? `${fin + 1}位` : `${s.handCounts[i]}枚`));
+    if (s.phase === 'play' && s.passed[i]) chip.append(h('span', 'wb-vote', 'パス'));
+    chip.append(h('span', 'muted small', `${s.points[i]}pt`));
+    players.append(chip);
+  }
+  root.append(players);
+
+  // 場
+  const table = h('div', 'df-table' + (s.revolution ? ' rev' : ''));
+  if (s.revolution) table.append(h('div', 'df-rev', '革命中（強さが逆）'));
+  if (s.phase === 'result') {
+    const order = s.lastRanks.filter((q) => !s.out[q]);
+    const list = h('ol', 'df-ranking');
+    order.forEach((p, i) => list.append(h('li', null, `${daifugo.titleOf(i, order.length)}：${name(p)}`)));
+    table.append(h('div', 'df-field-label', `第${s.round}ラウンドの結果`), list);
+  } else if (s.field) {
+    const cards = h('div', 'df-cards');
+    cards.append(...daifugo.sortHand(s.field.cards).map((c) => playingCard(c, 'big')));
+    table.append(h('div', 'df-field-label', `${name(s.field.by)} が出したカード`), cards);
+  } else if (s.phase === 'play') {
+    table.append(h('div', 'df-field-label', `場は空いています（親：${name(s.turn)}）`));
+  } else {
+    table.append(h('div', 'df-field-label', 'カード交換中…'));
+  }
+  root.append(table);
+
+  // 操作
+  const bar = h('div', 'df-actions');
+  const hint = h('div', 'wb-hint');
+  if (s.phase === 'play' && me === s.turn && !s.out[me]) {
+    const play = h('button', 'btn primary', dfSel.length ? `出す（${dfSel.length}枚）` : '出す');
+    let ok = false;
+    if (dfSel.length) {
+      try { daifugo.checkPlay(s, me, dfSel); ok = true; hint.textContent = '出せます'; hint.classList.add('ok'); }
+      catch (e) { hint.textContent = e.message; hint.classList.add('ng'); }
+    }
+    play.disabled = !ok;
+    play.onclick = () => sendMove({ play: dfSel });
+    bar.append(play);
+    if (s.field) {
+      const pass = h('button', 'btn', 'パス');
+      pass.onclick = () => sendMove({ pass: true });
+      bar.append(pass);
+    }
+  }
+  const ex = s.phase === 'exchange' && s.exchange.find((e) => e.from === me && !e.done);
+  if (ex) {
+    const give = h('button', 'btn primary', `${name(ex.to)} に渡す（${dfSel.length}/${ex.count}枚）`);
+    give.disabled = dfSel.length !== ex.count;
+    give.onclick = () => sendMove({ give: dfSel });
+    bar.append(give);
+  }
+  if (s.phase === 'result') {
+    if (host) {
+      const next = h('button', 'btn primary', '次のラウンドへ（カード交換あり）');
+      next.onclick = () => sendMove({ next: true });
+      bar.append(next);
+    } else bar.append(h('span', 'muted', 'ホストが次のラウンドを始めるのを待っています…'));
+  }
+  if (dfSel.length) {
+    const clear = h('button', 'btn small ghost', '選択を解除');
+    clear.onclick = () => { dfSel = []; render(); };
+    bar.append(clear);
+  }
+  if (bar.childElementCount) root.append(bar);
+  root.append(hint);
+
+  // 手札
+  if (me >= 0 && !s.out[me]) {
+    const canSelect = (s.phase === 'play' && me === s.turn) || !!ex;
+    const hand = h('div', 'df-hand');
+    for (const c of myHand) {
+      const b = h('button', 'df-card-btn' + (dfSel.includes(c.id) ? ' sel' : ''));
+      b.append(playingCard(c));
+      b.disabled = !canSelect;
+      b.onclick = () => {
+        dfSel = dfSel.includes(c.id) ? dfSel.filter((x) => x !== c.id) : [...dfSel, c.id];
+        render();
+      };
+      hand.append(b);
+    }
+    root.append(h('div', 'cc-hand-title', `あなたの手札（${myHand.length}枚）・カードを選んで「出す」`), hand);
+  }
+  el.replaceChildren(root);
+}
+
+// ---------- ポーカー ----------
+let pkRaise = null;
+let pkKey = '';
+
+function renderPoker(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const key = `${v.code}:${v.gameNo}:${s.handNo}:${s.phase}:${s.currentBet}`;
+  const opt = me >= 0 ? poker.options(s, me) : null;
+  if (key !== pkKey) { pkKey = key; pkRaise = opt ? opt.minRaiseTo : null; }
+  const root = h('div', 'pk');
+
+  // 場
+  const table = h('div', 'pk-table');
+  const board = h('div', 'pk-board');
+  for (let i = 0; i < 5; i++) board.append(s.board[i] ? pokerCard(s.board[i], 'big') : h('span', 'pcard empty big'));
+  const phaseName = { preflop: 'プリフロップ', flop: 'フロップ', turn: 'ターン', river: 'リバー', showdown: 'ショーダウン' }[s.phase];
+  const streetBets = s.bets.reduce((a, b) => a + b, 0);
+  table.append(h('div', 'pk-info', `ハンド${s.handNo}・${phaseName}`), board,
+    h('div', 'pk-pot', `ポット ${s.phase === 'showdown' ? s.showdown?.pots?.reduce((a, p) => a + p.amount, 0) ?? '' : s.pot}`),
+    h('div', 'muted small pk-blinds', `ブラインド ${poker.SMALL_BLIND}/${poker.BIG_BLIND}` + (streetBets ? `・このラウンドの賭け ${streetBets}` : '')));
+  root.append(table);
+
+  // 参加者
+  const seats = h('div', 'pk-seats');
+  for (let i = 0; i < s.players; i++) {
+    const p = v.seats[i];
+    const box = h('div', 'pk-seat' + (i === me ? ' me' : '') + (s.turn === i ? ' turn' : '') + (s.folded[i] || s.out[i] ? ' folded' : '')
+      + (s.showdown && s.showdown.won[i] ? ' won' : ''));
+    const head = h('div', 'pk-seat-head');
+    head.append(h('span', 'pname', p ? p.name : '?'));
+    if (i === s.button) head.append(h('span', 'pk-chip-d', 'D'));
+    if (i === s.sb && s.phase === 'preflop') head.append(h('span', 'pk-tag', 'SB'));
+    if (i === s.bb && s.phase === 'preflop') head.append(h('span', 'pk-tag', 'BB'));
+    box.append(head, h('div', 'pk-stack', s.out[i] ? (s.out[i] === 'bust' ? '脱落' : '退席') : `${s.stacks[i]}`));
+    const status = s.out[i] ? '' : s.folded[i] ? 'フォールド' : s.allIn[i] ? 'オールイン' : s.bets[i] ? `賭け ${s.bets[i]}` : '';
+    if (status) box.append(h('div', 'pk-status', status));
+    const hole = s.holes[i];
+    if (hole && i !== me && !s.folded[i]) {
+      const cards = h('div', 'pk-hole');
+      cards.append(...(hole === 'hidden' ? [pokerCard(null, 'small'), pokerCard(null, 'small')] : hole.map((c) => pokerCard(c, 'small'))));
+      box.append(cards);
+    }
+    if (s.showdown) {
+      const sh = s.showdown.hands[i];
+      if (sh) box.append(h('div', 'pk-hand-name', sh.name));
+      if (s.showdown.won[i]) box.append(h('div', 'pk-won', `+${s.showdown.won[i]}`));
+    }
+    if (s.lastAction && s.lastAction.seat === i && s.phase !== 'showdown') box.append(h('div', 'muted small', s.lastAction.text));
+    seats.append(box);
+  }
+  root.append(seats);
+
+  // 自分の手札と操作
+  if (me >= 0 && s.holes[me] && s.holes[me] !== 'hidden') {
+    const mine = h('div', 'pk-mine');
+    const cards = h('div', 'pk-hole');
+    cards.append(...s.holes[me].map((c) => pokerCard(c, 'big')));
+    mine.append(cards);
+    if (s.board.length >= 3) mine.append(h('div', 'pk-hand-name', `今の役：${poker.bestHand([...s.holes[me], ...s.board]).name}`));
+    root.append(mine);
+  }
+  if (opt) {
+    const bar = h('div', 'pk-actions');
+    const fold = h('button', 'btn danger', 'フォールド');
+    fold.onclick = () => sendMove({ fold: true });
+    bar.append(fold);
+    if (opt.canCheck) {
+      const check = h('button', 'btn', 'チェック');
+      check.onclick = () => sendMove({ check: true });
+      bar.append(check);
+    } else {
+      const call = h('button', 'btn primary', opt.toCall >= s.stacks[me] ? `オールインでコール ${opt.toCall}` : `コール ${opt.toCall}`);
+      call.onclick = () => sendMove({ call: true });
+      bar.append(call);
+    }
+    root.append(bar);
+    if (opt.canRaise) {
+      const raise = h('div', 'pk-raise');
+      const range = h('input');
+      range.type = 'range';
+      range.min = opt.minRaiseTo;
+      range.max = opt.maxRaiseTo;
+      range.step = 10;
+      const num = h('input');
+      num.type = 'number';
+      num.min = opt.minRaiseTo;
+      num.max = opt.maxRaiseTo;
+      const clamp = (x) => Math.max(opt.minRaiseTo, Math.min(opt.maxRaiseTo, Math.round(Number(x) || 0)));
+      pkRaise = clamp(pkRaise ?? opt.minRaiseTo);
+      range.value = num.value = pkRaise;
+      const go = h('button', 'btn primary');
+      const label = () => { go.textContent = pkRaise >= opt.maxRaiseTo ? `オールイン ${pkRaise}` : `${s.currentBet ? 'レイズ' : 'ベット'} ${pkRaise}`; };
+      label();
+      range.oninput = () => { pkRaise = clamp(range.value); num.value = pkRaise; label(); };
+      num.onchange = () => { pkRaise = clamp(num.value); range.value = num.value = pkRaise; label(); };
+      go.onclick = () => sendMove({ raise: pkRaise });
+      const quick = h('div', 'pk-quick');
+      const pot = s.pot;
+      for (const [txt, val] of [['最小', opt.minRaiseTo], ['ポット½', s.currentBet + Math.floor(pot / 2)], ['ポット', s.currentBet + pot], ['オールイン', opt.maxRaiseTo]]) {
+        const b = h('button', 'btn small', txt);
+        b.onclick = () => { pkRaise = clamp(val); range.value = num.value = pkRaise; label(); };
+        quick.append(b);
+      }
+      raise.append(range, num, go);
+      root.append(quick, raise);
+    }
+  }
+  if (s.phase === 'showdown' && !s.result) root.append(h('p', 'muted small pk-next', 'まもなく次のハンドを配ります…'));
+  el.replaceChildren(root);
+}
+
+// ---------- ブロックス ----------
+let bkSel = null;     // { piece, t }
+let bkHover = null;   // [r, c]
+let bkKey = '';
+
+function bkPreview(s, cell) {
+  if (!bkSel || !cell) return null;
+  const shape = blokus.orient(blokus.PIECES[bkSel.piece], bkSel.t);
+  const h2 = Math.max(...shape.map((x) => x[0])), w2 = Math.max(...shape.map((x) => x[1]));
+  const r = cell[0] - Math.floor(h2 / 2), c = cell[1] - Math.floor(w2 / 2);
+  const cells = blokus.placeCells(bkSel.piece, bkSel.t, r, c);
+  return { r, c, cells, error: blokus.placementError(s, s.color, cells) };
+}
+
+function bkPieceEl(cells, color, extra = '') {
+  const maxR = Math.max(...cells.map((x) => x[0])), maxC = Math.max(...cells.map((x) => x[1]));
+  const g = h('span', 'bk-piece ' + extra);
+  g.style.gridTemplateColumns = `repeat(${maxC + 1}, 1fr)`;
+  g.style.gridTemplateRows = `repeat(${maxR + 1}, 1fr)`;
+  for (const [r, c] of cells) {
+    const sq = h('span', 'bk-sq c' + color);
+    sq.style.gridRow = r + 1;
+    sq.style.gridColumn = c + 1;
+    g.append(sq);
+  }
+  return g;
+}
+
+function renderBlokus(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const myTurn = me >= 0 && !s.result && blokus.ownerOf(s.players, s.color) === me;
+  const key = `${v.code}:${v.gameNo}:${s.history.length}`;
+  if (key !== bkKey) { bkKey = key; if (!myTurn || (bkSel && !s.remaining[s.color][bkSel.piece])) bkSel = null; }
+  const root = h('div', 'bk');
+
+  // 点数と手番
+  const info = h('div', 'uno-players');
+  for (let p = 0; p < s.players; p++) {
+    const chip = h('div', 'wb-player' + (p === me ? ' me' : '') + (s.out[p] ? ' out' : '') + (!s.result && blokus.ownerOf(s.players, s.color) === p ? ' turn' : '')
+      + (s.result && (s.result.winner === p) ? ' winner' : ''));
+    for (const c of blokus.colorsOf(s.players, p)) chip.append(h('span', `bk-dot c${c}` + (s.done[c] ? ' done' : '')));
+    chip.append(h('span', 'pname', name(p)), h('span', 'wb-count', blokus.scoreOf(s, p)));
+    info.append(chip);
+  }
+  root.append(info);
+  if (!s.result) root.append(h('div', 'bk-turn', `${blokus.COLOR_NAMES[s.color]}の番（${name(blokus.ownerOf(s.players, s.color))}）`));
+
+  // 盤
+  const board = h('div', 'bk-board' + (myTurn && bkSel ? ' placing' : ''));
+  const cellEls = [];
+  for (let r = 0; r < blokus.SIZE; r++) for (let c = 0; c < blokus.SIZE; c++) {
+    const col = s.board[r][c];
+    const cell = h('div', 'bk-cell' + (col !== null ? ` c${col}` : ''));
+    const corner = blokus.CORNERS.findIndex(([cr, cc]) => cr === r && cc === c);
+    if (corner >= 0 && col === null && !s.placedAny[corner] && !s.done[corner]) cell.classList.add('start', 'sc' + corner);
+    if (s.lastMove && s.lastMove.cells.some(([lr, lc]) => lr === r && lc === c)) cell.classList.add('last');
+    cellEls.push(cell);
+    board.append(cell);
+  }
+  const showPreview = () => {
+    for (const e of cellEls) e.classList.remove('pv', 'ok', 'ng', 'c' + s.color + '-pv');
+    const pv = myTurn ? bkPreview(s, bkHover) : null;
+    if (!pv) return;
+    for (const [r, c] of pv.cells) {
+      if (r < 0 || r >= blokus.SIZE || c < 0 || c >= blokus.SIZE) continue;
+      const e = cellEls[r * blokus.SIZE + c];
+      e.classList.add('pv', pv.error ? 'ng' : 'ok');
+      if (!pv.error) e.classList.add('c' + s.color + '-pv');
+    }
+  };
+  cellEls.forEach((cell, i) => {
+    const here = [Math.floor(i / blokus.SIZE), i % blokus.SIZE];
+    cell.onmouseenter = () => { bkHover = here; showPreview(); };
+    cell.onclick = () => {
+      if (!myTurn || !bkSel) return;
+      // タッチ操作: 1回目のタップで位置を決め、同じマスをもう一度タップで置く
+      if (!bkHover || bkHover[0] !== here[0] || bkHover[1] !== here[1]) { bkHover = here; showPreview(); return; }
+      const pv = bkPreview(s, here);
+      if (pv.error) { toast(pv.error); return; }
+      const sel = bkSel;
+      bkSel = null;
+      bkHover = null;
+      send({ type: 'move', move: { piece: sel.piece, t: sel.t, r: pv.r, c: pv.c } });
+    };
+  });
+  board.onmouseleave = () => { bkHover = null; showPreview(); };
+  root.append(board);
+  showPreview();
+
+  // ピース選び
+  if (me >= 0 && !s.out[me]) {
+    const tools = h('div', 'bk-tools');
+    if (myTurn) {
+      const rot = h('button', 'btn small', '回転 (R)');
+      rot.onclick = () => bkTransform('rotate');
+      const flip = h('button', 'btn small', '反転 (F)');
+      flip.onclick = () => bkTransform('flip');
+      tools.append(rot, flip, h('span', 'muted small', bkSel ? '盤の上で置きたい場所をクリック（スマホは同じ場所を2回タップ）' : '下からピースを選んでください'));
+    }
+    root.append(tools);
+    for (const color of blokus.colorsOf(s.players, me)) {
+      const tray = h('div', 'bk-tray' + (myTurn && color === s.color ? ' active' : ''));
+      tray.append(h('div', 'cc-hand-title', `${blokus.COLOR_NAMES[color]}のピース（残り${s.remaining[color].filter(Boolean).length}個）`));
+      const list = h('div', 'bk-tray-list');
+      blokus.PIECES.forEach((cells, i) => {
+        if (!s.remaining[color][i]) return;
+        const active = myTurn && color === s.color;
+        const selected = active && bkSel && bkSel.piece === i;
+        const b = h('button', 'bk-tray-btn' + (selected ? ' sel' : ''));
+        b.append(bkPieceEl(selected ? blokus.orient(cells, bkSel.t) : cells, color));
+        b.disabled = !active;
+        b.onclick = () => { bkSel = selected ? null : { piece: i, t: 0 }; render(); };
+        list.append(b);
+      });
+      tray.append(list);
+      root.append(tray);
+    }
+  }
+  el.replaceChildren(root);
+}
+
+function bkTransform(kind) {
+  if (!bkSel) return;
+  const t = bkSel.t;
+  bkSel = { ...bkSel, t: kind === 'rotate' ? (t >= 4 ? 4 + ((t + 1) % 4) : (t + 1) % 4) : (t >= 4 ? t - 4 : t + 4) };
+  render();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!view || view.game !== 'blokus' || !bkSel) return;
+  if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if (e.key === 'r' || e.key === 'R') bkTransform('rotate');
+  if (e.key === 'f' || e.key === 'F') bkTransform('flip');
+});
+
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus };
 
 // ---------- イベント ----------
 const nameInput = $('#name');
