@@ -7,6 +7,7 @@
 // 言葉が辞書にあるかは判定しない。おかしな言葉は他の人が「ダメ！」で取り消せる（出した人は手札に戻して1枚引く）。
 // 手: { word, card } 言葉を出す（card は手札の番号。省略すると自動で選ぶ）
 //     { challenge: playIndex } 直前の言葉にダメ出し / { flip: true } 場を流す投票 / { resign: true } 投了
+//     { draw: true } 山札から1枚引く / { resetHand: true } 手札を全部捨てて「元の枚数＋1枚」引き直す
 export const id = 'wordbasket';
 export const title = 'ワードバスケット';
 export const sideNames = ['プレイヤー1', 'プレイヤー2', 'プレイヤー3', 'プレイヤー4', 'プレイヤー5', 'プレイヤー6'];
@@ -169,6 +170,26 @@ export function applyMove(s, mv, seat, rng) {
     ns.flipVotes = [];
     ns.history.push(`${word}（${cardLabel(card)}）`);
     if (!ns.hands[seat].length) ns.result = { winner: seat, reason: `「${word}」で上がり`, byPlay: true };
+    return ns;
+  }
+
+  if (mv.draw) {
+    const card = draw(ns, rng);
+    if (!card) throw new Error('山札がありません');
+    ns.hands[seat].push(card);
+    ns.history.push(`プレイヤー${seat + 1} 1枚引いた`);
+    return ns;
+  }
+
+  if (mv.resetHand) {
+    const n = ns.hands[seat].length;
+    ns.discard.push(...ns.hands[seat]);
+    ns.hands[seat] = [];
+    for (let i = 0; i <= n; i++) {
+      const card = draw(ns, rng);
+      if (card) ns.hands[seat].push(card);
+    }
+    ns.history.push(`プレイヤー${seat + 1} 手札リセット（${n}→${ns.hands[seat].length}枚）`);
     return ns;
   }
 

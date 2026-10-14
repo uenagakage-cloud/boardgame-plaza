@@ -139,9 +139,19 @@ function sendMove(move) {
 function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
+    // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
+    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ（2〜6人）', h('div', 'cards')]];
+    for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
     for (const [key, g] of Object.entries(GAMES)) {
+      const multi = (g.maxPlayers || 2) > 2;
       const card = h('div', 'card game-' + key);
-      card.append(h('div', 'card-icon', GAME_INFO[key].icon), h('h3', null, g.title), h('p', 'muted', GAME_INFO[key].desc));
+      const head = h('div', 'card-head');
+      // 長い名前は語の切れ目で折り返す（​ は改行してよい位置）
+      const shortTitle = g.title.replace(/(ゴブレット|ワンナイト|ワード|＆)/, '$1​');
+      head.append(h('span', 'card-icon', GAME_INFO[key].icon), h('h3', null, shortTitle),
+        h('span', 'card-players', multi ? `${g.minPlayers}〜${g.maxPlayers}人` : '2人'));
+      card.append(head, h('p', 'muted', GAME_INFO[key].desc));
+      groups[multi ? 1 : 0][1].append(card);
       let getOptions = () => ({});
       if (key === 'gomoku') {
         const toggle = h('label', 'option-toggle');
@@ -149,7 +159,8 @@ function renderLobby() {
         cb.type = 'checkbox';
         cb.checked = store.get('gomokuRenju', '0') === '1';
         cb.onchange = () => store.set('gomokuRenju', cb.checked ? '1' : '0');
-        toggle.append(cb, h('span', null, '禁じ手あり'), h('span', 'muted small', '（黒の三三・四四・長連を禁止）'));
+        toggle.append(cb, h('span', null, '禁じ手あり'));
+        toggle.title = '黒の三三・四四・長連を禁止';
         card.append(toggle);
         getOptions = () => ({ renju: cb.checked });
       }
@@ -170,13 +181,12 @@ function renderLobby() {
       const row = h('div', 'side-pick');
       const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
       for (const [side, label] of sides) {
-        const b = h('button', side === null ? 'btn primary' : 'btn', side === null ? '部屋を作る' : label + 'で');
+        const b = h('button', side === null ? 'btn primary' : 'btn', side === null ? '部屋を作る' : label);
         b.title = side === null ? ((g.maxPlayers || 2) > 2 ? `${g.minPlayers}〜${g.maxPlayers}人で遊べます` : '手番はランダムに決まります') : `${label}（${side === 0 ? '先手' : '後手'}）で部屋を作る`;
         b.onclick = () => send({ type: 'create', game: key, side, options: getOptions() });
         row.append(b);
       }
       card.append(row);
-      cards.append(card);
     }
   }
   $('#online').textContent = lobby.online ? `・${lobby.online}人が接続中` : '';
@@ -902,7 +912,16 @@ function renderWordBasket(el, v, act) {
     const flip = h('button', 'btn small', voted ? `場を流す投票済み（${s.flipVotes.length}/${activeCount}）` : `誰も出せないので場を流す（${s.flipVotes.length}/${activeCount}）`);
     flip.disabled = voted;
     flip.onclick = () => send({ type: 'move', move: { flip: true } });
-    wb.actions.append(flip, h('span', 'muted small', `山札 ${s.deckCount}枚`));
+    const drawOne = h('button', 'btn small', '山札から1枚引く');
+    drawOne.onclick = () => send({ type: 'move', move: { draw: true } });
+    const reset = h('button', 'btn small', `手札リセット（${myHand.length}→${myHand.length + 1}枚）`);
+    reset.title = '手札を全部捨てて、今より1枚多く引き直します';
+    reset.onclick = async () => {
+      if (await choose(`手札${myHand.length}枚を全部捨てて、${myHand.length + 1}枚引き直しますか？`, [['yes', 'リセットする'], [null, 'キャンセル']])) {
+        send({ type: 'move', move: { resetHand: true } });
+      }
+    };
+    wb.actions.append(drawOne, reset, flip, h('span', 'muted small', `山札 ${s.deckCount}枚`));
   }
 }
 

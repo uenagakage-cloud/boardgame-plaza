@@ -656,4 +656,33 @@ test('werewolf: 怪盗が人狼と交換すると人狼陣営になる', () => {
   assert.deepEqual(s.result.winners, [0]);
 });
 
+
+test('catchoco: アイテムは180種類で重複なし', () => {
+  const s = cc.init({}, 2);
+  const all = [...s.itemDeck, ...s.hands.flat()].map((c) => c.name);
+  assert.equal(all.length, 180);
+  assert.equal(new Set(all).size, 180);
+});
+test('wordbasket: 山札から1枚引く', () => {
+  const s = wbk.init({}, 2);
+  const ns = wbk.applyMove(s, { draw: true }, 0);
+  assert.equal(ns.hands[0].length, 6);
+  assert.equal(ns.deck.length, s.deck.length - 1);
+  assert.equal(ns.hands[1].length, 5);
+});
+test('wordbasket: 手札リセットで元の枚数＋1枚に・カードの総数は変わらない', () => {
+  const s = wbk.init({}, 3);
+  const old = s.hands[1].map((c) => c.id);
+  const ns = wbk.applyMove(s, { resetHand: true }, 1);
+  assert.equal(ns.hands[1].length, 6);
+  assert.ok(old.every((id) => ns.discard.some((c) => c.id === id)), '元の手札は捨て札へ');
+  const total = (st) => st.deck.length + st.discard.length + st.hands.flat().length + 1;
+  assert.equal(total(ns), 59);
+  // 山札が足りなくなっても捨て札を混ぜ直して引ける
+  let t = ns;
+  for (let i = 0; i < 30; i++) t = wbk.applyMove(t, { resetHand: true }, 0);
+  assert.equal(total(t), 59);
+  assert.throws(() => wbk.applyMove({ ...ns, out: [false, true, false] }, { resetHand: true }, 1), /投了/);
+});
+
 console.log(`\n${n} tests passed`);
