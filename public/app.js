@@ -12,8 +12,9 @@ import * as daifugo from './games/daifugo.js';
 import * as poker from './games/poker.js';
 import * as blokus from './games/blokus.js';
 import * as paint from './games/paint.js';
+import * as skull from './games/skull.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -29,6 +30,7 @@ const GAME_INFO = {
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かきでお題を当てっこ。2〜8人。' },
+  skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -2057,7 +2059,105 @@ function renderPaint(el, v) {
   }));
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint };
+// ---------- スカル ----------
+let skBid = null;
+let skKey = '';
+const SK_FACE = { flower: '🌹', skull: '💀', hidden: '' };
+
+function renderSkull(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const playing = me >= 0 && !s.out[me] && !s.result;
+  const total = skull.tableCount(s);
+  const key = `${v.code}:${v.gameNo}:${s.history.length}`;
+  const minBid = s.bid ? s.bid.n + 1 : 1;
+  if (key !== skKey) { skKey = key; skBid = minBid; }
+  const root = h('div', 'sk');
+
+  // 宣言の状況
+  const info = h('div', 'sk-info');
+  info.append(h('span', null, `場のコースター ${total}枚`));
+  if (s.bid) info.append(h('span', 'sk-bid', `宣言：${s.bid.n}枚（${name(s.bid.seat)}）`));
+  if (s.phase === 'reveal') info.append(h('span', 'sk-bid', `めくった花 ${s.flowersFound}/${s.bid.n}`));
+  root.append(info);
+
+  // ラウンドの結果
+  if (s.phase === 'roundEnd' && s.lastRound) {
+    const lr = s.lastRound;
+    const text = lr.success ? `${name(lr.challenger)} が挑戦成功！` : `${name(lr.challenger)} が ${name(lr.skullOwner)} のドクロを引いて失敗…`;
+    const banner = h('div', 'sk-banner ' + (lr.success ? 'ok' : 'ng'), text);
+    if (!lr.success && lr.challenger === me && s.lost[me]) banner.append(h('div', 'small', `あなたは ${s.lost[me] === 'skull' ? 'ドクロ' : '花'} を1枚失いました`));
+    root.append(banner);
+  }
+
+  // 各プレイヤーの山
+  const grid = h('div', 'sk-grid');
+  for (let i = 0; i < s.players; i++) {
+    const st = s.stacks[i];
+    const canFlip = playing && s.phase === 'reveal' && me === s.challenger && i !== me && s.revealed[i] < st.length;
+    const box = h(canFlip ? 'button' : 'div', 'sk-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.turn === i ? ' turn' : '')
+      + (canFlip ? ' flippable' : '') + (s.result && s.result.winner === i ? ' winner' : ''));
+    const head = h('div', 'sk-head');
+    head.append(h('span', 'pname', name(i)), h('span', 'sk-points', '★'.repeat(s.points[i]) + '☆'.repeat(Math.max(0, skull.WIN_POINTS - s.points[i]))));
+    box.append(head);
+    const owned = s.owned[i];
+    const ownedCount = owned.count ?? owned.flower + owned.skull;
+    const hand = s.hands[i];
+    const handCount = hand.count ?? hand.flower + hand.skull;
+    box.append(h('div', 'muted small', s.out[i] ? '脱落' : `持ち ${ownedCount}枚・手元 ${handCount}枚`));
+    const stack = h('div', 'sk-stack');
+    // 上の方を先頭に並べる
+    st.slice().reverse().forEach((d, k) => {
+      const shown = k < s.revealed[i];
+      const disc = h('span', 'sk-disc' + (shown ? ' open ' + d : i === me ? ' mine ' + d : ' back'), shown || i === me ? SK_FACE[d] : '');
+      stack.append(disc);
+    });
+    if (!st.length) stack.append(h('span', 'muted small', '—'));
+    box.append(stack);
+    const tags = h('div', 'sk-tags');
+    if (s.phase === 'bid' && s.passed[i]) tags.append(h('span', 'wb-vote', 'パス'));
+    if (s.bid && s.bid.seat === i && s.phase !== 'roundEnd') tags.append(h('span', 'sk-tag', `${s.bid.n}枚`));
+    if (s.phase === 'place' && st.length) tags.append(h('span', 'wb-vote', '置いた'));
+    box.append(tags);
+    if (canFlip) box.onclick = () => sendMove({ flip: i });
+    grid.append(box);
+  }
+  root.append(grid);
+
+  // 自分の操作
+  if (playing) {
+    const bar = h('div', 'sk-actions');
+    const hand = s.hands[me];
+    const canPlace = (s.phase === 'place' && !s.stacks[me].length) || (s.phase === 'build' && s.turn === me);
+    if (canPlace) {
+      for (const type of ['flower', 'skull']) {
+        const b = h('button', 'btn sk-place ' + type, `${SK_FACE[type]} ${type === 'skull' ? 'ドクロ' : '花'}を置く（${hand[type]}）`);
+        b.disabled = !hand[type];
+        b.onclick = () => sendMove({ place: type });
+        bar.append(b);
+      }
+    }
+    if ((s.phase === 'build' || s.phase === 'bid') && s.turn === me && minBid <= total) {
+      const sel = h('select', 'size-select');
+      for (let n = minBid; n <= total; n++) { const o = h('option', null, `${n}枚`); o.value = String(n); sel.append(o); }
+      sel.value = String(Math.max(minBid, Math.min(total, skBid)));
+      sel.onchange = () => { skBid = Number(sel.value); };
+      const bid = h('button', 'btn primary', '宣言する');
+      bid.onclick = () => sendMove({ bid: Number(sel.value) });
+      bar.append(h('span', 'muted small', '何枚めくれるか：'), sel, bid);
+    }
+    if (s.phase === 'bid' && s.turn === me) {
+      const pass = h('button', 'btn', 'パス');
+      pass.onclick = () => sendMove({ pass: true });
+      bar.append(pass);
+    }
+    if (s.phase === 'reveal' && s.challenger === me) bar.append(h('span', 'sk-hint', 'めくる人の山をクリック（上から1枚ずつ）'));
+    if (bar.childElementCount) root.append(bar);
+  }
+  el.replaceChildren(root);
+}
+
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

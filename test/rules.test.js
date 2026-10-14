@@ -13,6 +13,7 @@ import * as df from '../public/games/daifugo.js';
 import * as pk from '../public/games/poker.js';
 import * as bk from '../public/games/blokus.js';
 import * as paint from '../public/games/paint.js';
+import * as skull from '../public/games/skull.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -921,6 +922,113 @@ test('paint: 描く人が抜けたら答え発表', () => {
   assert.equal(s.phase, 'reveal');
   s = paint.tick(s);
   assert.equal(s.painter, 1, '抜けた人は飛ばす');
+});
+
+
+// ---------- スカル ----------
+const skPlaceAll = (s, types) => types.reduce((st, t, p) => skull.applyMove(st, { place: t }, p), s);
+test('skull: 1枚目は全員が同時に置く・中身はほかの人に見えない', () => {
+  let s = skull.init({}, 3);
+  assert.equal(s.phase, 'place');
+  assert.ok(skull.canActOutOfTurn(s));
+  s = skull.applyMove(s, { place: 'skull' }, 2);
+  assert.throws(() => skull.applyMove(s, { place: 'flower' }, 2), /もう置きました/);
+  assert.equal(skull.viewFor(s, 0).stacks[2][0], 'hidden');
+  assert.equal(skull.viewFor(s, 2).stacks[2][0], 'skull');
+  assert.deepEqual(skull.viewFor(s, 0).hands[2], { count: 3 });
+  s = skull.applyMove(s, { place: 'flower' }, 0);
+  s = skull.applyMove(s, { place: 'flower' }, 1);
+  assert.equal(s.phase, 'build');
+  assert.equal(s.turn, s.first);
+});
+test('skull: 置く・宣言・パスで挑戦者が決まり、花だけなら成功', () => {
+  let s = skull.init({}, 3);
+  s.first = 0;
+  s = skPlaceAll(s, ['flower', 'flower', 'flower']);
+  s.turn = 0;
+  s = skull.applyMove(s, { place: 'flower' }, 0);
+  assert.equal(s.turn, 1);
+  assert.throws(() => skull.applyMove(s, { bid: 5 }, 1), /1〜4枚/);
+  s = skull.applyMove(s, { bid: 2 }, 1);
+  assert.equal(s.phase, 'bid');
+  assert.throws(() => skull.applyMove(s, { bid: 2 }, 2), /3〜4枚/);
+  s = skull.applyMove(s, { pass: true }, 2);
+  s = skull.applyMove(s, { pass: true }, 0);
+  assert.equal(s.phase, 'reveal');
+  assert.equal(s.challenger, 1);
+  assert.equal(s.flowersFound, 1, '自分の山は自動でめくる');
+  assert.throws(() => skull.applyMove(s, { flip: 1 }, 1), /自分の山/);
+  s = skull.applyMove(s, { flip: 0 }, 1);
+  assert.equal(s.points[1], 1);
+  assert.equal(s.phase, 'roundEnd');
+  s = skull.tick(s);
+  assert.equal(s.phase, 'place');
+  assert.equal(s.first, 1, '挑戦者から次のラウンド');
+  assert.equal(s.hands[0].flower, 3, 'コースターは手元に戻る');
+});
+test('skull: ドクロで失敗すると1枚失い、ドクロの持ち主から次のラウンド', () => {
+  let s = skull.init({}, 3);
+  s.first = 0;
+  s = skPlaceAll(s, ['flower', 'skull', 'flower']);
+  s.turn = 0;
+  s = skull.applyMove(s, { bid: 3 }, 0); // 場の枚数ちょうど → すぐ挑戦
+  assert.equal(s.phase, 'reveal');
+  s = skull.applyMove(s, { flip: 1 }, 0);
+  assert.equal(s.phase, 'roundEnd');
+  assert.equal(s.owned[0].flower + s.owned[0].skull, 3);
+  assert.equal(s.first, 1);
+  assert.ok(['flower', 'skull'].includes(skull.viewFor(s, 0).lost[0]));
+  assert.equal(skull.viewFor(s, 1).lost[0], null, '何を失ったかは本人にだけ見える');
+});
+test('skull: 自分のドクロで失敗・2回成功で勝ち', () => {
+  let s = skull.init({}, 3);
+  s.first = 0;
+  s = skPlaceAll(s, ['skull', 'flower', 'flower']);
+  s.turn = 0;
+  s = skull.applyMove(s, { bid: 3 }, 0);
+  assert.equal(s.phase, 'roundEnd', '自分の山にドクロがあれば即失敗');
+  assert.equal(s.lastRound.skullOwner, 0);
+  let t = skull.init({}, 3);
+  t.points[2] = 1;
+  t.first = 2;
+  t = skPlaceAll(t, ['flower', 'flower', 'flower']);
+  t.turn = 2;
+  t = skull.applyMove(t, { bid: 1 }, 2);
+  t = skull.applyMove(t, { pass: true }, 0);
+  t = skull.applyMove(t, { pass: true }, 1);
+  assert.equal(t.result.winner, 2);
+});
+test('skull: ランダム対局で枚数が合い、必ず終わる', () => {
+  let seed = 13;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rng = (n = 6) => 1 + Math.floor(rnd() * n);
+  for (let g = 0; g < 40; g++) {
+    const n = 3 + (g % 4);
+    let s = skull.init({}, n, rng), guard = 0;
+    while (!s.result && guard++ < 3000) {
+      if (s.phase === 'roundEnd') { s = skull.tick(s); continue; }
+      if (s.phase === 'place') {
+        const p = [...Array(n).keys()].find((q) => !s.out[q] && !s.stacks[q].length);
+        const h = s.hands[p];
+        s = skull.applyMove(s, { place: h.skull && rnd() < 0.3 ? 'skull' : h.flower ? 'flower' : 'skull' }, p, rng);
+      } else if (s.phase === 'build') {
+        const p = s.turn, h = s.hands[p];
+        if (h.flower + h.skull && rnd() < 0.6) s = skull.applyMove(s, { place: h.flower ? 'flower' : 'skull' }, p, rng);
+        else s = skull.applyMove(s, { bid: 1 + Math.floor(rnd() * Math.min(3, skull.tableCount(s))) }, p, rng);
+      } else if (s.phase === 'bid') {
+        const p = s.turn;
+        if (rnd() < 0.5 && s.bid.n < skull.tableCount(s)) s = skull.applyMove(s, { bid: s.bid.n + 1 }, p, rng);
+        else s = skull.applyMove(s, { pass: true }, p, rng);
+      } else if (s.phase === 'reveal') {
+        const t = [...Array(n).keys()].filter((q) => q !== s.challenger && s.revealed[q] < s.stacks[q].length);
+        s = skull.applyMove(s, { flip: t[Math.floor(rnd() * t.length)] }, s.challenger, rng);
+      }
+      for (let p = 0; p < n; p++) {
+        assert.equal(s.hands[p].flower + s.hands[p].skull + s.stacks[p].length, s.phase === 'roundEnd' || s.phase === 'end' ? s.hands[p].flower + s.hands[p].skull + s.stacks[p].length : s.owned[p].flower + s.owned[p].skull);
+      }
+    }
+    assert.ok(s.result, '終わらない');
+  }
 });
 
 console.log(`\n${n} tests passed`);

@@ -18,8 +18,9 @@ import * as daifugo from './public/games/daifugo.js';
 import * as poker from './public/games/poker.js';
 import * as blokus from './public/games/blokus.js';
 import * as paint from './public/games/paint.js';
+import * as skull from './public/games/skull.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull };
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
