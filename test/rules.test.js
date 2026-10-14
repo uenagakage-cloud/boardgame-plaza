@@ -10,6 +10,7 @@ import * as wbk from '../public/games/wordbasket.js';
 import * as cc from '../public/games/catchoco.js';
 import * as uno from '../public/games/uno.js';
 import * as ww from '../public/games/werewolf.js';
+import * as ito from '../public/games/ito.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -683,6 +684,92 @@ test('wordbasket: 手札リセットで元の枚数＋1枚に・カードの総�
   for (let i = 0; i < 30; i++) t = wbk.applyMove(t, { resetHand: true }, 0);
   assert.equal(total(t), 59);
   assert.throws(() => wbk.applyMove({ ...ns, out: [false, true, false] }, { resetHand: true }, 1), /投了/);
+});
+
+
+// ito
+const itoCtx = (n, host = 0) => ({ hostSeat: host, online: Array(n).fill(true) });
+const itoTickAll = (s) => { while (s.phase === 'reveal') s = ito.tick(s); return s; };
+test('ito: 設定・配り方・お題のジャンル', () => {
+  assert.deepEqual(ito.GENRES.map((g) => g.key), ['entertainment', 'things']);
+  assert.ok(ito.GENRES[0].count >= 400, 'エンタメは400以上');
+  assert.deepEqual(ito.normalizeOptions({ cardsPerPlayer: 9, genres: ['food'] }), { cardsPerPlayer: 5, genres: ['entertainment', 'things'] });
+  const s = ito.init({ cardsPerPlayer: 2, genres: ['things'] }, 3);
+  assert.equal(s.cards.length, 6);
+  assert.equal(new Set(s.cards.map((c) => c.value)).size, 6);
+  assert.ok(s.cards.every((c) => c.value >= 1 && c.value <= 100));
+  assert.equal(s.phase, 'arrange');
+  assert.ok(s.theme);
+  const v = ito.viewFor(s, 1);
+  assert.ok(v.cards.every((c) => (c.owner === 1 ? c.value !== null : c.value === null)), '数字は自分のだけ見える');
+  assert.equal(v.themeDeck, null);
+});
+test('ito: 書き込み・並べ替えでOKが取り消される・他人のカードには書けない', () => {
+  let s = ito.init({}, 2);
+  const mine = s.cards.find((c) => c.owner === 0), theirs = s.cards.find((c) => c.owner === 1);
+  s = ito.applyMove(s, { ready: true }, 1, null, itoCtx(2));
+  assert.equal(s.ready[1], true);
+  s = ito.applyMove(s, { hint: { cardId: mine.id, text: 'ライオン' } }, 0, null, itoCtx(2));
+  assert.equal(s.cards.find((c) => c.id === mine.id).hint, 'ライオン');
+  assert.equal(s.ready[1], false);
+  assert.throws(() => ito.applyMove(s, { hint: { cardId: theirs.id, text: 'x' } }, 0, null, itoCtx(2)), /自分のカード/);
+  const first = s.cards[0].id;
+  s = ito.applyMove(s, { move: { cardId: first, to: 1 } }, 1, null, itoCtx(2));
+  assert.equal(s.cards[1].id, first);
+});
+test('ito: 全員OKで答え合わせ→1枚ずつめくって成功判定', () => {
+  let s = ito.init({}, 3);
+  // 小さい順に並べてから全員OK
+  const sorted = s.cards.slice().sort((a, b) => a.value - b.value);
+  sorted.forEach((c, i) => { s = ito.applyMove(s, { move: { cardId: c.id, to: i } }, 0, null, itoCtx(3)); });
+  for (const p of [0, 1]) s = ito.applyMove(s, { ready: true }, p, null, itoCtx(3));
+  assert.equal(s.phase, 'arrange');
+  s = ito.applyMove(s, { ready: true }, 2, null, itoCtx(3));
+  assert.equal(s.phase, 'reveal');
+  assert.equal(s.tickAfter, ito.REVEAL_INTERVAL_MS);
+  s = ito.tick(s);
+  assert.equal(s.revealed, 1);
+  assert.notEqual(ito.viewFor(s, 0).cards[0].value, null, 'めくったカードは全員に見える');
+  s = itoTickAll(s);
+  assert.equal(s.phase, 'result');
+  assert.equal(s.outcome, 'success');
+  assert.equal(s.wins, 1);
+  assert.equal(s.tickAfter, null);
+});
+test('ito: 順番ミスで失敗・切断中の人はOK待ちに含めない', () => {
+  let s = ito.init({}, 3);
+  const desc = s.cards.slice().sort((a, b) => b.value - a.value);
+  desc.forEach((c, i) => { s = ito.applyMove(s, { move: { cardId: c.id, to: i } }, 0, null, itoCtx(3)); });
+  const ctx = { hostSeat: 0, online: [true, true, false] };
+  s = ito.applyMove(s, { ready: true }, 0, null, ctx);
+  s = ito.applyMove(s, { ready: true }, 1, null, ctx);
+  assert.equal(s.phase, 'reveal');
+  s = itoTickAll(s);
+  assert.equal(s.outcome, 'fail');
+  assert.equal(s.wins, 0);
+});
+test('ito: ホストだけの操作（お題変更・強制答え合わせ・次のラウンド）', () => {
+  let s = ito.init({}, 2);
+  assert.throws(() => ito.applyMove(s, { reroll: true }, 1, null, itoCtx(2)), /ホストだけ/);
+  s = ito.applyMove(s, { customTheme: '好きな食べ物' }, 0, null, itoCtx(2));
+  assert.equal(s.theme, '好きな食べ物');
+  const before = s.theme;
+  s = ito.applyMove(s, { reroll: true }, 0, null, itoCtx(2));
+  assert.notEqual(s.theme, before);
+  s = ito.applyMove(s, { forceReveal: true }, 0, null, itoCtx(2));
+  s = itoTickAll(s);
+  assert.throws(() => ito.applyMove(s, { next: true }, 1, null, itoCtx(2)), /ホストだけ/);
+  s = ito.applyMove(s, { next: true }, 0, null, itoCtx(2));
+  assert.equal(s.round, 2);
+  assert.equal(s.phase, 'arrange');
+});
+test('ito: 外されたプレイヤーのカードは場から消え、次のラウンドも配られない', () => {
+  let s = ito.init({ cardsPerPlayer: 2 }, 3);
+  s = ito.applyMove(s, { resign: true }, 2, null, itoCtx(3));
+  assert.ok(s.cards.every((c) => c.owner !== 2));
+  s = ito.applyMove(s, { forceReveal: true }, 0, null, itoCtx(3));
+  s = ito.applyMove(itoTickAll(s), { next: true }, 0, null, itoCtx(3));
+  assert.equal(s.cards.length, 4);
 });
 
 console.log(`\n${n} tests passed`);

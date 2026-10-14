@@ -9,8 +9,9 @@ import * as wordbasket from './games/wordbasket.js';
 import * as catchoco from './games/catchoco.js';
 import * as uno from './games/uno.js';
 import * as werewolf from './games/werewolf.js';
+import * as ito from './games/ito.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf, ito };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -23,6 +24,7 @@ const GAME_INFO = {
   catchoco: { icon: '🐈‍⬛', desc: '手持ちのアイテムでピンチを切り抜ける大喜利。チーム戦・2〜6人。' },
   uno: { icon: '🃏', desc: '色か数字を合わせてカードを出し、先に手札をなくそう。2〜6人。' },
   werewolf: { icon: '🐺', desc: '夜は1回だけ。話し合いで人狼を見つけて処刑しよう。3〜6人。' },
+  ito: { icon: '🔢', desc: '数字を言葉で表して、みんなで小さい順に並べる協力ゲーム。2〜10人。' },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -75,6 +77,8 @@ function connect() {
       view = m;
       if (location.hash.slice(1) !== m.code) history.replaceState(null, '', '#' + m.code);
       render();
+    } else if (m.type === 'kicked') {
+      toast('部屋から外されました');
     } else if (m.type === 'left') {
       view = null;
       history.replaceState(null, '', location.pathname);
@@ -140,7 +144,7 @@ function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
     // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
-    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ（2〜6人）', h('div', 'cards')]];
+    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')]];
     for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
     for (const [key, g] of Object.entries(GAMES)) {
       const multi = (g.maxPlayers || 2) > 2;
@@ -238,7 +242,8 @@ function statusText(v) {
   if (!v.ready) {
     if (!v.multi) return ['wait', '対戦相手を待っています。招待リンクを送りましょう。'];
     const n = v.seats.filter(Boolean).length;
-    return ['wait', `参加者 ${n}人。${v.minPlayers}人以上そろったら「ゲーム開始」を押してください。`];
+    if (v.you >= 0 && v.you === v.hostSeat) return ['wait', `参加者 ${n}人。${v.minPlayers}人以上そろったら「ゲーム開始」を押してください。`];
+    return ['wait', `参加者 ${n}人。ホストの開始を待っています…`];
   }
   if (s.result) {
     if (s.result.winners) {
@@ -261,7 +266,7 @@ function statusText(v) {
 
 function renderRoom() {
   const v = view, g = GAMES[v.game], bottom = v.you === 1 ? 1 : 0;
-  $('#room-title').textContent = g.title + (v.variant ? ` · ${v.variant}` : '') + (v.gameNo > 1 ? `（第${v.gameNo}局）` : '');
+  $('#room-title').textContent = g.title + (v.variant ? ` · ${v.variant}` : '') + (v.gameNo > 1 && !g.lobbyReturn ? `（第${v.gameNo}局）` : '');
   $('#room-code').textContent = v.code;
   $('#player-top').hidden = $('#player-bottom').hidden = v.multi;
   if (!v.multi) {
@@ -276,7 +281,7 @@ function renderRoom() {
   // 操作ボタン
   const ctl = $('#controls');
   ctl.replaceChildren();
-  if (v.you >= 0 && !v.ready && v.multi) {
+  if (v.you >= 0 && !v.ready && v.multi && v.you === v.hostSeat) {
     const start = h('button', 'btn primary', 'ゲーム開始');
     start.disabled = v.seats.filter(Boolean).length < v.minPlayers;
     start.onclick = () => send({ type: 'start' });
@@ -298,10 +303,12 @@ function renderRoom() {
         draw.onclick = () => send({ type: 'offerDraw' });
         ctl.append(draw);
       }
-      const resign = h('button', 'btn danger', '投了');
-      resign.disabled = !!(v.multi && s.out && s.out[v.you]);
-      resign.onclick = async () => { if (await choose('本当に投了しますか？', [['yes', '投了する'], [null, 'キャンセル']])) send({ type: 'resign' }); };
-      ctl.append(resign);
+      if (!g.noResign) {
+        const resign = h('button', 'btn danger', '投了');
+        resign.disabled = !!(v.multi && s.out && s.out[v.you]);
+        resign.onclick = async () => { if (await choose('本当に投了しますか？', [['yes', '投了する'], [null, 'キャンセル']])) send({ type: 'resign' }); };
+        ctl.append(resign);
+      }
     } else if (v.multi) {
       const want = v.rematch.filter(Boolean).length;
       const again = h('button', 'btn primary', v.rematch[v.you] ? `ほかの人を待っています…（${want}/${v.rematch.length}）` : `もう一度遊ぶ（${want}/${v.rematch.length}人が希望）`);
@@ -317,7 +324,8 @@ function renderRoom() {
     }
   }
 
-  // 棋譜
+  // 棋譜（ゲームによっては「ログ」）
+  $('#history-title').textContent = g.logTitle || '棋譜';
   const hist = $('#history');
   const withNames = (m) => (v.multi ? m.replace(/(?:P|プレイヤー)(\d+)/g, (all, n) => v.seats[n - 1]?.name || all) : m);
   hist.replaceChildren(...(v.state ? v.state.history : []).map((m, i) => h('li', null, `${i + 1}. ${withNames(m)}`)));
@@ -344,14 +352,30 @@ function renderWaiting(el, v) {
   const box = h('div', 'waiting-room');
   box.append(h('h3', null, `参加者（${v.seats.filter(Boolean).length}/${v.seats.length}）`));
   const ul = h('ul', 'waiting-list');
+  const host = v.you >= 0 && v.you === v.hostSeat;
   v.seats.forEach((p, i) => {
     if (!p) return;
     const li = h('li', null, p.name);
+    if (i === v.hostSeat) li.append(' ', h('span', 'host-tag', 'ホスト'));
     if (i === v.you) li.append(' ', h('span', 'you-tag', 'あなた'));
     li.append(h('span', 'dot ' + (p.online ? 'on' : 'off')));
+    if (host && i !== v.you) {
+      const kick = h('button', 'btn small ghost', '外す');
+      kick.onclick = async () => {
+        if (await choose(`${p.name} を外しますか？`, [['yes', '外す'], [null, 'キャンセル']])) send({ type: 'kick', seat: i });
+      };
+      li.append(kick);
+    }
     ul.append(li);
   });
-  box.append(ul, h('p', 'muted small', '招待リンクを送って友だちを呼びましょう。開始後に入った人は観戦になります。'));
+  box.append(ul);
+  if (v.you < 0 && v.seats.some((p) => !p)) {
+    const join = h('button', 'btn primary', 'この部屋に参加する');
+    join.onclick = () => send({ type: 'join', code: v.code });
+    box.append(join);
+  }
+  box.append(h('p', 'muted small', '招待リンクを送って友だちを呼びましょう。開始後に入った人は観戦になります。'));
+  if (v.game === 'ito') renderItoSettings(box, v);
   el.replaceChildren(box);
 }
 
@@ -1351,7 +1375,283 @@ function renderWerewolf(el, v) {
   el.replaceChildren(root);
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, go: renderGo, backgammon: renderBackgammon, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf };
+// ---------- ito ----------
+// itogame の画面をこの形に移したもの。カードの DOM は使い回す（書き込み中の欄を作り直すと日本語変換が途切れるため）
+let ito$ = null;            // 骨組みの要素
+let itoDragging = false;
+let itoPrevRevealed = 0;
+let itoRoundKey = '';
+const itoCardEls = new Map(); // id -> { el, sig }
+const itoHintTimers = {};
+
+function itoSendHint(cardId, text, delay = 350) {
+  clearTimeout(itoHintTimers[cardId]);
+  itoHintTimers[cardId] = setTimeout(() => {
+    delete itoHintTimers[cardId];
+    send({ type: 'move', move: { hint: { cardId, text } } });
+  }, delay);
+}
+
+function buildIto(el) {
+  const root = h('div', 'ito');
+  root.innerHTML = `
+    <section class="ito-panel ito-theme-panel">
+      <div class="ito-label">お題 <span class="ito-round"></span></div>
+      <div class="ito-theme"></div>
+      <div class="ito-row ito-host-theme">
+        <button class="btn small ito-reroll">別のお題にする</button>
+        <input class="ito-custom" placeholder="自由にお題を入力" maxlength="60">
+        <button class="btn small ito-custom-btn">設定</button>
+      </div>
+    </section>
+    <section class="ito-panel">
+      <div class="ito-instruction"></div>
+      <div class="ito-scale"><span>← 小さい (1)</span><span>大きい (100) →</span></div>
+      <div class="ito-line"></div>
+      <div class="ito-arrange-bar">
+        <button class="btn primary ito-ready">この順番でOK！</button>
+        <div class="muted small ito-ready-info"></div>
+        <button class="btn small ghost ito-force">全員を待たずに答え合わせ</button>
+      </div>
+      <div class="ito-result-bar">
+        <h2 class="ito-result-title"></h2>
+        <div class="ito-row ito-host-result">
+          <button class="btn primary ito-next">次のラウンドへ</button>
+          <button class="btn ito-lobby">ロビーに戻る</button>
+        </div>
+        <p class="muted ito-guest-result">ホストの操作を待っています…</p>
+      </div>
+    </section>
+    <section class="ito-panel">
+      <div class="ito-label">プレイヤー</div>
+      <ul class="ito-players"></ul>
+    </section>`;
+  const q = (sel) => root.querySelector(sel);
+  const x = {
+    el, root, round: q('.ito-round'), theme: q('.ito-theme'), hostTheme: q('.ito-host-theme'),
+    custom: q('.ito-custom'), instruction: q('.ito-instruction'), line: q('.ito-line'),
+    arrangeBar: q('.ito-arrange-bar'), ready: q('.ito-ready'), readyInfo: q('.ito-ready-info'), force: q('.ito-force'),
+    resultBar: q('.ito-result-bar'), resultTitle: q('.ito-result-title'), hostResult: q('.ito-host-result'),
+    guestResult: q('.ito-guest-result'), players: q('.ito-players'), sortable: null,
+  };
+  q('.ito-reroll').onclick = () => send({ type: 'move', move: { reroll: true } });
+  q('.ito-custom-btn').onclick = () => {
+    send({ type: 'move', move: { customTheme: x.custom.value } });
+    x.custom.value = '';
+  };
+  x.ready.onclick = async () => {
+    const s = view.state, me = view.you;
+    if (!s.ready[me]) {
+      const blank = s.cards.some((c) => c.owner === me && !c.hint.trim());
+      if (blank && !(await choose('まだカードに何も書いていません。このままOKにしますか？', [['yes', 'OKにする'], [null, 'キャンセル']]))) return;
+    }
+    send({ type: 'move', move: { ready: !s.ready[me] } });
+  };
+  x.force.onclick = async () => {
+    if (await choose('全員のOKを待たずに答え合わせしますか？', [['yes', '答え合わせする'], [null, 'キャンセル']])) send({ type: 'move', move: { forceReveal: true } });
+  };
+  q('.ito-next').onclick = () => send({ type: 'move', move: { next: true } });
+  q('.ito-lobby').onclick = () => send({ type: 'backToLobby' });
+
+  // カードの並べ替え（ドラッグ＆ドロップ、スマホのタッチにも対応）
+  if (window.Sortable) {
+    x.sortable = window.Sortable.create(x.line, {
+      animation: 150,
+      filter: 'textarea',
+      preventOnFilter: false,
+      delay: 120,
+      delayOnTouchOnly: true,
+      onStart: () => { itoDragging = true; },
+      onEnd: (evt) => {
+        itoDragging = false;
+        if (evt.oldIndex !== evt.newIndex) send({ type: 'move', move: { move: { cardId: evt.item.dataset.id, to: evt.newIndex } } });
+        else render();
+      },
+    });
+  }
+  itoCardEls.clear();
+  el.replaceChildren(root);
+  return x;
+}
+
+function itoUpdateCard(c, i, s, v) {
+  const me = v.you;
+  const mine = c.owner === me;
+  const open = i < s.revealed;
+  const editable = mine && s.phase === 'arrange';
+  const ownerName = v.seats[c.owner]?.name || '(退出)';
+  const sig = JSON.stringify([ownerName, c.value, open, c.ok, editable, editable ? '' : c.hint, s.phase === 'arrange']);
+
+  let entry = itoCardEls.get(c.id);
+  if (!entry) {
+    entry = { el: document.createElement('div'), sig: null };
+    entry.el.dataset.id = c.id;
+    itoCardEls.set(c.id, entry);
+  }
+  const el = entry.el;
+  if (entry.sig !== sig) {
+    entry.sig = sig;
+    el.className = 'icard ' + (open ? `open ${c.ok ? 'ok' : 'ng'}` : mine ? 'front' : 'back');
+    if (s.phase === 'arrange') el.classList.add('draggable');
+    if (open && i >= itoPrevRevealed) el.classList.add('flip');
+    el.replaceChildren(h('div', 'owner', mine ? 'あなた' : ownerName), h('div', 'num', c.value ?? '?'));
+    if (editable) {
+      const ta = h('textarea');
+      ta.maxLength = 30;
+      ta.placeholder = 'ここに書き込む\n(お題に沿った言葉)';
+      ta.value = c.hint;
+      ta.dataset.card = c.id;
+      ta.addEventListener('compositionstart', () => { ta.composing = true; });
+      ta.addEventListener('compositionend', () => { ta.composing = false; itoSendHint(c.id, ta.value); });
+      ta.addEventListener('input', (e) => {
+        if (e.isComposing || ta.composing) return; // 変換中は送らない
+        itoSendHint(c.id, ta.value);
+      });
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); ta.blur(); }
+      });
+      ta.addEventListener('blur', () => itoSendHint(c.id, ta.value, 0));
+      el.append(ta);
+    } else {
+      el.append(h('div', 'words' + (c.hint ? '' : ' empty'), c.hint || '（まだ書いていません）'));
+    }
+    if (open) el.append(h('div', 'mark', c.ok ? '✔' : '✘'));
+  }
+  // 自分が触っていない時だけサーバーの内容を反映
+  const ta = el.querySelector('textarea');
+  if (ta && document.activeElement !== ta && !itoHintTimers[c.id] && ta.value !== c.hint) ta.value = c.hint;
+  return el;
+}
+
+function renderIto(el, v) {
+  if (itoDragging) return; // ドラッグ中は並びを動かさない（終わったら描き直す）
+  const s = v.state, me = v.you;
+  if (!ito$ || ito$.el !== el || !el.contains(ito$.root)) ito$ = buildIto(el);
+  const x = ito$;
+  const host = me >= 0 && me === v.hostSeat;
+  const roundKey = `${v.code}:${v.gameNo}:${s.round}`;
+  if (roundKey !== itoRoundKey) { itoRoundKey = roundKey; itoPrevRevealed = 0; }
+
+  // お題
+  x.theme.textContent = s.theme || '';
+  x.round.textContent = s.round ? `（第${s.round}ラウンド・成功 ${s.wins}回）` : '';
+  x.hostTheme.hidden = !(host && s.phase === 'arrange');
+
+  // 説明
+  const instr = {
+    arrange: '① 自分のカード（オレンジ）に、お題に沿って自分の数字の大きさを表す言葉を書き込もう。<br>'
+      + '② みんなの言葉を見ながら、カードをドラッグして<b>左から小さい順</b>に並べ替えよう（誰のカードでも動かせます）。<br>'
+      + '③ 並びに納得したら「この順番でOK！」。全員OKで答え合わせ！',
+    reveal: '答え合わせ中… 左から1枚ずつめくります',
+  };
+  x.instruction.innerHTML = instr[s.phase] || '';
+  x.instruction.hidden = !instr[s.phase];
+
+  // カードを並び順どおりに配置（既存の DOM は作り直さず、位置だけ合わせる）
+  const active = document.activeElement;
+  const ids = new Set(s.cards.map((c) => c.id));
+  for (const [id, entry] of itoCardEls) {
+    if (!ids.has(id)) { entry.el.remove(); itoCardEls.delete(id); }
+  }
+  s.cards.forEach((c, i) => {
+    const card = itoUpdateCard(c, i, s, v);
+    if (x.line.children[i] !== card) x.line.insertBefore(card, x.line.children[i] || null);
+  });
+  while (x.line.children.length > s.cards.length) x.line.lastChild.remove();
+  if (active && active.dataset && active.dataset.card && document.activeElement !== active && active.isConnected) active.focus();
+  if (x.sortable) x.sortable.option('disabled', s.phase !== 'arrange' || me < 0 || s.out[me]);
+  itoPrevRevealed = s.revealed;
+
+  // OK ボタン
+  const playing = me >= 0 && !s.out[me];
+  x.arrangeBar.hidden = s.phase !== 'arrange';
+  x.ready.hidden = !playing;
+  if (playing) {
+    x.ready.textContent = s.ready[me] ? 'OK済み（押すと取り消し）' : 'この順番でOK！';
+    x.ready.classList.toggle('done', s.ready[me]);
+  }
+  const activeSeats = v.seats.map((p, i) => i).filter((i) => !s.out[i] && v.seats[i]?.online);
+  const waiting = activeSeats.filter((i) => !s.ready[i]).map((i) => v.seats[i].name);
+  x.readyInfo.textContent = `OK ${activeSeats.length - waiting.length} / ${activeSeats.length}人` + (waiting.length ? `（待ち: ${waiting.join('、')}）` : '');
+  x.force.hidden = !host;
+
+  // 結果
+  x.resultBar.hidden = s.phase !== 'result';
+  if (s.phase === 'result') {
+    const miss = s.cards.filter((c) => !c.ok).length;
+    x.resultTitle.textContent = s.outcome === 'success' ? '大成功！ 全部小さい順に並んでいました 🎉' : `残念… 順番ミスが ${miss} 枚ありました`;
+    x.resultTitle.className = 'ito-result-title ' + s.outcome;
+    x.hostResult.hidden = !host;
+    x.guestResult.hidden = host;
+  }
+
+  // プレイヤー
+  x.players.replaceChildren(...v.seats.map((p, i) => {
+    const li = h('li');
+    if (!p) return li;
+    li.append(h('span', p.online && !s.out[i] ? '' : 'offline', p.name));
+    if (i === v.hostSeat) li.append(h('span', 'ito-badge', 'ホスト'));
+    if (i === me) li.append(h('span', 'ito-badge me', 'あなた'));
+    if (s.phase === 'arrange' && s.ready[i]) li.append(h('span', 'ito-badge ready', 'OK'));
+    if (s.out[i]) li.append(h('span', 'muted small', '(退出)'));
+    else if (!p.online) li.append(h('span', 'muted small', '(切断)'));
+    if (host && i !== me && !s.out[i]) {
+      const kick = h('button', 'btn small ghost ito-kick', '外す');
+      kick.onclick = async () => {
+        if (await choose(`${p.name} を外しますか？`, [['yes', '外す'], [null, 'キャンセル']])) send({ type: 'kick', seat: i });
+      };
+      li.append(kick);
+    }
+    return li;
+  }));
+}
+
+// ito の開始前の設定（ホストだけ変更できる）
+function renderItoSettings(box, v) {
+  const host = v.you >= 0 && v.you === v.hostSeat;
+  const opts = ito.normalizeOptions(v.options);
+  const rules = h('ol', 'ito-rules');
+  rules.innerHTML = '<li>1〜100 の数字カードが配られます。数字は<b>自分にしか見えません</b>。</li>'
+    + '<li>お題に沿って、自分の数字の大きさを表す言葉をカードに<b>書き込みます</b>。<br><span class="muted">例: お題「動物の強さ」で 95 → 「ライオン」、5 → 「アリ」</span></li>'
+    + '<li>他の人には、カードの裏面と書き込んだ言葉だけが見えます。</li>'
+    + '<li>言葉を手がかりに、みんなでカードを<b>ドラッグして小さい順に並べ替え</b>ます。</li>'
+    + '<li>全員が「この順番でOK」を押したら答え合わせ！</li>';
+  const sendSettings = (genres, cards) => {
+    if (!genres.length) { toast('ジャンルは1つ以上選んでください'); render(); return; }
+    send({ type: 'setOptions', options: { genres, cardsPerPlayer: cards } });
+  };
+  const genreBox = h('div', 'genre-list');
+  for (const g of ito.GENRES) {
+    const on = opts.genres.includes(g.key);
+    const label = h('label', 'genre-chip' + (on ? ' on' : '') + (host ? '' : ' disabled'));
+    const cb = h('input');
+    cb.type = 'checkbox';
+    cb.checked = on;
+    cb.disabled = !host;
+    cb.onchange = () => {
+      const genres = ito.GENRES.map((x) => x.key).filter((k) => (k === g.key ? cb.checked : opts.genres.includes(k)));
+      sendSettings(genres, opts.cardsPerPlayer);
+    };
+    label.append(cb, ` ${g.name} `, h('span', 'muted', String(g.count)));
+    genreBox.append(label);
+  }
+  const cardsLabel = h('label', 'ito-setting', '1人あたりのカード枚数 ');
+  const cards = h('input');
+  cards.type = 'number';
+  cards.min = 1;
+  cards.max = ito.MAX_CARDS;
+  cards.value = opts.cardsPerPlayer;
+  cards.disabled = !host;
+  cards.onchange = () => sendSettings(opts.genres, cards.value);
+  cardsLabel.append(cards);
+  box.append(
+    h('h3', null, 'みんなで協力して、カードを小さい順に並べよう'), rules,
+    h('div', 'ito-label', 'お題のジャンル（複数選択できます）'), genreBox, cardsLabel,
+  );
+  if (!host) box.append(h('p', 'muted small', '設定はホストが変更できます'));
+}
+
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, go: renderGo, backgammon: renderBackgammon, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

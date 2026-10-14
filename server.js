@@ -15,8 +15,9 @@ import * as wordbasket from './public/games/wordbasket.js';
 import * as catchoco from './public/games/catchoco.js';
 import * as uno from './public/games/uno.js';
 import * as werewolf from './public/games/werewolf.js';
+import * as ito from './public/games/ito.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, go, backgammon, wordbasket, catchoco, uno, werewolf, ito };
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
@@ -73,6 +74,46 @@ const isReady = (room) => (isMulti(GAMES[room.game]) ? !!room.state : room.seats
 // サーバー側の乱数: rng(n) は 1〜n（省略時はサイコロの 1〜6）
 const rng = (n = 6) => crypto.randomInt(1, n + 1);
 
+// ホスト: 部屋を作った人。いなくなったら接続中の席の人に引き継ぐ
+function hostSeat(room) {
+  let seat = room.seats.findIndex((s) => s && s.clientId === room.host);
+  if (seat < 0 || !isOnline(room, room.host)) {
+    const next = room.seats.findIndex((s) => s && isOnline(room, s.clientId));
+    if (next >= 0) {
+      if (seat >= 0 || room.host) systemChat(room, `${room.seats[next].name} さんがホストになりました`);
+      room.host = room.seats[next].clientId;
+      seat = next;
+    }
+  }
+  return seat;
+}
+
+// ゲームに渡す部屋の情報（ホストの席・接続中かどうか）
+const gameContext = (room) => ({
+  hostSeat: hostSeat(room),
+  online: room.seats.map((s) => !!s && isOnline(room, s.clientId)),
+});
+
+// state.tickAfter があれば、その時間後にゲームの tick() を呼ぶ（ito の答え合わせなど）
+function scheduleTick(room) {
+  if (room.tickFor === room.state) return;
+  clearTimeout(room.tickTimer);
+  room.tickTimer = null;
+  room.tickFor = room.state;
+  const g = GAMES[room.game];
+  if (!room.state || !room.state.tickAfter || !g.tick) return;
+  room.tickTimer = setTimeout(() => {
+    if (!rooms.has(room.code) || !room.state) return;
+    room.state = g.tick(room.state);
+    broadcastRoom(room);
+  }, room.state.tickAfter);
+}
+
+function deleteRoom(room) {
+  clearTimeout(room.tickTimer);
+  rooms.delete(room.code);
+}
+
 function roomView(room, ws) {
   const you = seatOf(room, ws);
   const g = GAMES[room.game];
@@ -83,6 +124,8 @@ function roomView(room, ws) {
     multi: isMulti(g),
     minPlayers: g.minPlayers || 2,
     ready: isReady(room),
+    hostSeat: isMulti(g) ? hostSeat(room) : -1,
+    options: room.options,
     variant: variantOf(room),
     gameNo: room.gameNo,
     you,
@@ -112,6 +155,7 @@ function lobbyList() {
 
 function broadcastRoom(room) {
   room.lastActive = Date.now();
+  scheduleTick(room);
   for (const ws of room.sockets) send(ws, roomView(room, ws));
 }
 
@@ -140,7 +184,7 @@ function leaveRoom(ws, explicit) {
   const seat = seatOf(room, ws);
   // 対局開始前に自分から抜けた場合は席を空ける
   if (explicit && seat >= 0 && !isReady(room)) room.seats[seat] = null;
-  if (!room.seats.some(Boolean) && room.sockets.size === 0) rooms.delete(room.code);
+  if (!room.seats.some(Boolean) && room.sockets.size === 0) deleteRoom(room);
   else broadcastRoom(room);
   broadcastLobby();
 }
@@ -193,7 +237,7 @@ function handle(ws, msg) {
         code: newCode(), game: msg.game, gameNo: 1, options,
         seats: Array(g.maxPlayers || 2).fill(null), sockets: new Set(),
         state: multi ? null : g.init(options), drawOffer: null, rematch: [false, false], chat: [],
-        createdAt: Date.now(), lastActive: Date.now(),
+        createdAt: Date.now(), lastActive: Date.now(), host: ws.clientId,
       };
       const seat = multi ? 0 : msg.side === 0 || msg.side === 1 ? msg.side : crypto.randomInt(2);
       room.seats[seat] = { clientId: ws.clientId, name: ws.name };
@@ -205,7 +249,20 @@ function handle(ws, msg) {
     case 'join': {
       const room = rooms.get(String(msg.code || '').trim().toUpperCase());
       if (!room) throw new UserError('部屋が見つかりません', 'NO_ROOM');
-      if (ws.room === room) { send(ws, roomView(room, ws)); return; }
+      if (ws.room === room) {
+        if (seatOf(room, ws) < 0 && !msg.spectate && !isReady(room)) {
+          const free = room.seats.findIndex((s) => !s);
+          if (free >= 0) {
+            room.seats[free] = { clientId: ws.clientId, name: ws.name };
+            systemChat(room, `${ws.name} さんが参加しました`);
+            broadcastRoom(room);
+            broadcastLobby();
+            return;
+          }
+        }
+        send(ws, roomView(room, ws));
+        return;
+      }
       leaveRoom(ws, true);
       const seat = seatOf(room, ws);
       if (seat >= 0) {
@@ -226,9 +283,10 @@ function handle(ws, msg) {
       send(ws, { type: 'lobby', rooms: lobbyList(), online: clients.size });
       return;
     case 'start': {
-      const { room } = requirePlayer(ws);
+      const { room, seat } = requirePlayer(ws);
       const g = GAMES[room.game];
       if (!isMulti(g) || isReady(room)) return;
+      if (seat !== hostSeat(room)) throw new UserError('ホストだけが開始できます');
       const players = room.seats.filter(Boolean);
       if (players.length < (g.minPlayers || 2)) throw new UserError(`${g.minPlayers || 2}人以上で開始できます`);
       room.seats = players; // 空席を詰める。開始後に来た人は観戦
@@ -245,7 +303,7 @@ function handle(ws, msg) {
       if (room.state.result) throw new UserError('対局は終了しています');
       const g = GAMES[room.game];
       if (room.state.turn !== seat && !g.canActOutOfTurn?.(room.state)) throw new UserError('相手の手番です');
-      room.state = g.applyMove(room.state, msg.move, seat, rng);
+      room.state = g.applyMove(room.state, msg.move, seat, rng, gameContext(room));
       room.drawOffer = null;
       broadcastRoom(room);
       if (room.state.result) broadcastLobby();
@@ -255,7 +313,7 @@ function handle(ws, msg) {
       const { room, seat } = requirePlayer(ws);
       if (!isReady(room) || room.state.result) return;
       const g = GAMES[room.game];
-      if (isMulti(g)) room.state = g.applyMove(room.state, { resign: true }, seat, rng);
+      if (isMulti(g)) room.state = g.applyMove(room.state, { resign: true }, seat, rng, gameContext(room));
       else finish(room, { winner: 1 - seat, reason: '投了' });
       broadcastRoom(room);
       broadcastLobby();
@@ -295,6 +353,57 @@ function handle(ws, msg) {
         broadcastLobby();
       }
       broadcastRoom(room);
+      return;
+    }
+    case 'setOptions': {
+      // 開始前にホストが設定を変える（ito のカード枚数・ジャンルなど）
+      const { room, seat } = requirePlayer(ws);
+      const g = GAMES[room.game];
+      if (!isMulti(g) || isReady(room) || !g.normalizeOptions) return;
+      if (seat !== hostSeat(room)) throw new UserError('ホストだけが設定を変えられます');
+      room.options = g.normalizeOptions(msg.options);
+      broadcastRoom(room);
+      broadcastLobby();
+      return;
+    }
+    case 'kick': {
+      const { room, seat } = requirePlayer(ws);
+      const g = GAMES[room.game];
+      const target = Number(msg.seat);
+      if (!isMulti(g) || seat !== hostSeat(room) || target === seat || !room.seats[target]) return;
+      const t = room.seats[target];
+      if (isReady(room)) {
+        room.state = g.applyMove(room.state, { resign: true }, target, rng, gameContext(room));
+        room.seats[target] = { clientId: 'kicked:' + crypto.randomUUID(), name: t.name, kicked: true };
+      } else {
+        room.seats[target] = null;
+      }
+      systemChat(room, `${t.name} さんが外されました`);
+      for (const w of [...room.sockets]) {
+        if (w.clientId !== t.clientId) continue;
+        room.sockets.delete(w);
+        w.room = null;
+        send(w, { type: 'kicked' });
+        send(w, { type: 'left' });
+        send(w, { type: 'lobby', rooms: lobbyList(), online: clients.size });
+      }
+      broadcastRoom(room);
+      broadcastLobby();
+      return;
+    }
+    case 'backToLobby': {
+      // ホストが開始前の待合室に戻す。切断中・外された人は席から外す
+      const { room, seat } = requirePlayer(ws);
+      const g = GAMES[room.game];
+      if (!g.lobbyReturn || !isReady(room) || seat !== hostSeat(room)) return;
+      const keep = room.seats.filter((s) => s && !s.kicked && isOnline(room, s.clientId));
+      room.seats = [...keep, ...Array(Math.max(0, (g.maxPlayers || 2) - keep.length)).fill(null)];
+      room.state = null;
+      room.rematch = [];
+      room.gameNo++;
+      systemChat(room, 'ロビーに戻りました');
+      broadcastRoom(room);
+      broadcastLobby();
       return;
     }
     case 'chat': {
@@ -346,7 +455,7 @@ setInterval(() => {
   const now = Date.now();
   let changed = false;
   for (const room of rooms.values()) {
-    if (room.sockets.size === 0 && now - room.lastActive > ROOM_TTL_MS) { rooms.delete(room.code); changed = true; }
+    if (room.sockets.size === 0 && now - room.lastActive > ROOM_TTL_MS) { deleteRoom(room); changed = true; }
   }
   if (changed) broadcastLobby();
 }, 30 * 1000);
