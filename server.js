@@ -17,8 +17,9 @@ import * as ito from './public/games/ito.js';
 import * as daifugo from './public/games/daifugo.js';
 import * as poker from './public/games/poker.js';
 import * as blokus from './public/games/blokus.js';
+import * as paint from './public/games/paint.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint };
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
@@ -95,19 +96,20 @@ const gameContext = (room) => ({
   online: room.seats.map((s) => !!s && isOnline(room, s.clientId)),
 });
 
-// state.tickAfter があれば、その時間後にゲームの tick() を呼ぶ（ito の答え合わせなど）
+// state.tickAfter（ミリ秒後）か state.tickAt（その時刻）にゲームの tick() を呼ぶ（ito の答え合わせ・制限時間など）
 function scheduleTick(room) {
   if (room.tickFor === room.state) return;
   clearTimeout(room.tickTimer);
   room.tickTimer = null;
   room.tickFor = room.state;
   const g = GAMES[room.game];
-  if (!room.state || !room.state.tickAfter || !g.tick) return;
+  if (!room.state || !(room.state.tickAfter || room.state.tickAt) || !g.tick) return;
+  const delay = room.state.tickAt ? Math.max(0, room.state.tickAt - Date.now()) : room.state.tickAfter;
   room.tickTimer = setTimeout(() => {
     if (!rooms.has(room.code) || !room.state) return;
     room.state = g.tick(room.state, rng);
     broadcastRoom(room);
-  }, room.state.tickAfter);
+  }, delay);
 }
 
 function deleteRoom(room) {
@@ -123,6 +125,7 @@ function roomView(room, ws) {
     code: room.code,
     game: room.game,
     multi: isMulti(g),
+    serverTime: Date.now(),
     minPlayers: g.minPlayers || 2,
     ready: isReady(room),
     hostSeat: isMulti(g) ? hostSeat(room) : -1,

@@ -11,8 +11,9 @@ import * as ito from './games/ito.js';
 import * as daifugo from './games/daifugo.js';
 import * as poker from './games/poker.js';
 import * as blokus from './games/blokus.js';
+import * as paint from './games/paint.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -27,6 +28,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  paint: { icon: '🎨', desc: '直線と円しか描けないお絵かきでお題を当てっこ。2〜8人。' },
 };
 
 const $ = (s) => document.querySelector(s);
@@ -58,6 +60,7 @@ let view = null;       // 現在の部屋の状態
 let lobby = { rooms: [], online: 0 };
 let sel = null;        // 選択中の駒
 let selKey = '';
+let serverOffset = 0; // サーバーの時刻 − 手元の時刻
 
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
@@ -74,6 +77,7 @@ function connect() {
       if (!view) render();
     } else if (m.type === 'room') {
       if (!GAMES[m.game]) { toast('アプリが更新されました。ページを再読み込みしてください'); return; }
+      if (m.serverTime) serverOffset = m.serverTime - Date.now();
       const key = `${m.code}:${m.gameNo}:${m.state ? m.state.history.length : -1}`;
       if (key !== selKey) { sel = null; selKey = key; }
       view = m;
@@ -169,6 +173,21 @@ function renderLobby() {
         toggle.title = '黒の三三・四四・長連を禁止';
         card.append(toggle);
         getOptions = () => ({ renju: cb.checked });
+      }
+      if (key === 'paint') {
+        const mk = (labelText, storeKey, values, fmt, def) => {
+          const label = h('label', 'option-toggle');
+          const select = h('select', 'size-select');
+          for (const n of values) { const o = h('option', null, fmt(n)); o.value = String(n); select.append(o); }
+          select.value = store.get(storeKey, String(def));
+          select.onchange = () => store.set(storeKey, select.value);
+          label.append(h('span', null, labelText), select);
+          card.append(label);
+          return select;
+        };
+        const turns = mk('描く回数', 'paintTurns', [1, 2, 3], (n) => `1人${n}回`, 1);
+        const secs = mk('制限時間', 'paintSeconds', [60, 90, 120], (n) => `${n}秒`, 90);
+        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value) });
       }
       const row = h('div', 'side-pick');
       const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
@@ -1877,7 +1896,168 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') bkTransform('flip');
 });
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus };
+// ---------- みんなでポンコツペイント ----------
+// 入力欄を消さないよう骨組みは作り直さず、中身だけ更新する
+let pt = null;
+let ptTool = 'line';
+let ptDrag = null; // 描いている途中の図形
+
+function ptDrawShapes(ctx, shapes, preview) {
+  ctx.clearRect(0, 0, paint.WIDTH, paint.HEIGHT);
+  ctx.fillStyle = '#fffdf7';
+  ctx.fillRect(0, 0, paint.WIDTH, paint.HEIGHT);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 7;
+  const draw = (sh, color) => {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    if (sh.type === 'line') { ctx.moveTo(sh.x1, sh.y1); ctx.lineTo(sh.x2, sh.y2); }
+    else ctx.arc(sh.x1, sh.y1, Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1), 0, Math.PI * 2);
+    ctx.stroke();
+  };
+  for (const sh of shapes) draw(sh, '#1d1d1d');
+  if (preview) draw(preview, '#e4572e');
+}
+
+function ptCanvasPoint(e) {
+  const r = pt.canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) * (paint.WIDTH / r.width), (e.clientY - r.top) * (paint.HEIGHT / r.height)];
+}
+
+function buildPaint(el) {
+  const root = h('div', 'pt');
+  root.innerHTML = `
+    <div class="pt-head">
+      <div class="pt-round"></div>
+      <div class="pt-theme"></div>
+      <div class="pt-timer"></div>
+    </div>
+    <div class="pt-choose"></div>
+    <div class="pt-canvas-wrap"><canvas width="${paint.WIDTH}" height="${paint.HEIGHT}"></canvas><div class="pt-reveal"></div></div>
+    <div class="pt-tools">
+      <button class="btn small pt-tool" data-tool="line">／ 直線</button>
+      <button class="btn small pt-tool" data-tool="circle">◯ 円</button>
+      <button class="btn small pt-undo">1つ戻す</button>
+      <button class="btn small pt-clear">全部消す</button>
+      <button class="btn small danger pt-giveup">ギブアップ</button>
+      <span class="muted small">ドラッグで描く（直線は始点→終点、円は中心→半径）</span>
+    </div>
+    <form class="pt-guess row"><input maxlength="30" autocomplete="off" placeholder="答えを入力（ひらがな・カタカナ・漢字OK）"><button class="btn primary">答える</button></form>
+    <div class="uno-players pt-scores"></div>
+    <ul class="pt-feed"></ul>`;
+  const q = (sel) => root.querySelector(sel);
+  const x = {
+    el, root, round: q('.pt-round'), theme: q('.pt-theme'), timer: q('.pt-timer'), choose: q('.pt-choose'),
+    canvas: q('canvas'), reveal: q('.pt-reveal'), tools: q('.pt-tools'), guess: q('.pt-guess'), input: q('.pt-guess input'),
+    scores: q('.pt-scores'), feed: q('.pt-feed'),
+  };
+  x.ctx = x.canvas.getContext('2d');
+  root.querySelectorAll('.pt-tool').forEach((b) => { b.onclick = () => { ptTool = b.dataset.tool; renderPaint(el, view); }; });
+  q('.pt-undo').onclick = () => send({ type: 'move', move: { undo: true } });
+  q('.pt-clear').onclick = async () => {
+    if (await choose('全部消しますか？', [['yes', '消す'], [null, 'キャンセル']])) send({ type: 'move', move: { clear: true } });
+  };
+  q('.pt-giveup').onclick = async () => {
+    if (await choose('ギブアップして答えを発表しますか？', [['yes', 'ギブアップ'], [null, 'キャンセル']])) send({ type: 'move', move: { giveUp: true } });
+  };
+  x.guess.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = x.input.value.trim();
+    if (text) send({ type: 'move', move: { guess: text } });
+    x.input.value = '';
+  });
+  // 描く人のドラッグ
+  const canDraw = () => view && view.state && view.state.phase === 'draw' && view.you === view.state.painter;
+  x.canvas.addEventListener('pointerdown', (e) => {
+    if (!canDraw()) return;
+    x.canvas.setPointerCapture(e.pointerId);
+    const [px, py] = ptCanvasPoint(e);
+    ptDrag = { type: ptTool, x1: px, y1: py, x2: px, y2: py };
+  });
+  x.canvas.addEventListener('pointermove', (e) => {
+    if (!ptDrag) return;
+    [ptDrag.x2, ptDrag.y2] = ptCanvasPoint(e);
+    ptDrawShapes(x.ctx, view.state.shapes, ptDrag);
+  });
+  const finish = () => {
+    if (!ptDrag) return;
+    const sh = ptDrag;
+    ptDrag = null;
+    if (Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) >= 6) send({ type: 'move', move: { shape: sh } });
+    ptDrawShapes(x.ctx, view.state.shapes, null);
+  };
+  x.canvas.addEventListener('pointerup', finish);
+  x.canvas.addEventListener('pointercancel', () => { ptDrag = null; ptDrawShapes(x.ctx, view.state.shapes, null); });
+  el.replaceChildren(root);
+  return x;
+}
+
+function ptUpdateTimer() {
+  if (!pt || !view || view.game !== 'paint' || !view.state || !view.state.endsAt) { if (pt) pt.timer.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
+  pt.timer.textContent = `${left}秒`;
+  pt.timer.classList.toggle('hurry', view.state.phase === 'draw' && left <= 10);
+}
+setInterval(ptUpdateTimer, 250);
+
+function renderPaint(el, v) {
+  const s = v.state, me = v.you;
+  if (!pt || pt.el !== el || !el.contains(pt.root)) pt = buildPaint(el);
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const painter = me >= 0 && me === s.painter;
+
+  pt.round.textContent = s.phase === 'end' ? '結果' : `第${s.round}/${s.totalRounds}ラウンド・描く人：${name(s.painter)}`;
+  if (s.phase === 'end') pt.theme.textContent = '';
+  else if (s.theme) pt.theme.textContent = painter ? `お題：${s.theme}` : s.phase === 'reveal' ? `答え：${s.theme}` : `正解：${s.theme}`;
+  else pt.theme.textContent = s.phase === 'draw' ? `お題：${'○'.repeat(s.themeLength)}（${s.themeLength}文字）` : '';
+  ptUpdateTimer();
+
+  // お題選び
+  pt.choose.replaceChildren();
+  if (s.phase === 'choose') {
+    if (painter) {
+      pt.choose.append(h('span', 'muted', '描くお題を選んでください：'));
+      s.choices.forEach((c, i) => {
+        const b = h('button', 'btn primary', c);
+        b.onclick = () => send({ type: 'move', move: { pick: i } });
+        pt.choose.append(b);
+      });
+    } else pt.choose.append(h('span', 'muted', `${name(s.painter)} さんがお題を選んでいます…`));
+  }
+
+  // 絵
+  if (!ptDrag) ptDrawShapes(pt.ctx, s.shapes, null);
+  pt.canvas.classList.toggle('drawing', s.phase === 'draw' && painter);
+  pt.reveal.hidden = s.phase !== 'reveal';
+  if (s.phase === 'reveal') pt.reveal.textContent = `答え：${s.theme}`;
+
+  // 道具
+  pt.tools.hidden = !(s.phase === 'draw' && painter);
+  pt.tools.querySelectorAll('.pt-tool').forEach((b) => b.classList.toggle('primary', b.dataset.tool === ptTool));
+
+  // 答える欄
+  pt.guess.hidden = !(s.phase === 'draw' && me >= 0 && !painter && !s.out[me] && !s.correct.includes(me));
+
+  // 点数
+  pt.scores.replaceChildren(...v.seats.map((p, i) => {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.painter && s.phase !== 'end' ? ' turn' : '')
+      + (s.result && s.result.winner === i ? ' winner' : ''));
+    chip.append(h('span', 'pname', p ? p.name : '?'));
+    if (i === s.painter && s.phase !== 'end') chip.append(h('span', 'wb-vote', '描く人'));
+    if (s.correct.includes(i)) chip.append(h('span', 'pt-ok', '正解'));
+    chip.append(h('span', 'wb-count', `${s.scores[i]}点`));
+    return chip;
+  }));
+
+  // 答えの一覧（新しい順）
+  pt.feed.replaceChildren(...s.feed.slice().reverse().map((f) => {
+    const li = h('li', f.correct ? 'correct' : '');
+    li.append(h('b', null, name(f.seat)), '：', f.correct ? (f.text ? `${f.text} …正解！` : '正解！') : f.text);
+    return li;
+  }));
+}
+
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

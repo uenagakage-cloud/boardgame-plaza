@@ -1,0 +1,485 @@
+// みんなでポンコツペイント（サーバーとブラウザで共通）
+// 2〜8人。描く人は「直線」と「円」しか使えないポンコツなお絵かきでお題を描き、ほかの人は早い者勝ちで答える。
+// 流れ: お題選び（描く人が3つから選ぶ）→ お絵かき（制限時間）→ 答え発表 → 次の人へ。全員が決められた回数描いたら終了。
+// 点数: 正解した人は早い順に 10・8・6・5・4・3・2・1 点、描いた人は正解者1人につき 3 点。
+// 時間切れ・全員正解・答え発表の切り替えはサーバーが tick() で行う（state.tickAt の時刻）。
+// 手: { pick: 0〜2 } お題を選ぶ / { shape: { type: 'line'|'circle', x1, y1, x2, y2 } } 描く（座標は 0〜1000 × 0〜750）
+//     { undo: true } 1つ戻す / { clear: true } 全部消す / { giveUp: true } 描くのをあきらめる / { guess: '答え' } / { resign: true }
+export const id = 'paint';
+export const title = 'みんなでポンコツペイント';
+export const sideNames = Array.from({ length: 8 }, (_, i) => `プレイヤー${i + 1}`);
+export const minPlayers = 2;
+export const maxPlayers = 8;
+export const lobbyReturn = true;
+export const logTitle = 'ログ';
+export const WIDTH = 1000;
+export const HEIGHT = 750;
+export const MAX_SHAPES = 300;
+export const CHOOSE_MS = 20000;
+export const REVEAL_MS = 6000;
+export const GUESS_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
+export const PAINTER_POINTS = 3;
+
+// お題（「表示|読み|別の答え…」。どれを答えても正解）
+const THEMES = `
+犬|いぬ|ドッグ
+猫|ねこ|ネコ
+うさぎ|ウサギ|兎
+ぞう|象|ゾウ
+キリン|きりん
+ライオン
+パンダ
+ペンギン
+へび|蛇|ヘビ
+かめ|亀|カメ
+かえる|蛙|カエル
+魚|さかな|サカナ
+くじら|鯨|クジラ
+たこ|蛸|タコ
+かに|蟹|カニ
+ちょうちょ|蝶|ちょう|チョウ
+鳥|とり|トリ
+ふくろう|梟|フクロウ
+にわとり|鶏|ニワトリ
+ぶた|豚|ブタ
+うし|牛|ウシ
+うま|馬|ウマ
+さる|猿|サル
+くま|熊|クマ
+ねずみ|鼠|ネズミ
+かたつむり|カタツムリ|蝸牛
+クモ|くも|蜘蛛
+はち|蜂|ハチ
+イルカ|いるか
+サメ|さめ|鮫
+ワニ|わに|鰐
+ラクダ|らくだ|駱駝
+ひつじ|羊|ヒツジ
+クラゲ|くらげ
+てんとう虫|てんとうむし|テントウムシ
+雪だるま|ゆきだるま
+りんご|林檎|リンゴ
+バナナ
+ぶどう|葡萄|ブドウ
+スイカ|すいか|西瓜
+いちご|苺|イチゴ
+みかん|蜜柑|ミカン
+さくらんぼ|サクランボ
+パイナップル|パイン
+おにぎり|おむすび
+ラーメン
+ピザ
+ハンバーガー
+ドーナツ
+ケーキ|ショートケーキ
+アイスクリーム|アイス|ソフトクリーム
+すし|寿司
+目玉焼き|めだまやき
+パン|食パン|しょくぱん
+だんご|団子|三色団子|さんしょくだんご
+とうもろこし|トウモロコシ|コーン
+にんじん|人参|ニンジン
+トマト
+きのこ|キノコ|茸
+ドーナツ|どーなつ
+ペロペロキャンディ|ぺろぺろきゃんでぃ|キャンディ|あめ|飴
+傘|かさ|カサ
+めがね|眼鏡|メガネ
+時計|とけい|トケイ
+電話|でんわ|固定電話
+スマホ|スマートフォン|携帯電話|けいたい
+テレビ
+パソコン|ノートパソコン|PC
+いす|椅子|イス
+机|つくえ|テーブル
+ベッド
+ドア|扉|とびら
+窓|まど
+鍵|かぎ|カギ
+はさみ|ハサミ|鋏
+えんぴつ|鉛筆|エンピツ
+本|ほん|ノート
+はし|箸|おはし
+スプーン
+フォーク
+コップ|グラス
+なべ|鍋|ナベ
+フライパン
+カメラ
+ギター
+ピアノ
+太鼓|たいこ|ドラム
+ボール|サッカーボール
+バット|野球のバット
+ラケット|テニスラケット
+指輪|ゆびわ|リング
+王冠|おうかん|かんむり|冠
+リボン
+ぼうし|帽子|ボウシ
+くつ|靴|クツ
+Tシャツ|ティーシャツ|シャツ
+てぶくろ|手袋|テブクロ
+かばん|鞄|カバン|バッグ
+風船|ふうせん
+電球|でんきゅう|ライト
+ろうそく|蝋燭|ロウソク
+はしご|梯子|ハシゴ
+ハンマー|かなづち|金づち|とんかち
+ほうき|箒|ホウキ
+バケツ
+扇風機|せんぷうき
+冷蔵庫|れいぞうこ
+トイレ|便器
+おふろ|風呂|お風呂|ふろ
+歯ブラシ|はぶらし
+鏡|かがみ|ミラー
+ロボット
+手紙|てがみ|封筒|ふうとう
+プレゼント|ギフト
+トロフィー|優勝カップ
+メダル|金メダル
+信号|しんごう|信号機
+車|くるま|自動車|じどうしゃ
+自転車|じてんしゃ|チャリ
+電車|でんしゃ|列車
+新幹線|しんかんせん
+飛行機|ひこうき
+ヘリコプター|ヘリ
+船|ふね|ボート|ヨット
+ロケット
+バス
+トラック
+パトカー
+救急車|きゅうきゅうしゃ
+消防車|しょうぼうしゃ
+家|いえ|おうち|うち
+お城|しろ|城|おしろ
+学校|がっこう
+病院|びょういん
+東京タワー|タワー|とうきょうたわー
+橋|はし|ブリッジ
+ピラミッド
+神社|じんじゃ|鳥居|とりい
+観覧車|かんらんしゃ
+すべり台|すべりだい|滑り台
+ブランコ|ぶらんこ
+テント
+太陽|たいよう|お日さま|おひさま
+月|つき|三日月|みかづき
+星|ほし|スター
+雲|くも
+雨|あめ
+虹|にじ
+かみなり|雷|カミナリ
+雪|ゆき
+山|やま
+海|うみ
+川|かわ
+木|き|樹|じゅもく
+花|はな
+ひまわり|向日葵|ヒマワリ
+チューリップ
+さくら|桜|サクラ
+葉っぱ|はっぱ|葉
+火山|かざん
+島|しま|無人島|むじんとう
+地球|ちきゅう
+火|ひ|炎|ほのお
+目|め
+手|て
+足|あし
+耳|みみ
+口|くち
+歯|は
+骨|ほね
+顔|かお|笑顔|えがお
+忍者|にんじゃ
+王様|おうさま|キング
+おばけ|お化け|幽霊|ゆうれい
+宇宙人|うちゅうじん|エイリアン
+魔法使い|まほうつかい|魔女|まじょ
+サンタクロース|サンタ
+サッカー
+野球|やきゅう
+テニス
+ボウリング
+すもう|相撲
+スキー
+釣り|つり
+花火|はなび
+ハート
+ダイヤモンド|ダイヤ|宝石|ほうせき
+お金|おかね|コイン|硬貨
+宝箱|たからばこ
+地図|ちず
+カレンダー
+はがき|ハガキ|葉書
+ゲーム機|げーむき|ゲーム
+メガホン
+虫めがね|むしめがね|ルーペ
+望遠鏡|ぼうえんきょう
+ほうれんそう|ほうれん草
+ソーセージ|ウインナー
+かぼちゃ|南瓜|カボチャ
+なす|茄子|ナス
+レモン|れもん
+もも|桃|モモ
+くり|栗|クリ
+えだまめ|枝豆|エダマメ
+ぎょうざ|餃子|ギョウザ
+たこ焼き|たこやき
+カレーライス|カレー
+オムライス
+ホットケーキ|パンケーキ
+プリン
+ポップコーン
+ワイン|ワイングラス
+ジュース
+コーヒー|コーヒーカップ
+ティーポット|急須|きゅうす
+ふとん|布団|フトン
+まくら|枕|マクラ
+カーテン
+電子レンジ|でんしれんじ|レンジ
+洗濯機|せんたくき
+ドライヤー
+テレビゲーム|コントローラー
+リモコン
+ヘッドホン|ヘッドフォン
+マイク
+ラジオ
+スピーカー
+ゴミ箱|ごみばこ|ゴミばこ
+つみき|積み木|ツミキ
+けん玉|けんだま|ケンダマ
+こま|独楽|コマ
+サイコロ|さいころ|ダイス
+トランプ
+凧|たこあげ|凧揚げ
+シャボン玉|しゃぼんだま
+砂時計|すなどけい
+ちょうちん|提灯
+こいのぼり|鯉のぼり
+クリスマスツリー|ツリー
+かがみもち|鏡餅
+だるま|達磨|ダルマ
+かかし|案山子|カカシ
+UFO|ユーフォー|未確認飛行物体
+潜水艦|せんすいかん
+気球|ききゅう|熱気球
+パラシュート
+エスカレーター
+エレベーター
+踏切|ふみきり
+灯台|とうだい
+風車|ふうしゃ|かざぐるま
+噴水|ふんすい
+ベンチ
+ポスト|郵便ポスト
+自動販売機|じどうはんばいき|自販機
+`.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
+export const THEME_LIST = (() => {
+  const seen = new Set();
+  return THEMES.filter(([w]) => !seen.has(w) && seen.add(w));
+})();
+
+// 答えの比べ方: 全角/半角・カタカナ/ひらがな・大文字/小文字・空白の違いは無視
+export function normalizeAnswer(text) {
+  return String(text || '').normalize('NFKC').toLowerCase()
+    .replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+    .replace(/[\s・。、！？!?.,]/g, '');
+}
+
+export function normalizeOptions(o) {
+  const turns = [1, 2, 3].includes(Number(o && o.turns)) ? Number(o.turns) : 1;
+  const seconds = [60, 90, 120].includes(Number(o && o.seconds)) ? Number(o.seconds) : 90;
+  return { turns, seconds };
+}
+export const variantName = (o) => { const x = normalizeOptions(o); return `${x.turns}周・${x.seconds}秒`; };
+
+function shuffle(arr, rng) {
+  const rand = rng ? (n) => rng(n) - 1 : (n) => Math.floor(Math.random() * n);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rand(i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+const label = (seat) => `P${seat + 1}`;
+const active = (s) => [...Array(s.players).keys()].filter((p) => !s.out[p]);
+
+export function init(options, players = 2, rng) {
+  const opts = normalizeOptions(options);
+  const s = {
+    players, options: opts, out: Array(players).fill(false), scores: Array(players).fill(0),
+    deck: shuffle(THEME_LIST.map((_, i) => i), rng), round: 0, totalRounds: players * opts.turns,
+    painter: -1, phase: 'choose', choices: [], theme: null, shapes: [], feed: [], correct: [],
+    endsAt: null, tickAt: null, turn: 0, result: null, history: [],
+  };
+  startRound(s, rng);
+  return s;
+}
+
+function drawTheme(s, rng) {
+  if (!s.deck.length) s.deck = shuffle(THEME_LIST.map((_, i) => i), rng);
+  return s.deck.pop();
+}
+
+function startRound(s, rng) {
+  s.round += 1;
+  // 描く人は順番に（抜けた人は飛ばす）
+  let p = s.painter;
+  do p = (p + 1) % s.players; while (s.out[p]);
+  s.painter = p;
+  s.turn = p;
+  s.phase = 'choose';
+  s.choices = [drawTheme(s, rng), drawTheme(s, rng), drawTheme(s, rng)];
+  s.theme = null;
+  s.shapes = [];
+  s.feed = [];
+  s.correct = [];
+  s.endsAt = Date.now() + CHOOSE_MS;
+  s.tickAt = s.endsAt;
+  s.history.push(`第${s.round}/${s.totalRounds}ラウンド：${label(p)} が描きます`);
+}
+
+function startDrawing(s, choice) {
+  s.theme = s.choices[choice];
+  s.choices = [];
+  s.phase = 'draw';
+  s.endsAt = Date.now() + s.options.seconds * 1000;
+  s.tickAt = s.endsAt;
+}
+
+function endRound(s, reason) {
+  s.phase = 'reveal';
+  s.endsAt = Date.now() + REVEAL_MS;
+  s.tickAt = s.endsAt;
+  s.history.push(`${reason}。答えは「${THEME_LIST[s.theme][0]}」（正解 ${s.correct.length}人）`);
+}
+
+function finishGame(s) {
+  s.phase = 'end';
+  s.tickAt = null;
+  s.endsAt = null;
+  const live = active(s);
+  const best = Math.max(...live.map((p) => s.scores[p]));
+  const top = live.filter((p) => s.scores[p] === best);
+  s.result = top.length === 1 ? { winner: top[0], reason: `${best}点` } : { winner: null, reason: `${best}点で同点` };
+}
+
+// 時間切れ・答え発表の終わり
+export function tick(s, rng) {
+  const ns = clone(s);
+  if (s.phase === 'choose') { startDrawing(ns, 0); return ns; }
+  if (s.phase === 'draw') { endRound(ns, '時間切れ'); return ns; }
+  if (s.phase === 'reveal') {
+    if (ns.round >= ns.totalRounds || active(ns).length < 2) finishGame(ns);
+    else startRound(ns, rng);
+    return ns;
+  }
+  return { ...s, tickAt: null };
+}
+
+export const canActOutOfTurn = () => true;
+
+// お題は描く人だけ（答え発表のあとは全員）。正解の答えはほかの人に見せない
+export function viewFor(s, seat) {
+  const open = s.phase === 'reveal' || s.phase === 'end';
+  const painter = seat === s.painter;
+  return {
+    ...s,
+    deck: null,
+    choices: painter ? s.choices.map((i) => THEME_LIST[i][0]) : s.choices.map(() => '？'),
+    theme: s.theme === null ? null : open || painter || s.correct.includes(seat) ? THEME_LIST[s.theme][0] : null,
+    themeLength: s.theme === null ? 0 : [...THEME_LIST[s.theme][0]].length,
+    feed: s.feed.map((f) => (f.correct && !open && f.seat !== seat && !painter ? { ...f, text: null } : f)),
+  };
+}
+
+export function phaseText(s, you) {
+  if (s.result) return null;
+  const painter = you === s.painter;
+  if (s.phase === 'choose') return painter ? 'お題を3つから選んでください' : 'お題を選んでいます…';
+  if (s.phase === 'draw') {
+    if (painter) return '直線と円だけでお題を描こう！';
+    if (s.correct.includes(you)) return '正解！ ほかの人を待っています';
+    return you >= 0 ? '絵を見て答えを入力しよう！' : 'お絵かき中…';
+  }
+  if (s.phase === 'reveal') return '答え発表！ まもなく次のラウンド';
+  return null;
+}
+
+export const scoreOf = (s, seat) => `${s.scores[seat]}点`;
+
+const clone = (s) => ({
+  ...s, out: s.out.slice(), scores: s.scores.slice(), deck: s.deck.slice(), choices: s.choices.slice(),
+  shapes: s.shapes.slice(), feed: s.feed.slice(), correct: s.correct.slice(), history: s.history.slice(),
+});
+
+const num = (x, max) => Math.max(0, Math.min(max, Math.round(Number(x) || 0)));
+
+export function applyMove(s, mv, seat, rng) {
+  if (s.result) throw new Error('ゲームは終了しています');
+  mv = mv || {};
+  if (s.out[seat]) throw new Error('抜けています');
+  const ns = clone(s);
+  const painter = seat === s.painter;
+
+  if (mv.resign) {
+    ns.out[seat] = true;
+    ns.history.push(`${label(seat)} が抜けました`);
+    if (active(ns).length < 2) { finishGame(ns); return ns; }
+    if (painter && (s.phase === 'choose' || s.phase === 'draw')) {
+      if (s.phase === 'choose') startDrawing(ns, 0);
+      endRound(ns, '描く人が抜けました');
+    } else if (s.phase === 'draw') {
+      const guessers = active(ns).filter((p) => p !== ns.painter);
+      if (guessers.every((p) => ns.correct.includes(p))) endRound(ns, '全員正解');
+    }
+    return ns;
+  }
+
+  if (mv.pick != null) {
+    if (!painter || s.phase !== 'choose') throw new Error('今はお題を選べません');
+    const i = Number(mv.pick);
+    if (!(i in s.choices)) throw new Error('お題を選んでください');
+    startDrawing(ns, i);
+    return ns;
+  }
+
+  if (mv.shape || mv.undo || mv.clear || mv.giveUp) {
+    if (!painter || s.phase !== 'draw') throw new Error('今は描けません');
+    if (mv.giveUp) { endRound(ns, '描く人がギブアップ'); return ns; }
+    if (mv.undo) { ns.shapes.pop(); return ns; }
+    if (mv.clear) { ns.shapes = []; return ns; }
+    const sh = mv.shape;
+    if (sh.type !== 'line' && sh.type !== 'circle') throw new Error('直線と円しか描けません');
+    if (ns.shapes.length >= MAX_SHAPES) throw new Error(`これ以上描けません（${MAX_SHAPES}個まで）`);
+    ns.shapes.push({ type: sh.type, x1: num(sh.x1, WIDTH), y1: num(sh.y1, HEIGHT), x2: num(sh.x2, WIDTH), y2: num(sh.y2, HEIGHT) });
+    return ns;
+  }
+
+  if (mv.guess != null) {
+    if (s.phase !== 'draw') throw new Error('今は答えられません');
+    if (painter) throw new Error('描く人は答えられません');
+    if (s.correct.includes(seat)) throw new Error('もう正解しています');
+    const text = String(mv.guess).trim().slice(0, 30);
+    if (!text) return s;
+    const ok = THEME_LIST[s.theme].some((a) => normalizeAnswer(a) === normalizeAnswer(text));
+    ns.feed.push({ seat, text, correct: ok });
+    if (ns.feed.length > 80) ns.feed.shift();
+    if (ok) {
+      const pts = GUESS_POINTS[Math.min(ns.correct.length, GUESS_POINTS.length - 1)];
+      ns.correct.push(seat);
+      ns.scores[seat] += pts;
+      ns.scores[ns.painter] += PAINTER_POINTS;
+      ns.history.push(`${label(seat)} 正解！（+${pts}）`);
+      const guessers = active(ns).filter((p) => p !== ns.painter);
+      if (guessers.every((p) => ns.correct.includes(p))) endRound(ns, '全員正解');
+    }
+    return ns;
+  }
+  throw new Error('不明な操作です');
+}

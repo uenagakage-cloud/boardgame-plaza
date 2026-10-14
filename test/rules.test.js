@@ -12,6 +12,7 @@ import * as ito from '../public/games/ito.js';
 import * as df from '../public/games/daifugo.js';
 import * as pk from '../public/games/poker.js';
 import * as bk from '../public/games/blokus.js';
+import * as paint from '../public/games/paint.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -856,6 +857,70 @@ test('blokus: ランダム対局で盤とピースの数が合う', () => {
     assert.equal(squares, used, '盤のマス数と使ったピースが一致');
     assert.ok(squares > 40, '何手も置けている');
   }
+});
+
+
+// ---------- みんなでポンコツペイント ----------
+const ptAnswer = (s) => paint.THEME_LIST[s.theme][0];
+test('paint: お題の一覧と答えの比べ方', () => {
+  assert.ok(paint.THEME_LIST.length >= 200, 'お題は200以上');
+  assert.equal(new Set(paint.THEME_LIST.map((t) => t[0])).size, paint.THEME_LIST.length, 'お題の重複なし');
+  assert.equal(paint.normalizeAnswer('ネ コ'), paint.normalizeAnswer('ねこ'));
+  assert.equal(paint.normalizeAnswer('ＰＣ'), 'pc');
+});
+test('paint: お題選び→描く（直線と円だけ）→正解で点数', () => {
+  let s = paint.init({ turns: 1, seconds: 60 }, 3);
+  assert.equal(s.phase, 'choose');
+  assert.equal(s.painter, 0);
+  assert.equal(s.totalRounds, 3);
+  const v1 = paint.viewFor(s, 1);
+  assert.ok(v1.choices.every((c) => c === '？'), '描く人以外にはお題候補が見えない');
+  assert.throws(() => paint.applyMove(s, { pick: 0 }, 1), /選べません/);
+  s = paint.applyMove(s, { pick: 1 }, 0);
+  assert.equal(s.phase, 'draw');
+  assert.equal(paint.viewFor(s, 1).theme, null, '答える人にはお題が見えない');
+  assert.equal(paint.viewFor(s, 0).theme, ptAnswer(s));
+  s = paint.applyMove(s, { shape: { type: 'line', x1: 10, y1: 10, x2: 300, y2: 200 } }, 0);
+  s = paint.applyMove(s, { shape: { type: 'circle', x1: 500, y1: 300, x2: 600, y2: 300 } }, 0);
+  assert.throws(() => paint.applyMove(s, { shape: { type: 'free' } }, 0), /直線と円/);
+  assert.throws(() => paint.applyMove(s, { shape: { type: 'line' } }, 1), /描けません/);
+  s = paint.applyMove(s, { undo: true }, 0);
+  assert.equal(s.shapes.length, 1);
+  s = paint.applyMove(s, { guess: 'ぜったいちがうこたえ' }, 1);
+  assert.equal(s.feed.at(-1).correct, false);
+  s = paint.applyMove(s, { guess: paint.THEME_LIST[s.theme].at(-1) }, 1);
+  assert.equal(s.scores[1], 10);
+  assert.equal(s.scores[0], 3);
+  assert.equal(paint.viewFor(s, 2).feed.at(-1).text, null, '正解の答えはほかの人に見えない');
+  assert.throws(() => paint.applyMove(s, { guess: 'x' }, 1), /もう正解/);
+  s = paint.applyMove(s, { guess: ptAnswer(s) }, 2);
+  assert.equal(s.scores[2], 8);
+  assert.equal(s.phase, 'reveal', '全員正解で答え発表');
+  assert.ok(s.tickAt > Date.now());
+});
+test('paint: 時間切れ・全ラウンドで終了', () => {
+  let s = paint.init({ turns: 1 }, 2);
+  s = paint.tick(s); // お題選びの時間切れ → 1つ目のお題で描き始める
+  assert.equal(s.phase, 'draw');
+  s = paint.tick(s); // 描く時間切れ
+  assert.equal(s.phase, 'reveal');
+  s = paint.tick(s);
+  assert.equal(s.round, 2);
+  assert.equal(s.painter, 1);
+  s = paint.applyMove(s, { pick: 0 }, 1);
+  s = paint.applyMove(s, { guess: ptAnswer(s) }, 0);
+  assert.equal(s.phase, 'reveal');
+  s = paint.tick(s);
+  assert.equal(s.phase, 'end');
+  assert.equal(s.result.winner, 0);
+});
+test('paint: 描く人が抜けたら答え発表', () => {
+  let s = paint.init({}, 3);
+  s = paint.applyMove(s, { pick: 0 }, 0);
+  s = paint.applyMove(s, { resign: true }, 0);
+  assert.equal(s.phase, 'reveal');
+  s = paint.tick(s);
+  assert.equal(s.painter, 1, '抜けた人は飛ばす');
 });
 
 console.log(`\n${n} tests passed`);
