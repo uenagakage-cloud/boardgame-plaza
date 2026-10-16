@@ -5,7 +5,7 @@
 // 手: { hint: { cardId, text } } 自分のカードに書く / { move: { cardId, to } } 誰のカードでも動かせる
 //     { ready: true|false } / ホストだけ: { reroll: true } { customTheme: text } { forceReveal: true } { next: true }
 // 答え合わせはサーバーが tick() を 1.2 秒ごとに呼んで1枚ずつめくる。
-import { GENRES as THEME_GENRES } from './ito-themes.js';
+import { THEMES } from './ito-themes.js';
 
 export const id = 'ito';
 export const title = 'ito';
@@ -17,14 +17,11 @@ export const lobbyReturn = true; // ホストがロビー（開始前の待合�
 export const logTitle = 'ログ';
 export const MAX_CARDS = 5;
 export const REVEAL_INTERVAL_MS = 1200; // 答え合わせで1枚めくる間隔
-export const GENRES = THEME_GENRES.map((g) => ({ key: g.key, name: g.name, count: g.themes.length }));
-const GENRE_KEYS = GENRES.map((g) => g.key);
+export const THEME_COUNT = THEMES.length;
 
 export function normalizeOptions(o) {
   const cards = Math.min(MAX_CARDS, Math.max(1, parseInt(o && o.cardsPerPlayer, 10) || 1));
-  let genres = Array.isArray(o && o.genres) ? GENRE_KEYS.filter((k) => o.genres.includes(k)) : GENRE_KEYS.slice();
-  if (!genres.length) genres = GENRE_KEYS.slice(); // 最低1ジャンルは残す
-  return { cardsPerPlayer: cards, genres };
+  return { cardsPerPlayer: cards };
 }
 
 export function variantName(options) {
@@ -40,13 +37,11 @@ function shuffle(arr, rng) {
   return arr;
 }
 
-// 選ばれたジャンルのお題をまとめてシャッフル
-function buildDeck(genreKeys, rng) {
-  return shuffle(THEME_GENRES.filter((g) => genreKeys.includes(g.key)).flatMap((g) => g.themes), rng);
-}
+// お題をシャッフルした山
+const buildDeck = (rng) => shuffle(THEMES.slice(), rng);
 
 function pickTheme(s, rng) {
-  if (!s.themeDeck.length) s.themeDeck = buildDeck(s.options.genres, rng);
+  if (!s.themeDeck.length) s.themeDeck = buildDeck(rng);
   return s.themeDeck.pop();
 }
 
@@ -82,7 +77,7 @@ export function init(options, players = 2, rng) {
   const opts = normalizeOptions(options);
   const s = {
     players, options: opts, out: Array(players).fill(false),
-    round: 0, wins: 0, theme: null, themeDeck: buildDeck(opts.genres, rng),
+    round: 0, wins: 0, theme: null, themeDeck: buildDeck(rng),
     cards: [], revealed: 0, outcome: null, phase: 'arrange', ready: Array(players).fill(false),
     tickAfter: null, turn: 0, result: null, history: [],
   };

@@ -1483,25 +1483,6 @@ function renderItoSettings(box, v) {
     + '<li>他の人には、カードの裏面と書き込んだ言葉だけが見えます。</li>'
     + '<li>言葉を手がかりに、みんなでカードを<b>ドラッグして小さい順に並べ替え</b>ます。</li>'
     + '<li>全員が「この順番でOK」を押したら答え合わせ！</li>';
-  const sendSettings = (genres, cards) => {
-    if (!genres.length) { toast('ジャンルは1つ以上選んでください'); render(); return; }
-    send({ type: 'setOptions', options: { genres, cardsPerPlayer: cards } });
-  };
-  const genreBox = h('div', 'genre-list');
-  for (const g of ito.GENRES) {
-    const on = opts.genres.includes(g.key);
-    const label = h('label', 'genre-chip' + (on ? ' on' : '') + (host ? '' : ' disabled'));
-    const cb = h('input');
-    cb.type = 'checkbox';
-    cb.checked = on;
-    cb.disabled = !host;
-    cb.onchange = () => {
-      const genres = ito.GENRES.map((x) => x.key).filter((k) => (k === g.key ? cb.checked : opts.genres.includes(k)));
-      sendSettings(genres, opts.cardsPerPlayer);
-    };
-    label.append(cb, ` ${g.name} `, h('span', 'muted', String(g.count)));
-    genreBox.append(label);
-  }
   const cardsLabel = h('label', 'ito-setting', '1人あたりのカード枚数 ');
   const cards = h('input');
   cards.type = 'number';
@@ -1509,11 +1490,11 @@ function renderItoSettings(box, v) {
   cards.max = ito.MAX_CARDS;
   cards.value = opts.cardsPerPlayer;
   cards.disabled = !host;
-  cards.onchange = () => sendSettings(opts.genres, cards.value);
+  cards.onchange = () => send({ type: 'setOptions', options: { cardsPerPlayer: cards.value } });
   cardsLabel.append(cards);
   box.append(
     h('h3', null, 'みんなで協力して、カードを小さい順に並べよう'), rules,
-    h('div', 'ito-label', 'お題のジャンル（複数選択できます）'), genreBox, cardsLabel,
+    h('div', 'ito-label', `お題は全部で${ito.THEME_COUNT}個（「〜な人」のお題は、共通の知り合いの名前を書いてもOK）`), cardsLabel,
   );
   if (!host) box.append(h('p', 'muted small', '設定はホストが変更できます'));
 }
