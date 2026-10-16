@@ -29,7 +29,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
-  paint: { icon: '🎨', desc: '直線と円しか描けないお絵かきでお題を当てっこ。2〜8人。' },
+  paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
   skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
 };
 
@@ -189,7 +189,8 @@ function renderLobby() {
         };
         const turns = mk('描く回数', 'paintTurns', [1, 2, 3], (n) => `1人${n}回`, 1);
         const secs = mk('制限時間', 'paintSeconds', [60, 90, 120], (n) => `${n}秒`, 90);
-        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value) });
+        const mode = mk('描き方', 'paintMode', Object.keys(paint.MODES), (m) => paint.MODES[m], 'ponkotsu');
+        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value });
       }
       const row = h('div', 'side-pick');
       const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
@@ -1909,11 +1910,15 @@ function ptDrawShapes(ctx, shapes, preview) {
   ctx.fillStyle = '#fffdf7';
   ctx.fillRect(0, 0, paint.WIDTH, paint.HEIGHT);
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.lineWidth = 7;
   const draw = (sh, color) => {
     ctx.strokeStyle = color;
     ctx.beginPath();
-    if (sh.type === 'line') { ctx.moveTo(sh.x1, sh.y1); ctx.lineTo(sh.x2, sh.y2); }
+    if (sh.type === 'path') {
+      ctx.moveTo(sh.pts[0][0], sh.pts[0][1]);
+      for (const [px, py] of sh.pts.slice(1)) ctx.lineTo(px, py);
+    } else if (sh.type === 'line') { ctx.moveTo(sh.x1, sh.y1); ctx.lineTo(sh.x2, sh.y2); }
     else ctx.arc(sh.x1, sh.y1, Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1), 0, Math.PI * 2);
     ctx.stroke();
   };
@@ -1937,12 +1942,13 @@ function buildPaint(el) {
     <div class="pt-choose"></div>
     <div class="pt-canvas-wrap"><canvas width="${paint.WIDTH}" height="${paint.HEIGHT}"></canvas><div class="pt-reveal"></div></div>
     <div class="pt-tools">
+      <button class="btn small pt-tool" data-tool="pen">✎ ペン</button>
       <button class="btn small pt-tool" data-tool="line">／ 直線</button>
       <button class="btn small pt-tool" data-tool="circle">◯ 円</button>
       <button class="btn small pt-undo">1つ戻す</button>
       <button class="btn small pt-clear">全部消す</button>
       <button class="btn small danger pt-giveup">ギブアップ</button>
-      <span class="muted small">ドラッグで描く（直線は始点→終点、円は中心→半径）</span>
+      <span class="muted small pt-help"></span>
     </div>
     <form class="pt-guess row"><input maxlength="30" autocomplete="off" placeholder="答えを入力（ひらがな・カタカナ・漢字OK）"><button class="btn primary">答える</button></form>
     <div class="uno-players pt-scores"></div>
@@ -1972,20 +1978,33 @@ function buildPaint(el) {
   const canDraw = () => view && view.state && view.state.phase === 'draw' && view.you === view.state.painter;
   x.canvas.addEventListener('pointerdown', (e) => {
     if (!canDraw()) return;
-    x.canvas.setPointerCapture(e.pointerId);
+    try { x.canvas.setPointerCapture(e.pointerId); } catch { /* 取れなくても描ける */ }
     const [px, py] = ptCanvasPoint(e);
-    ptDrag = { type: ptTool, x1: px, y1: py, x2: px, y2: py };
+    ptDrag = ptTool === 'pen' ? { type: 'path', pts: [[px, py]] } : { type: ptTool, x1: px, y1: py, x2: px, y2: py };
   });
   x.canvas.addEventListener('pointermove', (e) => {
     if (!ptDrag) return;
-    [ptDrag.x2, ptDrag.y2] = ptCanvasPoint(e);
+    const [px, py] = ptCanvasPoint(e);
+    if (ptDrag.type === 'path') {
+      const last = ptDrag.pts[ptDrag.pts.length - 1];
+      if (Math.hypot(px - last[0], py - last[1]) >= 3) ptDrag.pts.push([px, py]); // 近すぎる点は省く
+    } else [ptDrag.x2, ptDrag.y2] = [px, py];
     ptDrawShapes(x.ctx, view.state.shapes, ptDrag);
   });
   const finish = () => {
     if (!ptDrag) return;
     const sh = ptDrag;
     ptDrag = null;
-    if (Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) >= 6) send({ type: 'move', move: { shape: sh } });
+    if (sh.type === 'path') {
+      let pts = sh.pts;
+      if (pts.length === 1) pts = [pts[0], [pts[0][0] + 1, pts[0][1]]]; // 点を打っただけのとき
+      // 点が多すぎるときは間引く
+      if (pts.length > paint.MAX_PATH_POINTS) {
+        const step = pts.length / paint.MAX_PATH_POINTS;
+        pts = Array.from({ length: paint.MAX_PATH_POINTS }, (_, i) => pts[Math.min(pts.length - 1, Math.round(i * step))]);
+      }
+      send({ type: 'move', move: { shape: { type: 'path', pts: pts.map(([px, py]) => [Math.round(px), Math.round(py)]) } } });
+    } else if (Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) >= 6) send({ type: 'move', move: { shape: sh } });
     ptDrawShapes(x.ctx, view.state.shapes, null);
   };
   x.canvas.addEventListener('pointerup', finish);
@@ -2035,6 +2054,12 @@ function renderPaint(el, v) {
 
   // 道具
   pt.tools.hidden = !(s.phase === 'draw' && painter);
+  const free = s.options.mode === 'free';
+  const modeKey = `${v.code}:${v.gameNo}`;
+  if (pt.modeKey !== modeKey) { pt.modeKey = modeKey; ptTool = free ? 'pen' : 'line'; }
+  if (!free && ptTool === 'pen') ptTool = 'line';
+  pt.tools.querySelector('[data-tool="pen"]').hidden = !free;
+  pt.tools.querySelector('.pt-help').textContent = ptTool === 'pen' ? 'ドラッグで自由に描く' : ptTool === 'line' ? 'ドラッグで描く（始点→終点）' : 'ドラッグで描く（中心→半径）';
   pt.tools.querySelectorAll('.pt-tool').forEach((b) => b.classList.toggle('primary', b.dataset.tool === ptTool));
 
   // 答える欄

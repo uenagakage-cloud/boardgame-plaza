@@ -1031,4 +1031,28 @@ test('skull: ランダム対局で枚数が合い、必ず終わる', () => {
   }
 });
 
+
+test('paint: フリーハンドモード（ペンの線）・ポンコツモードでは使えない', () => {
+  assert.equal(paint.normalizeOptions({ mode: 'free' }).mode, 'free');
+  assert.equal(paint.normalizeOptions({ mode: 'x' }).mode, 'ponkotsu');
+  const path = { type: 'path', pts: [[10, 10], [20, 30], [40, 35], [2000, -5]] };
+  let s = paint.applyMove(paint.init({ mode: 'free' }, 2), { pick: 0 }, 0);
+  s = paint.applyMove(s, { shape: path }, 0);
+  assert.deepEqual(s.shapes[0].pts.at(-1), [paint.WIDTH, 0], '座標は盤の中に収める');
+  s = paint.applyMove(s, { shape: { type: 'line', x1: 0, y1: 0, x2: 50, y2: 50 } }, 0);
+  assert.equal(s.shapes.length, 2, 'フリーハンドでも直線は使える');
+  assert.throws(() => paint.applyMove(s, { shape: { type: 'path', pts: [[1, 1]] } }, 0), /短すぎ/);
+  const long = { type: 'path', pts: Array.from({ length: 1000 }, (_, i) => [i % 1000, 100]) };
+  s = paint.applyMove(s, { shape: long }, 0);
+  assert.equal(s.shapes.at(-1).pts.length, paint.MAX_PATH_POINTS, '点の数は上限まで');
+  let p = paint.applyMove(paint.init({}, 2), { pick: 0 }, 0);
+  assert.throws(() => paint.applyMove(p, { shape: path }, 0), /直線と円しか/);
+});
+test('paint・ito: お題を増やした', () => {
+  assert.ok(paint.THEME_LIST.length >= 400);
+  const answers = paint.THEME_LIST.map((t) => t[0]);
+  assert.equal(new Set(answers).size, answers.length);
+  assert.ok(ito.GENRES[0].count >= 500 && ito.GENRES[1].count >= 350);
+});
+
 console.log(`\n${n} tests passed`);

@@ -1,9 +1,11 @@
 // みんなでポンコツペイント（サーバーとブラウザで共通）
 // 2〜8人。描く人は「直線」と「円」しか使えないポンコツなお絵かきでお題を描き、ほかの人は早い者勝ちで答える。
+// 部屋の設定で「フリーハンド」モードにすると、ペンで自由に描ける（直線と円も使える）。
 // 流れ: お題選び（描く人が3つから選ぶ）→ お絵かき（制限時間）→ 答え発表 → 次の人へ。全員が決められた回数描いたら終了。
 // 点数: 正解した人は早い順に 10・8・6・5・4・3・2・1 点、描いた人は正解者1人につき 3 点。
 // 時間切れ・全員正解・答え発表の切り替えはサーバーが tick() で行う（state.tickAt の時刻）。
 // 手: { pick: 0〜2 } お題を選ぶ / { shape: { type: 'line'|'circle', x1, y1, x2, y2 } } 描く（座標は 0〜1000 × 0〜750）
+//     フリーハンドでは { shape: { type: 'path', pts: [[x, y], ...] } } も描ける
 //     { undo: true } 1つ戻す / { clear: true } 全部消す / { giveUp: true } 描くのをあきらめる / { guess: '答え' } / { resign: true }
 export const id = 'paint';
 export const title = 'みんなでポンコツペイント';
@@ -15,6 +17,8 @@ export const logTitle = 'ログ';
 export const WIDTH = 1000;
 export const HEIGHT = 750;
 export const MAX_SHAPES = 300;
+export const MAX_PATH_POINTS = 400;   // 1本の線の点の数
+export const MAX_TOTAL_POINTS = 30000; // 絵全体の点の数（送るデータが大きくなりすぎないように）
 export const CHOOSE_MS = 20000;
 export const REVEAL_MS = 6000;
 export const GUESS_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
@@ -277,6 +281,182 @@ UFO|ユーフォー|未確認飛行物体
 ベンチ
 ポスト|郵便ポスト
 自動販売機|じどうはんばいき|自販機
+きつね|狐|キツネ
+たぬき|狸|タヌキ
+りす|栗鼠|リス
+しか|鹿|シカ
+コアラ
+カンガルー
+ゴリラ
+シマウマ|しまうま|縞馬
+サイ|さい|犀
+カバ|かば|河馬
+ラッコ
+アザラシ|あざらし
+ペリカン
+つる|鶴|ツル
+はと|鳩|ハト
+すずめ|雀|スズメ
+からす|烏|カラス
+とんぼ|蜻蛉|トンボ
+せみ|蝉|セミ
+カブトムシ|かぶとむし
+クワガタ|くわがた
+ほたる|蛍|ホタル
+いもむし|芋虫|イモムシ|青虫|あおむし
+みみず|蚯蚓|ミミズ
+ひよこ|ヒヨコ
+うなぎ|鰻|ウナギ
+えび|海老|エビ
+ほたて|帆立|ホタテ|貝|かい
+ヒトデ|ひとで|海星
+イカ|いか|烏賊
+金魚|きんぎょ
+恐竜|きょうりゅう|ティラノサウルス
+ドラゴン|竜|りゅう
+ユニコーン
+人魚|にんぎょ|マーメイド
+かっぱ|河童|カッパ
+メロン
+キウイ|キウイフルーツ
+なし|梨|ナシ
+かき|柿|カキ
+アボカド
+ブロッコリー
+キャベツ
+たまねぎ|玉ねぎ|タマネギ
+じゃがいも|ジャガイモ|ポテト
+さつまいも|サツマイモ|焼き芋|やきいも
+しいたけ|椎茸|シイタケ
+焼き鳥|やきとり
+ステーキ|肉|にく
+エビフライ
+フライドポテト
+ホットドッグ
+サンドイッチ
+お弁当|べんとう|弁当
+うどん|そば|蕎麦
+焼きそば|やきそば
+お好み焼き|おこのみやき
+クッキー
+チョコレート|チョコ
+マカロン
+かき氷|かきごおり
+わたあめ|綿あめ|綿菓子|わたがし
+牛乳|ぎゅうにゅう|ミルク
+お茶|おちゃ|緑茶|湯のみ|ゆのみ
+掃除機|そうじき
+体温計|たいおんけい
+注射|ちゅうしゃ|注射器
+包丁|ほうちょう
+まな板|まないた
+炊飯器|すいはんき
+トースター
+石けん|せっけん|石鹸
+シャンプー
+タオル
+ハンガー
+洗濯ばさみ|せんたくばさみ
+ランドセル
+リュック|リュックサック
+財布|さいふ
+定規|じょうぎ|ものさし
+消しゴム|けしごむ
+ホッチキス|ホチキス
+クリップ
+画びょう|がびょう
+地球儀|ちきゅうぎ
+黒板|こくばん
+鉄棒|てつぼう
+跳び箱|とびばこ
+縄跳び|なわとび
+一輪車|いちりんしゃ
+スケートボード|スケボー
+浮き輪|うきわ
+水着|みずぎ
+サングラス
+懐中電灯|かいちゅうでんとう
+救急箱|きゅうきゅうばこ
+消火器|しょうかき
+目覚まし時計|めざましどけい
+植木鉢|うえきばち|鉢植え|はちうえ
+じょうろ|ジョウロ
+スコップ|シャベル
+のこぎり|鋸|ノコギリ
+ペンチ
+ねじ|ネジ
+くぎ|釘|クギ
+電池|でんち|乾電池
+コンセント|プラグ
+電卓|でんたく
+腕時計|うでどけい
+ネックレス
+口紅|くちべに
+香水|こうすい
+長靴|ながぐつ
+スリッパ
+げた|下駄
+着物|きもの
+マント
+仮面|かめん|お面|おめん
+いかだ|筏
+カヌー
+戦車|せんしゃ
+馬車|ばしゃ
+人力車|じんりきしゃ
+三輪車|さんりんしゃ
+交番|こうばん
+郵便局|ゆうびんきょく
+動物園|どうぶつえん
+水族館|すいぞくかん
+遊園地|ゆうえんち
+ジェットコースター
+メリーゴーランド
+公園|こうえん
+砂場|すなば
+ビル|高層ビル|こうそうびる
+工場|こうじょう
+牧場|ぼくじょう
+田んぼ|たんぼ
+井戸|いど
+線路|せんろ
+横断歩道|おうだんほどう
+流れ星|ながれぼし
+竜巻|たつまき
+台風|たいふう
+氷|こおり
+つらら|氷柱
+雪の結晶|ゆきのけっしょう
+砂漠|さばく
+サボテン
+ヤシの木|やしのき
+もみじ|紅葉|こうよう|カエデ
+どんぐり|ドングリ
+たけのこ|筍|タケノコ
+竹|たけ
+洞窟|どうくつ
+湖|みずうみ
+波|なみ
+結婚式|けっこんしき
+運動会|うんどうかい
+誕生日|たんじょうび|バースデー
+雪合戦|ゆきがっせん
+綱引き|つなひき
+かくれんぼ
+ジャンケン|じゃんけん
+握手|あくしゅ
+お辞儀|おじぎ
+寝坊|ねぼう|居眠り|いねむり
+くしゃみ
+あくび
+ダンス|踊り|おどり
+マラソン
+水泳|すいえい
+バスケットボール|バスケ
+バレーボール|バレー
+ゴルフ
+卓球|たっきゅう|ピンポン
+柔道|じゅうどう
 `.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
 export const THEME_LIST = (() => {
   const seen = new Set();
@@ -290,12 +470,19 @@ export function normalizeAnswer(text) {
     .replace(/[\s・。、！？!?.,]/g, '');
 }
 
+// 描き方: 'ponkotsu' = 直線と円だけ / 'free' = フリーハンド（直線と円も使える）
+export const MODES = { ponkotsu: 'ポンコツ（直線と円）', free: 'フリーハンド' };
+
 export function normalizeOptions(o) {
   const turns = [1, 2, 3].includes(Number(o && o.turns)) ? Number(o.turns) : 1;
   const seconds = [60, 90, 120].includes(Number(o && o.seconds)) ? Number(o.seconds) : 90;
-  return { turns, seconds };
+  const mode = o && o.mode === 'free' ? 'free' : 'ponkotsu';
+  return { turns, seconds, mode };
 }
-export const variantName = (o) => { const x = normalizeOptions(o); return `${x.turns}周・${x.seconds}秒`; };
+export const variantName = (o) => {
+  const x = normalizeOptions(o);
+  return `${x.mode === 'free' ? 'フリーハンド・' : ''}${x.turns}周・${x.seconds}秒`;
+};
 
 function shuffle(arr, rng) {
   const rand = rng ? (n) => rng(n) - 1 : (n) => Math.floor(Math.random() * n);
@@ -403,7 +590,7 @@ export function phaseText(s, you) {
   const painter = you === s.painter;
   if (s.phase === 'choose') return painter ? 'お題を3つから選んでください' : 'お題を選んでいます…';
   if (s.phase === 'draw') {
-    if (painter) return '直線と円だけでお題を描こう！';
+    if (painter) return s.options.mode === 'free' ? 'フリーハンドでお題を描こう！' : '直線と円だけでお題を描こう！';
     if (s.correct.includes(you)) return '正解！ ほかの人を待っています';
     return you >= 0 ? '絵を見て答えを入力しよう！' : 'お絵かき中…';
   }
@@ -455,8 +642,17 @@ export function applyMove(s, mv, seat, rng) {
     if (mv.undo) { ns.shapes.pop(); return ns; }
     if (mv.clear) { ns.shapes = []; return ns; }
     const sh = mv.shape;
-    if (sh.type !== 'line' && sh.type !== 'circle') throw new Error('直線と円しか描けません');
     if (ns.shapes.length >= MAX_SHAPES) throw new Error(`これ以上描けません（${MAX_SHAPES}個まで）`);
+    if (sh.type === 'path') {
+      if (s.options.mode !== 'free') throw new Error('直線と円しか描けません');
+      const pts = Array.isArray(sh.pts) ? sh.pts.slice(0, MAX_PATH_POINTS).map((p) => [num(p && p[0], WIDTH), num(p && p[1], HEIGHT)]) : [];
+      if (pts.length < 2) throw new Error('線が短すぎます');
+      const used = ns.shapes.reduce((a, x) => a + (x.pts ? x.pts.length : 2), 0);
+      if (used + pts.length > MAX_TOTAL_POINTS) throw new Error('これ以上描けません。「1つ戻す」か「全部消す」をしてください');
+      ns.shapes.push({ type: 'path', pts });
+      return ns;
+    }
+    if (sh.type !== 'line' && sh.type !== 'circle') throw new Error('直線と円しか描けません');
     ns.shapes.push({ type: sh.type, x1: num(sh.x1, WIDTH), y1: num(sh.y1, HEIGHT), x2: num(sh.x2, WIDTH), y2: num(sh.y2, HEIGHT) });
     return ns;
   }
