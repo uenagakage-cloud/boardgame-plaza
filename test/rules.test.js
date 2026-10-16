@@ -564,9 +564,12 @@ test('wordbasket: 手札リセットで元の枚数＋1枚に・カードの総�
 const itoCtx = (n, host = 0) => ({ hostSeat: host, online: Array(n).fill(true) });
 const itoTickAll = (s) => { while (s.phase === 'reveal') s = ito.tick(s); return s; };
 test('ito: 設定・配り方・お題のジャンル', () => {
-  assert.deepEqual(ito.GENRES.map((g) => g.key), ['entertainment', 'things']);
+  assert.deepEqual(ito.GENRES.map((g) => g.key), ['entertainment', 'things', 'friends']);
   assert.ok(ito.GENRES.every((g) => g.count > 0), 'どのジャンルにもお題がある');
-  assert.deepEqual(ito.normalizeOptions({ cardsPerPlayer: 9, genres: ['food'] }), { cardsPerPlayer: 5, genres: ['entertainment', 'things'] });
+  assert.ok(ito.GENRES.some((g) => g.key === 'friends'), '身内ネタのジャンルがある');
+  const onlyFriends = ito.init({ genres: ['friends'] }, 2);
+  assert.ok(onlyFriends.theme.endsWith('人'), '身内ネタだけ選ぶと人についてのお題が出る');
+  assert.deepEqual(ito.normalizeOptions({ cardsPerPlayer: 9, genres: ['food'] }), { cardsPerPlayer: 5, genres: ['entertainment', 'things', 'friends'] });
   const s = ito.init({ cardsPerPlayer: 2, genres: ['things'] }, 3);
   assert.equal(s.cards.length, 6);
   assert.equal(new Set(s.cards.map((c) => c.value)).size, 6);
