@@ -13,8 +13,9 @@ import * as poker from './games/poker.js';
 import * as blokus from './games/blokus.js';
 import * as paint from './games/paint.js';
 import * as skull from './games/skull.js';
+import * as gungi from './games/gungi.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -30,6 +31,7 @@ const GAME_INFO = {
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
+  gungi: { icon: '軍', desc: '駒を最大3段まで積み上げる立体将棋。入門〜上級・CPU対戦あり。' },
   skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
 };
 
@@ -175,6 +177,22 @@ function renderLobby() {
         toggle.title = '黒の三三・四四・長連を禁止';
         card.append(toggle);
         getOptions = () => ({ renju: cb.checked });
+      }
+      if (key === 'gungi') {
+        const label = h('label', 'option-toggle');
+        const select = h('select', 'size-select');
+        for (const [k, m] of Object.entries(gungi.MODES)) { const o = h('option', null, m.name); o.value = k; select.append(o); }
+        select.value = store.get('gungiMode', 'intro');
+        select.onchange = () => store.set('gungiMode', select.value);
+        label.append(h('span', null, 'モード'), select);
+        const cpuLabel = h('label', 'option-toggle');
+        const cpu = h('input');
+        cpu.type = 'checkbox';
+        cpu.checked = store.get('gungiCpu', '0') === '1';
+        cpu.onchange = () => store.set('gungiCpu', cpu.checked ? '1' : '0');
+        cpuLabel.append(cpu, h('span', null, 'CPUと対戦'));
+        card.append(label, cpuLabel);
+        getOptions = () => ({ mode: select.value, cpu: cpu.checked });
       }
       if (key === 'paint') {
         const mk = (labelText, storeKey, values, fmt, def) => {
@@ -2163,7 +2181,226 @@ function renderSkull(el, v) {
   el.replaceChildren(root);
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull };
+// ---------- 軍儀 ----------
+let gnSel = null;     // { from: [r, c] } か { drop: 種類 }
+let gnInfo = null;    // 詳しく見るマス [r, c]
+let gnKey = '';
+let gnHelp = false;   // 駒の動き一覧を開いているか
+
+const gnSame = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+
+function gnPiece(p, me, extra = '') {
+  return h('span', `gn-piece o${p.o} ${p.o !== me ? 'opp' : ''} ${p.t === '帥' ? 'marshal' : ''} ${extra}`, p.t);
+}
+
+// 駒の動きの図（段ごと）。中心が駒、前が上
+function gnDiagram(type, tier, small = false, flipped = false) {
+  const N = 11, C = 5;
+  const box = h('div', 'gn-diagram' + (small ? ' small' : '') + (flipped ? ' flipped' : ''));
+  const cells = Array.from({ length: N * N }, () => h('span', 'gn-dcell'));
+  cells[C * N + C].classList.add('center');
+  cells[C * N + C].textContent = type;
+  for (const [dr, dc, k] of gungi.MOVES[type]) {
+    const r = C + dr, c = C + dc;
+    if (r < 0 || r >= N || c < 0 || c >= N) continue;
+    const cell = cells[r * N + c];
+    if (k === 'run') cell.classList.add('run');
+    else if (k <= tier) cell.classList.add(gungi.JUMPERS.has(type) ? 'jump' : 'step', 't' + k);
+  }
+  box.append(...cells);
+  return box;
+}
+
+function gnHelpPanel() {
+  const wrap = h('div', 'gn-help');
+  const head = h('div', 'gn-help-head');
+  head.append(h('h3', null, '駒の動き一覧'));
+  const close = h('button', 'btn small', '閉じる');
+  close.onclick = () => { gnHelp = false; render(); };
+  head.append(close);
+  wrap.append(head);
+  const legend = h('div', 'gn-legend');
+  legend.innerHTML = '<span class="gn-dcell step t1"></span>動ける <span class="gn-dcell jump t1"></span>飛び越えて動ける（弓・砲・筒）'
+    + ' <span class="gn-dcell run"></span>遮られるまでどこまでも　段が上がると、薄い色のマスまで届くようになります';
+  wrap.append(legend);
+  wrap.append(h('p', 'muted small', '・自分の段以下の高さの塔にだけ手を出せます（取る・ツケる）。・弓・砲・筒は間の駒を飛び越えられますが、自分より高い塔は飛び越えられません。・帥の上には重ねられません。'));
+  const grid = h('div', 'gn-help-grid');
+  for (const t of gungi.PIECE_ORDER) {
+    const card = h('div', 'gn-help-card');
+    card.append(h('div', 'gn-help-name', `${gungi.PIECE_NAMES[t]}　×${gungi.PIECE_COUNTS[t]}`));
+    const row = h('div', 'gn-help-tiers');
+    for (const tier of [1, 2, 3]) {
+      const col = h('div', 'gn-help-tier');
+      col.append(h('div', 'muted small', `${tier}段目`), gnDiagram(t, tier, true));
+      row.append(col);
+    }
+    card.append(row);
+    grid.append(card);
+  }
+  wrap.append(grid);
+  return wrap;
+}
+
+function renderGungi(el, v, act) {
+  const s = v.state, me = v.you === 1 ? 1 : 0, flip = me === 1;
+  const mode = gungi.MODES[s.options.mode];
+  const key = `${v.code}:${v.gameNo}:${s.history.length}`;
+  if (key !== gnKey) { gnKey = key; gnSel = null; }
+  const myTurn = act && s.turn === v.you;
+  const legal = myTurn && s.phase === 'play' ? gungi.legalMoves(s) : [];
+  const root = h('div', 'gn');
+
+  // 上部: モード・操作
+  const bar = h('div', 'gn-bar');
+  bar.append(h('span', 'gn-mode', `${mode.name}（${mode.maxTier}段まで${mode.draft ? '・自由配置' : '・固定配置'}）`));
+  const helpBtn = h('button', 'btn small', '駒の動き一覧');
+  helpBtn.onclick = () => { gnHelp = !gnHelp; render(); };
+  bar.append(helpBtn);
+  root.append(bar);
+  if (gnHelp) root.append(gnHelpPanel());
+
+  // 行ける先
+  let targets = [];
+  if (gnSel && gnSel.from) targets = legal.filter((m) => !m.drop && gnSame(m.from, gnSel.from));
+  else if (gnSel && gnSel.drop && s.phase === 'play') targets = legal.filter((m) => m.drop === gnSel.drop);
+  else if (gnSel && gnSel.drop && s.phase === 'draft') targets = gungi.draftTargets(s, v.you, gnSel.drop).map((to) => ({ to, kind: 'place' }));
+
+  // 持ち駒
+  const handEl = (owner) => {
+    const box = h('div', 'gn-hand' + (owner === me ? ' mine' : ' theirs'));
+    box.append(h('span', 'gn-hand-label', `${gungi.sideNames[owner]}の${s.phase === 'draft' ? '手元（未配置）' : '持ち駒'}`));
+    const list = h('div', 'gn-hand-list');
+    let any = false;
+    for (const t of gungi.PIECE_ORDER) {
+      const n = s.hands[owner][t];
+      if (!n) continue;
+      any = true;
+      const b = h('button', 'gn-hand-btn' + (gnSel && gnSel.drop === t && owner === me ? ' sel' : ''));
+      b.append(gnPiece({ o: owner, t }, me), h('span', 'gn-count', `×${n}`));
+      const usable = owner === v.you && myTurn && (s.phase === 'draft' ? gungi.draftTargets(s, v.you, t).length > 0 : legal.some((m) => m.drop === t));
+      b.disabled = !usable;
+      b.onclick = () => { gnSel = gnSel && gnSel.drop === t ? null : { drop: t }; render(); };
+      list.append(b);
+    }
+    if (!any) list.append(h('span', 'muted small', 'なし'));
+    box.append(list);
+    return box;
+  };
+
+  // 盤
+  const board = h('div', 'gn-board' + (myTurn ? ' active' : ''));
+  const cols = '987654321', rows = '一二三四五六七八九';
+  for (let j = 0; j < 9; j++) board.append(h('span', 'lbl', cols[flip ? 8 - j : j]));
+  board.append(h('span', 'lbl'));
+  const marshalChecked = s.check ? (() => {
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      const st = s.board[r][c];
+      if (st.length && st[st.length - 1].o === s.turn && st[st.length - 1].t === '帥') return [r, c];
+    }
+    return null;
+  })() : null;
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      const r = flip ? 8 - i : i, c = flip ? 8 - j : j, here = [r, c];
+      const st = s.board[r][c];
+      const cell = h('div', 'gn-sq' + (st.length ? ` h${st.length}` : ''));
+      if (s.lastMove && (gnSame(s.lastMove.to, here) || gnSame(s.lastMove.from, here))) cell.classList.add('last');
+      if (gnSel && gnSel.from && gnSame(gnSel.from, here)) cell.classList.add('sel');
+      if (gnInfo && gnSame(gnInfo, here)) cell.classList.add('info');
+      if (gnSame(marshalChecked, here)) cell.classList.add('check');
+      if (s.phase === 'draft' && v.you >= 0 && (v.you === 0 ? r >= 6 : r <= 2)) cell.classList.add('home');
+      if (st.length) {
+        const stack = h('div', 'gn-stack');
+        // 下の段の駒は少しずらして見せる
+        st.forEach((p, k) => {
+          const isTop = k === st.length - 1;
+          const e = gnPiece(p, me, isTop ? 'top' : 'under');
+          e.style.setProperty('--k', String(k));
+          stack.append(e);
+        });
+        cell.append(stack);
+        if (st.length > 1) cell.append(h('span', 'gn-tier', `${st.length}段`));
+      }
+      const ts = targets.filter((m) => gnSame(m.to, here));
+      if (ts.length) {
+        const kinds = new Set(ts.map((m) => m.kind));
+        const jump = ts.some((m) => m.jump);
+        const cls = kinds.has('capture') ? 'cap' : kinds.has('tsuke') ? 'tsuke' : 'dot';
+        cell.append(h('span', `gn-hint ${cls}${jump ? ' jump' : ''}`, kinds.has('tsuke') && !kinds.has('capture') ? '↑' : ''));
+      }
+      cell.onclick = () => gnClick(here, ts, s, v, legal);
+      board.append(cell);
+    }
+    board.append(h('span', 'lbl', rows[flip ? 8 - i : i]));
+  }
+
+  const main = h('div', 'gn-main');
+  const left = h('div', 'gn-left');
+  left.append(handEl(1 - me), board, handEl(me));
+  // 配置中の操作
+  if (s.phase === 'draft' && myTurn) {
+    const tools = h('div', 'gn-tools');
+    const done = h('button', 'btn primary', '配置完了（済）');
+    done.onclick = () => sendMove({ done: true });
+    const auto = h('button', 'btn', 'おすすめ配置で埋めて完了');
+    auto.title = '空いている所に例の形で駒を置いて配置を終えます（初めての人向け）';
+    auto.onclick = () => sendMove({ autoSetup: true });
+    tools.append(h('span', 'muted small', '手元の駒を選んで、光っている自陣のマスに置きます。'), done, auto);
+    left.append(tools);
+  }
+  main.append(left, gnInfoPanel(s, me));
+  root.append(main);
+  el.replaceChildren(root);
+}
+
+// 選んだマスの塔の中身（下の駒も含めて、それぞれの動き）
+function gnInfoPanel(s, me) {
+  const panel = h('div', 'gn-info');
+  if (!gnInfo) {
+    panel.append(h('p', 'muted small', '盤のマスをクリックすると、その塔に積まれている駒と、それぞれの動きがここに出ます。'));
+    return panel;
+  }
+  const [r, c] = gnInfo;
+  const st = s.board[r][c];
+  panel.append(h('div', 'gn-info-head', `${gungi.squareName(r, c)}の塔（${st.length}段）`));
+  if (!st.length) { panel.append(h('p', 'muted small', '駒はありません')); return panel; }
+  st.slice().reverse().forEach((p, idx) => {
+    const tier = st.length - idx;
+    const item = h('div', 'gn-info-item' + (idx === 0 ? ' top' : ''));
+    const head = h('div', 'gn-info-row');
+    head.append(gnPiece(p, me), h('span', null, `${tier}段目・${gungi.sideNames[p.o]}の${gungi.PIECE_NAMES[p.t]}`));
+    item.append(head);
+    item.append(h('div', 'muted small', idx === 0 ? 'いまの動き' : `上に駒があるので今は動けません（一番上になったら${tier}段目の動き）`));
+    item.append(gnDiagram(p.t, tier, true, p.o !== me));
+    panel.append(item);
+  });
+  return panel;
+}
+
+async function gnClick(here, ts, s, v, legal) {
+  gnInfo = here;
+  // 行き先をクリックしたとき
+  if (gnSel && ts.length) {
+    if (s.phase === 'draft') { sendMove({ place: gnSel.drop, to: here }); return; }
+    if (gnSel.drop) { sendMove({ drop: gnSel.drop, to: here }); return; }
+    let m = ts[0];
+    if (ts.length > 1) {
+      const label = (x) => (x.kind === 'capture' ? '取る' : x.betray ? 'ツケて寝返らせる（謀）' : x.kind === 'tsuke' ? 'ツケる（上に重ねる）' : '動く');
+      const pick = await choose('どうしますか？', ts.map((x, i) => [String(i), label(x)]));
+      if (pick == null) return;
+      m = ts[Number(pick)];
+    }
+    sendMove({ from: m.from, to: m.to, kind: m.kind, betray: m.betray || undefined });
+    return;
+  }
+  // 自分の駒を選ぶ
+  const st = s.board[here[0]][here[1]];
+  const mine = st.length && st[st.length - 1].o === v.you && legal.some((m) => !m.drop && gnSame(m.from, here));
+  gnSel = mine && !(gnSel && gnSel.from && gnSame(gnSel.from, here)) ? { from: here } : null;
+  render();
+}
+
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

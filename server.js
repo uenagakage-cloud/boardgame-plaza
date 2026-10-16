@@ -19,8 +19,9 @@ import * as poker from './public/games/poker.js';
 import * as blokus from './public/games/blokus.js';
 import * as paint from './public/games/paint.js';
 import * as skull from './public/games/skull.js';
+import * as gungi from './public/games/gungi.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi };
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
@@ -68,7 +69,8 @@ function newCode() {
 const cleanName = (n) => String(n || '').trim().slice(0, 16) || '名無し';
 const send = (ws, msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 const seatOf = (room, ws) => room.seats.findIndex((s) => s && s.clientId === ws.clientId);
-const isOnline = (room, clientId) => [...room.sockets].some((ws) => ws.clientId === clientId);
+// CPU の席はいつも接続中として扱う
+const isOnline = (room, clientId) => String(clientId).startsWith('cpu:') || [...room.sockets].some((ws) => ws.clientId === clientId);
 
 const variantOf = (room) => GAMES[room.game].variantName?.(room.options) || '';
 // 3人以上で遊ぶゲームは「ゲーム開始」を押すまで state が null
@@ -111,6 +113,27 @@ function scheduleTick(room) {
     room.state = g.tick(room.state, rng);
     broadcastRoom(room);
   }, delay);
+}
+
+// CPU の番なら少し待ってから CPU に指させる（ゲームが aiMove を持っている場合）
+function scheduleBot(room) {
+  const g = GAMES[room.game];
+  if (!g.aiMove || !room.state || room.state.result || room.botFor === room.state) return;
+  const seat = room.state.turn;
+  if (!room.seats[seat] || !room.seats[seat].bot) return;
+  room.botFor = room.state;
+  setTimeout(() => {
+    if (!rooms.has(room.code) || room.botFor !== room.state || room.state.result) return;
+    try {
+      const move = g.aiMove(room.state, seat, rng);
+      if (move) room.state = g.applyMove(room.state, move, seat, rng, gameContext(room));
+    } catch (e) {
+      console.error('CPU の手でエラー', e);
+      return;
+    }
+    broadcastRoom(room);
+    if (room.state.result) broadcastLobby();
+  }, 700);
 }
 
 function deleteRoom(room) {
@@ -161,6 +184,7 @@ function lobbyList() {
 function broadcastRoom(room) {
   room.lastActive = Date.now();
   scheduleTick(room);
+  scheduleBot(room);
   for (const ws of room.sockets) send(ws, roomView(room, ws));
 }
 
@@ -246,6 +270,8 @@ function handle(ws, msg) {
       };
       const seat = multi ? 0 : msg.side === 0 || msg.side === 1 ? msg.side : crypto.randomInt(2);
       room.seats[seat] = { clientId: ws.clientId, name: ws.name };
+      // CPU 対戦: もう一方の席に CPU を座らせる
+      if (options.cpu && !multi && g.aiMove) room.seats[1 - seat] = { clientId: 'cpu:' + room.code, name: 'CPU', bot: true };
       systemChat(room, `${ws.name} さんが部屋を作りました`);
       rooms.set(room.code, room);
       enterRoom(ws, room);
@@ -328,6 +354,10 @@ function handle(ws, msg) {
       const { room, seat } = requirePlayer(ws);
       if (!isReady(room) || room.state.result || isMulti(GAMES[room.game])) return;
       room.drawOffer = seat;
+      if (room.seats[1 - seat]?.bot) {
+        room.drawOffer = null;
+        systemChat(room, 'CPU は引き分けの提案を断りました');
+      }
       broadcastRoom(room);
       return;
     }
@@ -348,6 +378,7 @@ function handle(ws, msg) {
       const { room, seat } = requirePlayer(ws);
       if (!room.state || !room.state.result) throw new UserError('対局はまだ終わっていません');
       room.rematch[seat] = true;
+      room.seats.forEach((p, i) => { if (p && p.bot) room.rematch[i] = true; }); // CPU はいつでも再戦OK
       if (room.rematch.every(Boolean)) {
         room.seats.push(room.seats.shift()); // 先後（席順）を回す
         room.state = GAMES[room.game].init(room.options, room.seats.length, rng);

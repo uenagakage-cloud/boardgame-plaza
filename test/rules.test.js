@@ -14,6 +14,7 @@ import * as pk from '../public/games/poker.js';
 import * as bk from '../public/games/blokus.js';
 import * as paint from '../public/games/paint.js';
 import * as skull from '../public/games/skull.js';
+import * as gungi from '../public/games/gungi.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -1051,6 +1052,145 @@ test('paint: お題を増やした', () => {
   assert.ok(paint.THEME_LIST.length >= 400);
   const answers = paint.THEME_LIST.map((t) => t[0]);
   assert.equal(new Set(answers).size, answers.length);
+});
+
+
+// ---------- 軍儀 ----------
+const gEmpty = (mode = 'advanced', extra = {}) => Object.assign(gungi.init({ mode }), {
+  phase: 'play', board: Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => [])),
+  hands: [{}, {}], turn: 0, positions: {}, history: [],
+}, extra);
+const gPut = (s, r, c, ...pieces) => { s.board[r][c].push(...pieces.map(([o, t]) => ({ o, t }))); return s; };
+const gTargets = (s, r, c) => gungi.reachable(s.board, r, c).map((x) => x.to.join(',')).sort();
+test('gungi: 入門・初級の固定配置と持ち駒', () => {
+  const intro = gungi.init({ mode: 'intro' });
+  const count = (s, o) => s.board.flat().flat().filter((x) => x.o === o).length + Object.values(s.hands[o]).reduce((a, b) => a + b, 0);
+  assert.equal(count(intro, 0), 20);
+  assert.equal(count(intro, 1), 20);
+  assert.equal(intro.board[8][4][0].t, '帥');
+  assert.equal(intro.board[0][4][0].t, '帥');
+  assert.equal(intro.board[0][4][0].o, 1);
+  assert.deepEqual(intro.hands[0], { 帥: 0, 大: 0, 中: 0, 小: 2, 侍: 0, 槍: 2, 馬: 2, 忍: 0, 砦: 0, 兵: 1 });
+  const beg = gungi.init({ mode: 'beginner' });
+  assert.equal(count(beg, 0), 22);
+  assert.equal(beg.board[7][2][0].t, '弓');
+  assert.equal(beg.phase, 'play');
+  assert.equal(gungi.init({ mode: 'advanced' }).phase, 'draft');
+});
+test('gungi: 段が上がると遠くまで動ける・間に駒があると進めない', () => {
+  const s = gEmpty();
+  gPut(s, 4, 4, [0, '兵']);
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 8, [0, '帥']);
+  assert.deepEqual(gTargets(s, 4, 4), ['3,4', '5,4']);
+  gPut(s, 4, 4, [0, '兵']); // 2段目
+  assert.deepEqual(gTargets(s, 4, 4), ['2,4', '3,4', '5,4', '6,4']);
+  gPut(s, 3, 4, [1, '兵']);
+  assert.ok(!gTargets(s, 4, 4).includes('2,4'), '前に駒があると2マス先へは行けない');
+});
+test('gungi: 低い駒は高い塔に手を出せない・取ると敵の駒だけ消える', () => {
+  const s = gEmpty();
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 8, [0, '帥']);
+  gPut(s, 5, 4, [0, '兵']);
+  gPut(s, 4, 4, [0, '侍'], [1, '兵']); // 2段の塔（上が敵）
+  assert.ok(!gungi.legalMoves(s).some((m) => m.from && m.from[0] === 5 && m.to[0] === 4), '1段では2段の塔を取れない');
+  gPut(s, 5, 4, [0, '兵']); // 2段に
+  const cap = gungi.legalMoves(s).find((m) => m.from && m.from[0] === 5 && m.to[0] === 4 && m.kind === 'capture');
+  assert.ok(cap);
+  const ns = gungi.applyMove(s, cap, 0);
+  assert.deepEqual(ns.board[4][4].map((x) => x.o + x.t), ['0侍', '0兵'], '味方の侍は残り、敵の兵だけ取られる');
+});
+test('gungi: 飛び越える駒（弓）と、高い塔は飛び越えられない', () => {
+  const s = gEmpty();
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 8, [0, '帥']);
+  gPut(s, 6, 4, [0, '弓']);
+  gPut(s, 5, 4, [1, '兵']);
+  const t = gungi.reachable(s.board, 6, 4);
+  assert.ok(t.some((x) => x.to[0] === 4 && x.to[1] === 4 && x.jump), '前の駒を飛び越えて2マス先へ');
+  gPut(s, 5, 4, [1, '兵']); // 2段の塔になったら飛び越えられない
+  assert.ok(!gungi.reachable(s.board, 6, 4).some((x) => x.to[0] === 4 && x.to[1] === 4));
+});
+test('gungi: 帥にはツケられない・入門は2段まで・自分の帥が取られる手は指せない', () => {
+  const s = gEmpty('intro');
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 4, [0, '帥']);
+  gPut(s, 7, 4, [0, '兵']);
+  assert.ok(!gungi.legalMoves(s).some((m) => m.from && m.from[0] === 7 && m.to[0] === 8), '帥の上には乗れない');
+  gPut(s, 6, 4, [0, '兵'], [0, '兵']);
+  const ms = gungi.legalMoves(s).filter((m) => m.from && m.from[0] === 7 && m.from[1] === 4 && m.to[0] === 6 && m.to[1] === 4);
+  assert.equal(ms.length, 0, '入門は2段までなので3段目にはツケられない');
+  // 帥を動かして敵の利きに入る手は指せない
+  const t = gEmpty();
+  gPut(t, 0, 0, [1, '帥']); gPut(t, 8, 4, [0, '帥']);
+  gPut(t, 5, 3, [1, '大']); // 縦に走る大が7,3にも8,3にも利く
+  assert.ok(!gungi.legalMoves(t).some((m) => m.from && m.to[0] === 8 && m.to[1] === 3));
+});
+test('gungi: 新は一番前の駒より前に打てない・帥の上に打てない', () => {
+  const s = gEmpty('advanced', { hands: [{ 兵: 1 }, {}] });
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 4, [0, '帥']); gPut(s, 6, 0, [0, '兵']);
+  const drops = gungi.legalMoves(s).filter((m) => m.drop);
+  assert.ok(drops.every((m) => m.to[0] >= 6), '6行目より前には打てない');
+  assert.ok(!drops.some((m) => m.to[0] === 8 && m.to[1] === 4), '帥の上には打てない');
+  assert.ok(drops.some((m) => m.to[0] === 6 && m.to[1] === 0), '自分の駒の上には打てる');
+});
+test('gungi: 謀の寝返り', () => {
+  const s = gEmpty('advanced', { hands: [{ 侍: 1 }, {}] });
+  gPut(s, 0, 0, [1, '帥']); gPut(s, 8, 8, [0, '帥']);
+  gPut(s, 5, 4, [0, '謀']); gPut(s, 4, 3, [1, '侍']);
+  const b = gungi.legalMoves(s).find((m) => m.betray);
+  assert.ok(b);
+  const ns = gungi.applyMove(s, b, 0);
+  assert.deepEqual(ns.board[4][3].map((x) => x.o + x.t), ['0侍', '0謀']);
+  assert.equal(ns.hands[0].侍, 0);
+});
+test('gungi: 詰みで勝ち', () => {
+  const s = gEmpty();
+  gPut(s, 0, 0, [1, '帥']);
+  gPut(s, 8, 8, [0, '帥']);
+  gPut(s, 2, 1, [0, '大']); // 1行目をふさぐ
+  gPut(s, 2, 8, [0, '大']);
+  gPut(s, 5, 0, [0, '中']);
+  // 大を0,1… ではなく、縦の大で1列目へ王手
+  const mate = gungi.legalMoves(s).find((m) => m.from && m.from[0] === 2 && m.from[1] === 8 && m.to[0] === 0 && m.to[1] === 8);
+  assert.ok(mate);
+  const ns = gungi.applyMove(s, mate, 0);
+  assert.equal(ns.check, true);
+  assert.equal(ns.result && ns.result.winner, 0, JSON.stringify(ns.result));
+});
+test('gungi: 自由配置（帥から・自陣3段・配置完了・おすすめ配置）', () => {
+  let s = gungi.init({ mode: 'advanced' });
+  assert.throws(() => gungi.applyMove(s, { place: '兵', to: [8, 0] }, 0), /帥/);
+  assert.throws(() => gungi.applyMove(s, { place: '帥', to: [5, 4] }, 0), /置けません/);
+  s = gungi.applyMove(s, { place: '帥', to: [8, 4] }, 0);
+  assert.equal(s.turn, 1);
+  s = gungi.applyMove(s, { autoSetup: true }, 1);
+  assert.ok(s.done[1]);
+  assert.equal(s.turn, 0, '相手が完了したら自分だけ続けて置ける');
+  s = gungi.applyMove(s, { place: '兵', to: [6, 4] }, 0);
+  assert.equal(s.turn, 0);
+  s = gungi.applyMove(s, { done: true }, 0);
+  assert.equal(s.phase, 'play');
+  assert.equal(s.turn, 0);
+  assert.equal(s.board[0][4][0].t, '帥', '後手の帥は180度回した位置');
+});
+test('gungi: ランダム対局・CPU同士の対局でエラーなく進み、駒の数が増えない', () => {
+  let seed = 17;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const rng = (n = 6) => 1 + Math.floor(rnd() * n);
+  const total = (s) => s.board.flat().flat().length + s.hands.reduce((a, h) => a + Object.values(h).reduce((x, y) => x + y, 0), 0);
+  for (const mode of ['intro', 'beginner', 'intermediate', 'advanced']) {
+    for (const cpu of [false, true]) {
+      let s = gungi.init({ mode });
+      let prev = total(s);
+      for (let i = 0; i < (cpu ? 60 : 200) && !s.result; i++) {
+        const move = cpu || s.phase === 'draft' ? gungi.aiMove(s, s.turn, rng) : (() => { const ms = gungi.legalMoves(s); return ms[Math.floor(rnd() * ms.length)]; })();
+        s = gungi.applyMove(s, move, s.turn);
+        const now = total(s);
+        assert.ok(now <= prev, '駒が増えた');
+        prev = now;
+        assert.ok(!gungi.inCheck(s.board, 1 - s.turn) || s.result, '指した側の帥が取られる状態になっていない');
+        for (const row of s.board) for (const st of row) assert.ok(st.length <= gungi.MODES[mode].maxTier, '段数の上限を超えた');
+      }
+    }
+  }
 });
 
 console.log(`\n${n} tests passed`);
