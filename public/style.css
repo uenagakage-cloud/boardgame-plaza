@@ -385,9 +385,19 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 .gob.o0 { background: radial-gradient(circle at 35% 30%, #ffb070, var(--orange) 60%); }
 .gob.o1 { background: radial-gradient(circle at 35% 30%, #86bdf5, var(--blue) 60%); }
-.sq .gob.s1 { width: 36%; height: 36%; }
+.sq .gob.s1 { width: 32%; height: 32%; }
 .sq .gob.s2 { width: 58%; height: 58%; }
-.sq .gob.s3 { width: 82%; height: 82%; }
+.sq .gob.s3 { width: 88%; height: 88%; }
+/* 駒の大きさの文字（大・中・小） */
+.gob { container-type: inline-size; }
+.gob-size {
+  position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%);
+  font-size: 36cqw; font-weight: 900; line-height: 1; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+}
+/* 文字と重ならないよう目を少し上に */
+.gob .eyes::before, .gob .eyes::after { top: 18%; }
+.gob.s1 .eyes::before, .gob.s1 .eyes::after { top: 12%; height: 18%; }
+.gob.s1 .gob-size { font-size: 44cqw; bottom: 6%; }
 .gob .eyes::before, .gob .eyes::after {
   content: ""; position: absolute; top: 34%; width: 16%; height: 20%;
   background: #fff; border-radius: 50%; box-shadow: inset 0 -35% 0 0 #1d1d1d;
@@ -406,8 +416,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   border: 1px solid var(--border);
 }
 .gob-slot {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 84px;
+  flex-direction: column;
+  gap: 2px;
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -419,11 +431,12 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 .gob-slot:disabled { cursor: default; }
 .gob-slot.sel { background: #fff3b0; }
+.gob-count { font-size: .8rem; font-weight: 800; color: var(--text); white-space: nowrap; }
 .gob-slot .gob.s1 { width: 26px; height: 26px; }
 .gob-slot .gob.s2 { width: 40px; height: 40px; }
 .gob-slot .gob.s3 { width: 56px; height: 56px; }
 @media (max-width: 480px) {
-  .gob-slot { width: 46px; height: 46px; }
+  .gob-slot { width: 56px; height: 70px; }
   .gob-slot .gob.s1 { width: 18px; height: 18px; }
   .gob-slot .gob.s2 { width: 29px; height: 29px; }
   .gob-slot .gob.s3 { width: 42px; height: 42px; }

@@ -555,7 +555,7 @@ async function clickShogi(here, legal, isSelMove) {
 // ---------- ゴブレットゴブラーズ ----------
 function gob(p, extra = '') {
   const e = h('span', `gob o${p.o} s${p.s} ${extra}`);
-  e.append(h('span', 'eyes'));
+  e.append(h('span', 'eyes'), h('span', 'gob-size', gobblet.SIZE_NAMES[p.s])); // 大中小を文字でも出す
   return e;
 }
 
@@ -567,16 +567,17 @@ function renderGobblet(el, v, act) {
 
   const handEl = (owner) => {
     const box = h('div', 'gob-hand' + (owner === me ? ' mine' : ' theirs'));
+    // 大きさごとに1つにまとめて「大 ×2」のように残りの数を出す
     for (const size of [3, 2, 1]) {
-      for (let k = 0; k < s.hands[owner][size]; k++) {
-        const b = h('button', 'gob-slot');
-        b.append(gob({ o: owner, s: size }));
-        b.disabled = !(owner === me && legal.some((m) => m.size === size));
-        if (owner === me && sel && sel.size === size && k === 0) b.classList.add('sel');
-        b.title = gobblet.SIZE_NAMES[size];
-        b.onclick = () => { sel = sel && sel.size === size ? null : { size }; render(); };
-        box.append(b);
-      }
+      const n = s.hands[owner][size];
+      if (!n) continue;
+      const b = h('button', 'gob-slot');
+      b.append(gob({ o: owner, s: size }), h('span', 'gob-count', `${gobblet.SIZE_NAMES[size]} ×${n}`));
+      b.disabled = !(owner === me && legal.some((m) => m.size === size));
+      if (owner === me && sel && sel.size === size) b.classList.add('sel');
+      b.title = `${gobblet.SIZE_NAMES[size]}（残り${n}個）`;
+      b.onclick = () => { sel = sel && sel.size === size ? null : { size }; render(); };
+      box.append(b);
     }
     if (!box.childElementCount) box.append(h('span', 'muted small', '手持ちなし'));
     return box;
