@@ -1193,4 +1193,60 @@ test('gungi: ランダム対局・CPU同士の対局でエラーなく進み、�
   }
 });
 
+test('paint: むずかしいお題・キャラクターのお題', () => {
+  const idx = (w) => paint.THEME_LIST.findIndex((t) => t[0] === w);
+  assert.equal(paint.THEME_TAGS[idx('ドラえもん')], 'chara');
+  assert.equal(paint.THEME_TAGS[idx('自由の女神')], 'hard');
+  assert.equal(paint.THEME_TAGS[idx('犬')], '');
+  assert.ok(paint.THEME_LIST[idx('ミッキーマウス')].includes('ミッキー'), '短い呼び方でも正解');
+  assert.equal(paint.THEME_TAGS.length, paint.THEME_LIST.length);
+});
+test('paint: 誰も正解できないと描いた人は -5点、履歴用の絵が取り出せる', () => {
+  let s = paint.init({ turns: 1, seconds: 60 }, 3);
+  s = paint.applyMove(s, { pick: 0 }, 0);
+  assert.equal(paint.archive(s), null, 'まだ答え発表ではない');
+  s = paint.applyMove(s, { shape: { type: 'line', x1: 10, y1: 10, x2: 300, y2: 200 } }, 0);
+  s = paint.tick(s); // 時間切れ
+  assert.equal(s.phase, 'reveal');
+  assert.deepEqual(s.scores, [-5, 0, 0]);
+  assert.equal(s.penalty, 5);
+  const a = paint.archive(s);
+  assert.equal(a.theme, ptAnswer(s));
+  assert.equal(a.shapes.length, 1);
+  assert.deepEqual(a.correct, []);
+  assert.equal(a.guessers, 2);
+  // 1人でも正解すれば減点なし
+  s = paint.tick(s);
+  assert.equal(s.painter, 1);
+  s = paint.applyMove(s, { pick: 0 }, 1);
+  s = paint.applyMove(s, { guess: ptAnswer(s) }, 2);
+  s = paint.applyMove(s, { giveUp: true }, 1);
+  assert.equal(s.penalty, 0);
+  assert.deepEqual(s.scores, [-5, 3, 10]);
+  // 何も描かずに終わった絵は履歴に入れない
+  assert.equal(paint.archive(s), null);
+});
+test('paint: 描く人固定モードはホストがずっと描く', () => {
+  assert.equal(paint.normalizeOptions({ painter: 'fixed' }).painter, 'fixed');
+  assert.equal(paint.normalizeOptions({ painter: 'x' }).painter, 'rotate');
+  assert.match(paint.variantName({ painter: 'fixed', turns: 2 }), /描く人固定・10問/);
+  let s = paint.init({ turns: 1, seconds: 60, painter: 'fixed' }, 3, undefined, { hostSeat: 1 });
+  assert.equal(s.totalRounds, 5);
+  for (let r = 1; r <= 3; r++) {
+    assert.equal(s.painter, 1, `第${r}ラウンドもホスト`);
+    s = paint.applyMove(s, { pick: 0 }, 1);
+    s = paint.applyMove(s, { giveUp: true }, 1);
+    s = paint.tick(s);
+  }
+  // 描く人が抜けたら次の人が引き継ぐ
+  s = paint.applyMove(s, { resign: true }, 1);
+  s = paint.tick(s);
+  assert.equal(s.painter, 2);
+  assert.equal(s.round, 5);
+  s = paint.applyMove(s, { pick: 0 }, 2);
+  s = paint.applyMove(s, { giveUp: true }, 2);
+  s = paint.tick(s);
+  assert.ok(s.result, '5問で終わり');
+});
+
 console.log(`\n${n} tests passed`);

@@ -1018,3 +1018,20 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .gn-help-tiers { display: flex; gap: 8px; flex-wrap: wrap; }
 .gungi-side0 { background: #fff; color: #222; border-color: #bbb; }
 .gungi-side1 { background: #1d1d1d; color: #fff; border-color: #1d1d1d; }
+
+/* ポンコツペイント: お題のタグ・減点・過去のイラスト */
+.pt-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: .7rem; font-weight: 800; vertical-align: middle; background: #fff; color: #333; }
+.pt-tag.hard { background: #ffe1dc; color: #b3261e; }
+.pt-tag.chara { background: #e3f0ff; color: #1d5fa8; }
+.pt-penalty { font-size: .6em; margin-top: 2px; color: #b3261e; text-align: center; }
+.pt-gal { align-items: flex-start; overflow-y: auto; }
+.pt-gal-box { max-width: 980px; display: grid; gap: 10px; margin: auto 0; }
+.pt-gal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pt-gal-head h3 { margin: 0; }
+.pt-gal-box > p { margin: 0; font-weight: 400; }
+.pt-gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.pt-gal-card { border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: grid; gap: 3px; cursor: zoom-in; background: var(--surface-2); min-width: 0; }
+.pt-gal-card canvas { width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.pt-gal-card.big { grid-column: 1 / -1; cursor: zoom-out; }
+.pt-gal-theme { font-weight: 800; }
+.pt-gal-card .small { overflow-wrap: anywhere; }

@@ -205,10 +205,17 @@ function renderLobby() {
           card.append(label);
           return select;
         };
-        const turns = mk('描く回数', 'paintTurns', [1, 2, 3], (n) => `1人${n}回`, 1);
+        const painterSel = mk('描く人', 'paintPainter', Object.keys(paint.PAINTER_MODES), (m) => paint.PAINTER_MODES[m], 'rotate');
+        const turnsLabel = (n) => (painterSel.value === 'fixed' ? `${n * paint.FIXED_ROUNDS_PER_TURN}問` : `1人${n}回`);
+        const turns = mk('描く回数', 'paintTurns', [1, 2, 3], turnsLabel, 1);
         const secs = mk('制限時間', 'paintSeconds', [60, 90, 120], (n) => `${n}秒`, 90);
         const mode = mk('描き方', 'paintMode', Object.keys(paint.MODES), (m) => paint.MODES[m], 'ponkotsu');
-        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value });
+        painterSel.title = '固定にすると、部屋を作った人（ホスト）がずっと描きます';
+        painterSel.addEventListener('change', () => { [...turns.options].forEach((o) => { o.textContent = turnsLabel(Number(o.value)); }); });
+        const gal = h('button', 'btn small', '🖼 過去のイラスト');
+        gal.onclick = () => openPaintGallery();
+        card.append(gal);
+        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value, painter: painterSel.value });
       }
       const row = h('div', 'side-pick');
       const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
@@ -1937,6 +1944,7 @@ function buildPaint(el) {
       <div class="pt-round"></div>
       <div class="pt-theme"></div>
       <div class="pt-timer"></div>
+      <button class="btn small pt-gallery-btn" type="button">🖼 過去のイラスト</button>
     </div>
     <div class="pt-choose"></div>
     <div class="pt-canvas-wrap"><canvas width="${paint.WIDTH}" height="${paint.HEIGHT}"></canvas><div class="pt-reveal"></div></div>
@@ -1960,6 +1968,7 @@ function buildPaint(el) {
   };
   x.ctx = x.canvas.getContext('2d');
   root.querySelectorAll('.pt-tool').forEach((b) => { b.onclick = () => { ptTool = b.dataset.tool; renderPaint(el, view); }; });
+  q('.pt-gallery-btn').onclick = () => openPaintGallery();
   q('.pt-undo').onclick = () => send({ type: 'move', move: { undo: true } });
   q('.pt-clear').onclick = async () => {
     if (await choose('全部消しますか？', [['yes', '消す'], [null, 'キャンセル']])) send({ type: 'move', move: { clear: true } });
@@ -2039,6 +2048,8 @@ function renderPaint(el, v) {
       pt.choose.append(h('span', 'muted', '描くお題を選んでください：'));
       s.choices.forEach((c, i) => {
         const b = h('button', 'btn primary', c);
+        const tag = s.choiceTags && s.choiceTags[i];
+        if (tag) b.append(h('span', 'pt-tag ' + tag, paint.TAG_NAMES[tag]));
         b.onclick = () => send({ type: 'move', move: { pick: i } });
         pt.choose.append(b);
       });
@@ -2049,7 +2060,10 @@ function renderPaint(el, v) {
   if (!ptDrag) ptDrawShapes(pt.ctx, s.shapes, null);
   pt.canvas.classList.toggle('drawing', s.phase === 'draw' && painter);
   pt.reveal.hidden = s.phase !== 'reveal';
-  if (s.phase === 'reveal') pt.reveal.textContent = `答え：${s.theme}`;
+  if (s.phase === 'reveal') {
+    pt.reveal.replaceChildren(h('div', null, `答え：${s.theme}`));
+    if (s.penalty) pt.reveal.append(h('div', 'pt-penalty', `誰もわからず… ${name(s.painter)} さん -${s.penalty}点`));
+  }
 
   // 道具
   pt.tools.hidden = !(s.phase === 'draw' && painter);
@@ -2081,6 +2095,67 @@ function renderPaint(el, v) {
     li.append(h('b', null, name(f.seat)), '：', f.correct ? (f.text ? `${f.text} …正解！` : '正解！') : f.text);
     return li;
   }));
+}
+
+// 過去のイラスト（サーバーに2日間保存された絵）
+function ptTimeAgo(t) {
+  const m = Math.max(0, Math.floor((Date.now() + serverOffset - t) / 60000));
+  if (m < 1) return 'たった今';
+  if (m < 60) return `${m}分前`;
+  const hr = Math.floor(m / 60);
+  return hr < 24 ? `${hr}時間前` : `${Math.floor(hr / 24)}日前`;
+}
+
+function ptArtCard(e) {
+  const card = h('div', 'pt-gal-card');
+  const cv = h('canvas');
+  cv.width = paint.WIDTH;
+  cv.height = paint.HEIGHT;
+  ptDrawShapes(cv.getContext('2d'), e.shapes, null);
+  const title = h('div', 'pt-gal-theme', e.theme);
+  if (e.tag) title.append(h('span', 'pt-tag ' + e.tag, paint.TAG_NAMES[e.tag]));
+  const result = e.correct.length ? `正解 ${e.correct.length}/${e.guessers}人（${e.correct.join('・')}）` : '誰もわからず';
+  card.append(cv, title, h('div', 'muted small', `🎨 ${e.painter}・${ptTimeAgo(e.at)}${e.mode === 'free' ? '・フリーハンド' : ''}`), h('div', 'muted small', result));
+  card.onclick = () => card.classList.toggle('big');
+  card.title = 'クリックで大きく表示';
+  return card;
+}
+
+async function openPaintGallery() {
+  const overlay = h('div', 'modal pt-gal');
+  const box = h('div', 'modal-box pt-gal-box');
+  const head = h('div', 'pt-gal-head');
+  const close = h('button', 'btn small', '閉じる');
+  head.append(h('h3', null, '過去のイラスト'), close);
+  const note = h('p', 'muted small', '答え発表まで進んだ絵が新しい順に並びます（2日たつと消えます）。絵をクリックすると大きく表示します。');
+  const grid = h('div', 'pt-gal-grid');
+  const more = h('button', 'btn', 'もっと見る');
+  more.hidden = true;
+  box.append(head, note, grid, more);
+  overlay.append(box);
+  const done = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') done(); };
+  close.onclick = done;
+  overlay.onclick = (e) => { if (e.target === overlay) done(); };
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  let before = '';
+  const load = async () => {
+    more.disabled = true;
+    try {
+      const res = await fetch(`/api/paint-gallery?limit=12${before ? `&before=${before}` : ''}`);
+      const data = await res.json();
+      grid.append(...data.items.map(ptArtCard));
+      if (data.items.length) before = String(data.items[data.items.length - 1].at);
+      if (!grid.childElementCount) grid.append(h('p', 'muted', 'まだイラストはありません。'));
+      more.hidden = !data.more;
+    } catch {
+      toast('イラストを読み込めませんでした');
+    }
+    more.disabled = false;
+  };
+  more.onclick = load;
+  await load();
 }
 
 // ---------- スカル ----------

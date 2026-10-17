@@ -2,3 +2,4 @@ node_modules/
 .claude/
 *.log
 public/ito-themes-list.html
+data/

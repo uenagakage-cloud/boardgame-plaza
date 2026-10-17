@@ -2,7 +2,8 @@
 // 2〜8人。描く人は「直線」と「円」しか使えないポンコツなお絵かきでお題を描き、ほかの人は早い者勝ちで答える。
 // 部屋の設定で「フリーハンド」モードにすると、ペンで自由に描ける（直線と円も使える）。
 // 流れ: お題選び（描く人が3つから選ぶ）→ お絵かき（制限時間）→ 答え発表 → 次の人へ。全員が決められた回数描いたら終了。
-// 点数: 正解した人は早い順に 10・8・6・5・4・3・2・1 点、描いた人は正解者1人につき 3 点。
+// 点数: 正解した人は早い順に 10・8・6・5・4・3・2・1 点、描いた人は正解者1人につき 3 点。誰も正解できなかったら描いた人は -5 点。
+// 「描く人固定」モードでは、開始時のホストがずっと描く（描く回数×5問）。
 // 時間切れ・全員正解・答え発表の切り替えはサーバーが tick() で行う（state.tickAt の時刻）。
 // 手: { pick: 0〜2 } お題を選ぶ / { shape: { type: 'line'|'circle', x1, y1, x2, y2 } } 描く（座標は 0〜1000 × 0〜750）
 //     フリーハンドでは { shape: { type: 'path', pts: [[x, y], ...] } } も描ける
@@ -23,6 +24,8 @@ export const CHOOSE_MS = 20000;
 export const REVEAL_MS = 6000;
 export const GUESS_POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
 export const PAINTER_POINTS = 3;
+export const NO_ANSWER_PENALTY = 5;
+export const FIXED_ROUNDS_PER_TURN = 5; // 描く人固定のときの「描く回数」1つあたりの問題数
 
 // お題（「表示|読み|別の答え…」。どれを答えても正解）
 const THEMES = `
@@ -458,10 +461,155 @@ UFO|ユーフォー|未確認飛行物体
 卓球|たっきゅう|ピンポン
 柔道|じゅうどう
 `.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
-export const THEME_LIST = (() => {
-  const seen = new Set();
-  return THEMES.filter(([w]) => !seen.has(w) && seen.add(w));
-})();
+// むずかしいお題（形が複雑なもの・目に見えないもの）
+const HARD_THEMES = `
+自由の女神|じゆうのめがみ
+エッフェル塔|えっふぇるとう
+ピサの斜塔|ぴさのしゃとう|斜塔
+スフィンクス
+モアイ|モアイ像|もあいぞう
+大仏|だいぶつ|奈良の大仏
+金閣寺|きんかくじ
+東京スカイツリー|スカイツリー|すかいつりー
+富士山|ふじさん
+モナリザ|モナ・リザ
+ムンクの叫び|叫び|さけび|むんくのさけび
+考える人|かんがえるひと
+招き猫|まねきねこ|マネキネコ
+こけし|コケシ
+ひな人形|ひなにんぎょう|雛人形|おひなさま|お雛様
+門松|かどまつ
+蚊取り線香|かとりせんこう
+流しそうめん|ながしそうめん
+盆踊り|ぼんおどり
+将棋|しょうぎ
+カメレオン
+ハリネズミ|はりねずみ
+ナマケモノ|なまけもの
+タツノオトシゴ|たつのおとしご
+カモノハシ|かものはし
+アルマジロ
+ミイラ|みいら
+雪女|ゆきおんな
+ゾンビ
+宇宙飛行士|うちゅうひこうし
+オーロラ
+ブラックホール
+日食|にっしょく|皆既日食|かいきにっしょく
+地震|じしん
+蜃気楼|しんきろう
+化石|かせき|アンモナイト
+方位磁石|ほういじしゃく|コンパス|方位磁針|ほういじしん
+天秤|てんびん|はかり
+万華鏡|まんげきょう
+ルービックキューブ
+黒電話|くろでんわ
+公衆電話|こうしゅうでんわ
+お化け屋敷|おばけやしき
+回転寿司|かいてんずし|回転ずし
+満員電車|まんいんでんしゃ
+渋滞|じゅうたい|交通渋滞
+停電|ていでん
+静電気|せいでんき
+筋肉痛|きんにくつう
+時差ぼけ|じさぼけ
+迷子|まいご
+一目惚れ|ひとめぼれ|一目ぼれ
+二日酔い|ふつかよい
+金縛り|かなしばり
+既読無視|きどくむし|既読スルー|きどくするー
+手品|てじな|マジック
+綱渡り|つなわたり
+福笑い|ふくわらい
+冬眠|とうみん
+脱皮|だっぴ
+ドミノ倒し|どみのだおし|ドミノ
+引っ越し|ひっこし
+ダイエット
+リバウンド
+筋トレ|きんとれ|筋力トレーニング
+反抗期|はんこうき
+走馬灯|そうまとう
+光合成|こうごうせい
+重力|じゅうりょく|万有引力|ばんゆういんりょく
+指紋|しもん
+`.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
+
+// 有名なキャラクター
+const CHARACTER_THEMES = `
+ミッキーマウス|ミッキー|みっきー
+ミニーマウス|ミニー|みにー
+ドナルドダック|ドナルド
+ドラえもん|どらえもん
+のび太|のびた|野比のび太|のびのびた
+アンパンマン|あんぱんまん
+ばいきんまん|バイキンマン
+ピカチュウ|ぴかちゅう|ピカチュー
+ハローキティ|キティちゃん|キティ
+スヌーピー
+くまのプーさん|プーさん|ぷーさん
+マリオ|スーパーマリオ
+ルイージ
+ヨッシー
+星のカービィ|カービィ|カービー
+ソニック
+パックマン
+スライム
+トトロ|となりのトトロ
+孫悟空|悟空|ごくう|そんごくう
+ルフィ|モンキー・D・ルフィ
+うずまきナルト|ナルト
+江戸川コナン|コナン|名探偵コナン
+野原しんのすけ|しんちゃん|クレヨンしんちゃん|しんのすけ
+ちびまる子ちゃん|まる子|まるこ
+サザエさん|さざえさん
+とっとこハム太郎|ハム太郎|はむたろう
+リラックマ
+ぐでたま
+くまモン|くまもん
+ふなっしー
+ガチャピン
+ゴジラ
+ウルトラマン
+仮面ライダー|かめんらいだー
+ゲゲゲの鬼太郎|鬼太郎|きたろう
+目玉おやじ|めだまおやじ
+鉄腕アトム|アトム
+白雪姫|しらゆきひめ
+シンデレラ
+ピノキオ
+ピーターパン
+エルサ|アナと雪の女王|アナ雪
+スティッチ
+バズ・ライトイヤー|バズ
+ウッディ
+ニモ|ファインディング・ニモ|カクレクマノミ
+ミニオン|ミニオンズ
+スパイダーマン
+バットマン
+スーパーマン
+ハリー・ポッター|ハリーポッター|ハリポタ
+ダース・ベイダー|ダースベイダー
+ヨーダ
+ムーミン
+ミッフィー
+ペコちゃん|ぺこちゃん
+カーネル・サンダース|カーネルサンダース|ケンタッキーのおじさん
+桃太郎|ももたろう
+金太郎|きんたろう
+浦島太郎|うらしまたろう
+一寸法師|いっすんぼうし
+かぐや姫|かぐやひめ
+天狗|てんぐ
+`.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
+
+// THEME_LIST[i] = [表示, 別の答え…]、THEME_TAGS[i] = '' / 'hard'（むずかしい）/ 'chara'（キャラクター）
+const ALL_THEMES = [
+  ...THEMES.map((t) => [t, '']), ...HARD_THEMES.map((t) => [t, 'hard']), ...CHARACTER_THEMES.map((t) => [t, 'chara']),
+].filter(([[w]], i, arr) => arr.findIndex(([[x]]) => x === w) === i);
+export const THEME_LIST = ALL_THEMES.map(([t]) => t);
+export const THEME_TAGS = ALL_THEMES.map(([, tag]) => tag);
+export const TAG_NAMES = { hard: 'むずかしい', chara: 'キャラ' };
 
 // 答えの比べ方: 全角/半角・カタカナ/ひらがな・大文字/小文字・空白の違いは無視
 export function normalizeAnswer(text) {
@@ -477,11 +625,15 @@ export function normalizeOptions(o) {
   const turns = [1, 2, 3].includes(Number(o && o.turns)) ? Number(o.turns) : 1;
   const seconds = [60, 90, 120].includes(Number(o && o.seconds)) ? Number(o.seconds) : 90;
   const mode = o && o.mode === 'free' ? 'free' : 'ponkotsu';
-  return { turns, seconds, mode };
+  const painter = o && o.painter === 'fixed' ? 'fixed' : 'rotate';
+  return { turns, seconds, mode, painter };
 }
+// 描く人: 'rotate' = 順番に交代 / 'fixed' = ホストが固定で描く
+export const PAINTER_MODES = { rotate: '順番に交代', fixed: '固定（ホスト）' };
 export const variantName = (o) => {
   const x = normalizeOptions(o);
-  return `${x.mode === 'free' ? 'フリーハンド・' : ''}${x.turns}周・${x.seconds}秒`;
+  const rounds = x.painter === 'fixed' ? `描く人固定・${x.turns * FIXED_ROUNDS_PER_TURN}問` : `${x.turns}周`;
+  return `${x.mode === 'free' ? 'フリーハンド・' : ''}${rounds}・${x.seconds}秒`;
 };
 
 function shuffle(arr, rng) {
@@ -496,12 +648,15 @@ function shuffle(arr, rng) {
 const label = (seat) => `P${seat + 1}`;
 const active = (s) => [...Array(s.players).keys()].filter((p) => !s.out[p]);
 
-export function init(options, players = 2, rng) {
+export function init(options, players = 2, rng, ctx) {
   const opts = normalizeOptions(options);
+  const fixed = opts.painter === 'fixed';
+  const host = ctx && ctx.hostSeat >= 0 && ctx.hostSeat < players ? ctx.hostSeat : 0;
   const s = {
     players, options: opts, out: Array(players).fill(false), scores: Array(players).fill(0),
-    deck: shuffle(THEME_LIST.map((_, i) => i), rng), round: 0, totalRounds: players * opts.turns,
-    painter: -1, phase: 'choose', choices: [], theme: null, shapes: [], feed: [], correct: [],
+    deck: shuffle(THEME_LIST.map((_, i) => i), rng), round: 0,
+    totalRounds: fixed ? opts.turns * FIXED_ROUNDS_PER_TURN : players * opts.turns,
+    fixedPainter: fixed ? host : -1, painter: -1, phase: 'choose', choices: [], theme: null, shapes: [], feed: [], correct: [],
     endsAt: null, tickAt: null, turn: 0, result: null, history: [],
   };
   startRound(s, rng);
@@ -515,9 +670,13 @@ function drawTheme(s, rng) {
 
 function startRound(s, rng) {
   s.round += 1;
-  // 描く人は順番に（抜けた人は飛ばす）
-  let p = s.painter;
-  do p = (p + 1) % s.players; while (s.out[p]);
+  // 描く人は順番に（抜けた人は飛ばす）。固定モードは同じ人（その人が抜けたら次の人が引き継ぐ）
+  let p = s.fixedPainter;
+  if (p < 0 || s.out[p]) {
+    p = p < 0 ? s.painter : p;
+    do p = (p + 1) % s.players; while (s.out[p]);
+    if (s.fixedPainter >= 0) s.fixedPainter = p;
+  }
   s.painter = p;
   s.turn = p;
   s.phase = 'choose';
@@ -526,6 +685,7 @@ function startRound(s, rng) {
   s.shapes = [];
   s.feed = [];
   s.correct = [];
+  s.penalty = 0;
   s.endsAt = Date.now() + CHOOSE_MS;
   s.tickAt = s.endsAt;
   s.history.push(`第${s.round}/${s.totalRounds}ラウンド：${label(p)} が描きます`);
@@ -544,6 +704,22 @@ function endRound(s, reason) {
   s.endsAt = Date.now() + REVEAL_MS;
   s.tickAt = s.endsAt;
   s.history.push(`${reason}。答えは「${THEME_LIST[s.theme][0]}」（正解 ${s.correct.length}人）`);
+  // 誰も分からなかったら描いた人は減点（抜けた人は除く）
+  s.penalty = 0;
+  if (!s.correct.length && !s.out[s.painter]) {
+    s.penalty = NO_ANSWER_PENALTY;
+    s.scores[s.painter] -= NO_ANSWER_PENALTY;
+    s.history.push(`誰も正解できなかったので ${label(s.painter)} は -${NO_ANSWER_PENALTY}点`);
+  }
+}
+
+// 答え発表になった絵を履歴（ギャラリー）用に取り出す。サーバーが保存する
+export function archive(s) {
+  if (s.phase !== 'reveal' || s.theme === null || !s.shapes.length) return null;
+  return {
+    key: s.round, theme: THEME_LIST[s.theme][0], tag: THEME_TAGS[s.theme], painter: s.painter, mode: s.options.mode,
+    shapes: s.shapes, correct: s.correct.slice(), guessers: active(s).filter((p) => p !== s.painter).length,
+  };
 }
 
 function finishGame(s) {
@@ -579,6 +755,7 @@ export function viewFor(s, seat) {
     ...s,
     deck: null,
     choices: painter ? s.choices.map((i) => THEME_LIST[i][0]) : s.choices.map(() => '？'),
+    choiceTags: painter ? s.choices.map((i) => THEME_TAGS[i]) : s.choices.map(() => ''),
     theme: s.theme === null ? null : open || painter || s.correct.includes(seat) ? THEME_LIST[s.theme][0] : null,
     themeLength: s.theme === null ? 0 : [...THEME_LIST[s.theme][0]].length,
     feed: s.feed.map((f) => (f.correct && !open && f.seat !== seat && !painter ? { ...f, text: null } : f)),

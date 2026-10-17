@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import * as chess from './public/games/chess.js';
@@ -23,7 +23,8 @@ import * as gungi from './public/games/gungi.js';
 
 const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi };
 const PORT = Number(process.env.PORT) || 3000;
-const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC = path.join(ROOT, 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -34,10 +35,73 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+// ---------- お絵かきの履歴（みんなでポンコツペイント） ----------
+// 答え発表になった絵を保存して、ロビーやゲーム中に見られるようにする。2日より前のものは消す
+const GALLERY_FILE = process.env.GALLERY_FILE || path.join(ROOT, 'data', 'paint-gallery.json');
+const GALLERY_KEEP_MS = 2 * 24 * 60 * 60 * 1000;
+const GALLERY_MAX_POINTS = 1_000_000; // 全部の絵の点の数の上限（大きくなりすぎないように、古いものから消す）
+let gallery = [];
+try { gallery = JSON.parse(await readFile(GALLERY_FILE, 'utf8')); } catch { gallery = []; }
+const artPoints = (e) => e.shapes.reduce((a, x) => a + (x.pts ? x.pts.length : 2), 0);
+
+function pruneGallery() {
+  const limit = Date.now() - GALLERY_KEEP_MS;
+  const before = gallery.length;
+  gallery = gallery.filter((e) => e.at >= limit);
+  let total = gallery.reduce((a, e) => a + artPoints(e), 0);
+  while (gallery.length && total > GALLERY_MAX_POINTS) total -= artPoints(gallery.shift());
+  return gallery.length !== before;
+}
+
+let gallerySaveTimer = null;
+function saveGallery() {
+  if (gallerySaveTimer) return;
+  gallerySaveTimer = setTimeout(async () => {
+    gallerySaveTimer = null;
+    try {
+      await mkdir(path.dirname(GALLERY_FILE), { recursive: true });
+      await writeFile(GALLERY_FILE, JSON.stringify(gallery));
+    } catch (e) {
+      console.error('お絵かきの履歴を保存できませんでした', e);
+    }
+  }, 2000);
+}
+if (pruneGallery()) saveGallery();
+setInterval(() => { if (pruneGallery()) saveGallery(); }, 60 * 60 * 1000).unref();
+
+// 部屋の状態が「答え発表」になったら絵を履歴に入れる（同じラウンドは1回だけ）
+function archiveArt(room) {
+  const g = GAMES[room.game];
+  if (!g.archive || !room.state) return;
+  const a = g.archive(room.state);
+  if (!a) return;
+  const key = `${room.gameNo}:${a.key}`;
+  if (room.archivedKey === key) return;
+  room.archivedKey = key;
+  const nameOf = (seat) => room.seats[seat]?.name || '?';
+  gallery.push({
+    id: crypto.randomUUID(), at: Date.now(), theme: a.theme, tag: a.tag, mode: a.mode, shapes: a.shapes,
+    painter: nameOf(a.painter), correct: a.correct.map(nameOf), guessers: a.guessers,
+  });
+  pruneGallery();
+  saveGallery();
+}
+
+function sendGallery(req, res) {
+  const url = new URL(req.url, 'http://x');
+  const before = Number(url.searchParams.get('before')) || Infinity;
+  const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit')) || 12));
+  pruneGallery();
+  const older = gallery.filter((e) => e.at < before).reverse();
+  const body = JSON.stringify({ items: older.slice(0, limit), more: older.length > limit, keepHours: GALLERY_KEEP_MS / 3600000 });
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(body);
+}
+
 // ---------- 静的ファイル ----------
 const server = http.createServer(async (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { pathname = '/'; }
+  if (pathname === '/api/paint-gallery') { sendGallery(req, res); return; }
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(PUBLIC, pathname));
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403).end(); return; }
@@ -183,6 +247,7 @@ function lobbyList() {
 
 function broadcastRoom(room) {
   room.lastActive = Date.now();
+  archiveArt(room);
   scheduleTick(room);
   scheduleBot(room);
   for (const ws of room.sockets) send(ws, roomView(room, ws));
@@ -321,7 +386,7 @@ function handle(ws, msg) {
       const players = room.seats.filter(Boolean);
       if (players.length < (g.minPlayers || 2)) throw new UserError(`${g.minPlayers || 2}人以上で開始できます`);
       room.seats = players; // 空席を詰める。開始後に来た人は観戦
-      room.state = g.init(room.options, players.length, rng);
+      room.state = g.init(room.options, players.length, rng, gameContext(room));
       room.rematch = players.map(() => false);
       systemChat(room, `${players.length}人でゲームを開始します`);
       broadcastRoom(room);
@@ -381,7 +446,7 @@ function handle(ws, msg) {
       room.seats.forEach((p, i) => { if (p && p.bot) room.rematch[i] = true; }); // CPU はいつでも再戦OK
       if (room.rematch.every(Boolean)) {
         room.seats.push(room.seats.shift()); // 先後（席順）を回す
-        room.state = GAMES[room.game].init(room.options, room.seats.length, rng);
+        room.state = GAMES[room.game].init(room.options, room.seats.length, rng, gameContext(room));
         room.rematch = room.seats.map(() => false);
         room.drawOffer = null;
         room.gameNo++;
