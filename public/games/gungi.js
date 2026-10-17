@@ -212,6 +212,15 @@ function targetKinds(s, from, to) {
   return kinds;
 }
 
+// 盤上の駒（どちらの駒でも）が今の盤で動ける所。帥が取られるかどうかは見ない（動ける範囲の表示用）
+export function pieceTargets(s, r, c) {
+  const st = s.board[r][c];
+  if (!st.length) return [];
+  return reachable(s.board, r, c)
+    .map(({ to, jump }) => ({ to, jump, kinds: targetKinds(s, [r, c], to) }))
+    .filter((x) => x.kinds.length);
+}
+
 function frontRowOK(s, p, r) {
   // 自分の一番前の駒（塔の一番上が自分の駒）より前には打てない
   let front = p === 0 ? 9 : -1;

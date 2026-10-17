@@ -1249,4 +1249,12 @@ test('paint: 描く人固定モードはホストがずっと描く', () => {
   assert.ok(s.result, '5問で終わり');
 });
 
+test('gungi: どちらの駒でも動ける範囲を出せる（相手の番でも）', () => {
+  const s = gungi.init({ mode: 'intro' });
+  // 先手の番に後手の兵（９三）の動ける所: 前後に1つ
+  const t = gungi.pieceTargets(s, 2, 0);
+  assert.deepEqual(t.map((x) => x.to).sort(), [[1, 0], [3, 0]]);
+  assert.deepEqual(t[0].kinds, ['move']);
+  assert.deepEqual(gungi.pieceTargets(s, 4, 4), [], '空きマスは何もない');
+});
 console.log(`\n${n} tests passed`);

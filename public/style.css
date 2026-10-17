@@ -1048,3 +1048,17 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .pt-gal-card.big { grid-column: 1 / -1; cursor: zoom-out; }
 .pt-gal-theme { font-weight: 800; }
 .pt-gal-card .small { overflow-wrap: anywhere; }
+
+/* 軍儀: タップした駒の動ける範囲（緑＝自分、赤＝相手。点線＝飛び越え） */
+.gn-pv-note { font-size: .82rem; font-weight: 700; color: var(--muted); text-align: center; }
+.gn-pv-note.mine { color: #1f7a4b; }
+.gn-pv-note.opp { color: #c0392b; }
+.gn-hint.pv.dot { width: 34%; height: 34%; background: rgba(31, 122, 75, .6); }
+.gn-hint.pv.cap { border-color: rgba(31, 122, 75, .85); }
+.gn-hint.pv.tsuke { background: rgba(31, 122, 75, .8); }
+.gn-hint.pv.opp.dot { background: rgba(214, 48, 39, .65); }
+.gn-hint.pv.opp.cap { border-color: rgba(214, 48, 39, .9); }
+.gn-hint.pv.opp.tsuke { background: rgba(214, 48, 39, .8); }
+.gn-hint.pv.jump.dot { outline: 2px dashed rgba(0, 0, 0, .55); outline-offset: 2px; }
+.gn-hint.pv.jump.cap { border-style: dashed; }
+.gn-hint.pv.jump.tsuke { outline: 2px dashed rgba(0, 0, 0, .55); outline-offset: 1px; }

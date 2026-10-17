@@ -2340,6 +2340,10 @@ function renderGungi(el, v, act) {
   if (gnSel && gnSel.from) targets = legal.filter((m) => !m.drop && gnSame(m.from, gnSel.from));
   else if (gnSel && gnSel.drop && s.phase === 'play') targets = legal.filter((m) => m.drop === gnSel.drop);
   else if (gnSel && gnSel.drop && s.phase === 'draft') targets = gungi.draftTargets(s, v.you, gnSel.drop).map((to) => ({ to, kind: 'place' }));
+  // 指す駒を選んでいないときは、タップした駒（相手の駒・自分の番でないときの自分の駒も）の動ける所を表示する
+  const pvStack = !gnSel && gnInfo ? s.board[gnInfo[0]][gnInfo[1]] : [];
+  const pvPiece = pvStack.length ? pvStack[pvStack.length - 1] : null;
+  const preview = pvPiece ? gungi.pieceTargets(s, gnInfo[0], gnInfo[1]) : [];
 
   // 持ち駒
   const handEl = (owner) => {
@@ -2403,6 +2407,12 @@ function renderGungi(el, v, act) {
         const jump = ts.some((m) => m.jump);
         const cls = kinds.has('capture') ? 'cap' : kinds.has('tsuke') ? 'tsuke' : 'dot';
         cell.append(h('span', `gn-hint ${cls}${jump ? ' jump' : ''}`, kinds.has('tsuke') && !kinds.has('capture') ? '↑' : ''));
+      } else {
+        const pv = preview.find((x) => gnSame(x.to, here));
+        if (pv) {
+          const cls = pv.kinds.includes('capture') ? 'cap' : pv.kinds.includes('tsuke') ? 'tsuke' : 'dot';
+          cell.append(h('span', `gn-hint pv ${cls}${pv.jump ? ' jump' : ''}${pvPiece.o !== me ? ' opp' : ''}`, cls === 'tsuke' ? '↑' : ''));
+        }
       }
       cell.onclick = () => gnClick(here, ts, s, v, legal);
       board.append(cell);
@@ -2412,7 +2422,13 @@ function renderGungi(el, v, act) {
 
   const main = h('div', 'gn-main');
   const left = h('div', 'gn-left');
-  left.append(handEl(1 - me), board, handEl(me));
+  const note = h('div', 'gn-pv-note');
+  if (pvPiece) {
+    note.classList.add(pvPiece.o !== me ? 'opp' : 'mine');
+    note.textContent = `${pvPiece.o !== me ? '相手' : '自分'}の${gungi.PIECE_NAMES[pvPiece.t]}（${pvStack.length}段目）が動ける所：${preview.length ? `${preview.length}マス` : 'なし'}`
+      + (preview.some((x) => x.jump) ? '（点線の印は飛び越え）' : '');
+  } else note.textContent = '駒をタップすると、動ける所を盤に表示します（相手の駒もOK）';
+  left.append(handEl(1 - me), note, board, handEl(me));
   // 配置中の操作
   if (s.phase === 'draft' && myTurn) {
     const tools = h('div', 'gn-tools');
