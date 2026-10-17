@@ -193,3 +193,6 @@ export function applyMove(s, mv) {
   ns.history = [...s.history, note];
   return ns;
 }
+
+// 終局後に感想戦（局面を戻す・別の手を試す）ができる
+export const reviewable = true;

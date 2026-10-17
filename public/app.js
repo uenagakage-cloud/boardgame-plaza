@@ -145,7 +145,8 @@ function choose(title, options) {
 
 function sendMove(move) {
   sel = null;
-  send({ type: 'move', move });
+  // 感想戦中は本番の手ではなく、感想戦の盤に指す
+  send(view && view.review ? { type: 'review', move } : { type: 'move', move });
   render();
 }
 
@@ -280,6 +281,12 @@ function statusText(v) {
     if (v.you >= 0 && v.you === v.hostSeat) return ['wait', `参加者 ${n}人。${v.minPlayers}人以上そろったら「ゲーム開始」を押してください。`];
     return ['wait', `参加者 ${n}人。ホストの開始を待っています…`];
   }
+  if (s.result && v.review) {
+    const r = v.review, rs = r.state;
+    const where = r.branch ? `${r.ply}手目から変化 ${r.branch}手` : r.ply === r.total ? '終局の局面' : r.ply === 0 ? '開始局面' : `${r.ply}手目`;
+    const next = rs.result ? '（この局面で終局）' : `・${g.sideNames[rs.turn]}の番`;
+    return ['mine', `感想戦：${where}${next}`];
+  }
   if (s.result) {
     if (s.result.winners) {
       // チーム戦
@@ -351,6 +358,7 @@ function renderRoom() {
       again.onclick = () => send({ type: 'rematch' });
       ctl.append(again);
     } else {
+      if (g.reviewable) renderReviewControls(ctl, v);
       const again = h('button', 'btn primary', v.rematch[v.you] ? '相手の返事を待っています…' : v.rematch[opp] ? '再戦を受ける' : '再戦する（先後入れ替え）');
       again.disabled = v.rematch[v.you];
       again.onclick = () => send({ type: 'rematch' });
@@ -364,7 +372,21 @@ function renderRoom() {
   const hist = $('#history');
   const withNames = (m) => (v.multi ? m.replace(/(?:P|プレイヤー)(\d+)/g, (all, n) => v.seats[n - 1]?.name || all) : m);
   hist.replaceChildren(...(v.state ? v.state.history : []).map((m, i) => h('li', null, `${i + 1}. ${withNames(m)}`)));
-  hist.scrollTop = hist.scrollHeight;
+  if (v.review) {
+    // 感想戦: 今の手を目立たせ、手をクリックするとその局面へ。変化は本譜の下に出す
+    const r = v.review;
+    [...hist.children].forEach((li, i) => {
+      li.classList.add('review-move');
+      if (i === r.ply - 1) li.classList.add(r.branch ? 'review-base' : 'review-now');
+      if (v.you >= 0) li.onclick = () => send({ type: 'review', action: 'goto', ply: i + 1 });
+    });
+    r.state.history.slice(r.ply).forEach((m, k) => {
+      const li = h('li', 'review-branch' + (k === r.branch - 1 ? ' review-now' : ''), `変化 ${r.ply + k + 1}. ${m}`);
+      hist.append(li);
+    });
+    const now = hist.querySelector('.review-now') || hist.querySelector('.review-base');
+    if (now) now.scrollIntoView({ block: 'nearest' });
+  } else hist.scrollTop = hist.scrollHeight;
 
   // チャット
   $('#spectators').textContent = v.spectators ? `・観戦 ${v.spectators}人` : '';
@@ -378,8 +400,44 @@ function renderRoom() {
   }));
   if (atBottom) log.scrollTop = log.scrollHeight;
 
-  if (v.state) RENDERERS[v.game]($('#board'), v, canAct(v));
+  if (v.state && v.review) RENDERERS[v.game]($('#board'), { ...v, state: v.review.state, reviewing: true }, v.you >= 0 && !v.review.state.result);
+  else if (v.state) RENDERERS[v.game]($('#board'), v, canAct(v));
   else renderWaiting($('#board'), v);
+}
+
+// 感想戦のボタン（⏮ ◀ ▶ ⏭・本譜に戻る・終わる）
+function renderReviewControls(ctl, v) {
+  const r = v.review;
+  const go = (msg) => send({ type: 'review', ...msg });
+  if (!r) {
+    const start = h('button', 'btn', '感想戦をする');
+    start.title = '局面を戻したり、別の手を試したりできます（相手と同じ盤を見ます）';
+    start.onclick = () => go({ action: 'start' });
+    ctl.append(start);
+    return;
+  }
+  const btn = (label, title, disabled, msg) => {
+    const b = h('button', 'btn small review-nav', label);
+    b.title = title;
+    b.disabled = disabled;
+    b.onclick = () => go(msg);
+    return b;
+  };
+  ctl.append(
+    btn('⏮', '開始局面へ', r.ply === 0 && !r.branch, { action: 'goto', ply: 0 }),
+    btn('◀', '1手戻る', r.ply === 0 && !r.branch, { action: 'back' }),
+    btn('▶', '本譜を1手進める', !!r.branch || r.ply >= r.total, { action: 'goto', ply: r.ply + 1 }),
+    btn('⏭', '終局の局面へ', r.ply === r.total && !r.branch, { action: 'goto', ply: r.total }),
+  );
+  if (r.branch) {
+    const back = h('button', 'btn small', '本譜に戻る');
+    back.onclick = () => go({ action: 'goto', ply: r.ply });
+    ctl.append(back);
+  }
+  const end = h('button', 'btn small ghost', '感想戦を終わる');
+  end.onclick = () => go({ action: 'end' });
+  ctl.append(end);
+  ctl.append(h('span', 'muted small review-help', '盤で駒を動かすと別の手（変化）を試せます。棋譜の手をクリックするとその局面へ。'));
 }
 
 // 多人数ゲームの開始前の待合室
@@ -484,6 +542,7 @@ function renderShogi(el, v, act) {
   const targets = sel ? legal.filter(isSelMove) : [];
   const king = s.check ? shogi.kingPos(s.board, s.turn) : null;
 
+  const actor = v.reviewing ? s.turn : me; // 感想戦では手番の側を動かせる
   const handEl = (owner) => {
     const box = h('div', 'hand' + (owner === me ? ' mine' : ' theirs'));
     box.append(h('span', 'hand-label', shogi.sideNames[owner]));
@@ -496,9 +555,9 @@ function renderShogi(el, v, act) {
       const b = h('button', 'hand-piece');
       b.append(koma({ o: owner, t }, me));
       if (n > 1) b.append(h('span', 'count', String(n)));
-      const usable = owner === me && legal.some((m) => m.drop === t);
+      const usable = owner === actor && legal.some((m) => m.drop === t);
       b.disabled = !usable;
-      if (sel && sel.drop === t && owner === me) b.classList.add('sel');
+      if (sel && sel.drop === t && owner === actor) b.classList.add('sel');
       b.onclick = () => { sel = sel && sel.drop === t ? null : { drop: t }; render(); };
       pieces.append(b);
     }

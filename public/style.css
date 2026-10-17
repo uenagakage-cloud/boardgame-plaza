@@ -1067,3 +1067,13 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .pt-canvas-wrap, .pt-canvas-wrap *, .pt-head, .pt-tools, .pt-choose, .pt-scores {
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
 }
+
+/* 感想戦 */
+.review-nav { min-width: 40px; font-size: 1rem; }
+.review-help { flex-basis: 100%; }
+#history li.review-move { cursor: pointer; border-radius: 4px; }
+#history li.review-move:hover { background: var(--surface-2); }
+#history li.review-now { background: #ffe27a; color: #3a2c00; font-weight: 800; }
+#history li.review-base { background: #fff3c4; color: #3a2c00; }
+#history li.review-branch { color: #1d5fa8; padding-left: 8px; }
+#history li.review-branch.review-now { color: #3a2c00; }

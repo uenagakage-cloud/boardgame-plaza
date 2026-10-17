@@ -227,6 +227,7 @@ function roomView(room, ws) {
     state: room.state && g.viewFor ? g.viewFor(room.state, you) : room.state,
     drawOffer: room.drawOffer,
     rematch: room.rematch,
+    review: reviewView(room),
     chat: room.chat.slice(-60),
   };
 }
@@ -295,6 +296,60 @@ function requirePlayer(ws) {
   return { room, seat };
 }
 
+// ---------- 感想戦（チェス・将棋） ----------
+// 対局の手を room.moveLog に残しておき、終局後に好きな局面へ戻したり、別の手（変化）を試したりできる。
+// room.review = { ply: 本譜の何手目まで進めたか, branch: その局面から試した手 }。部屋の全員で同じ盤を見る
+const REVIEW_MAX_BRANCH = 200;
+
+function reviewState(room) {
+  const g = GAMES[room.game];
+  const key = JSON.stringify([room.gameNo, room.review.ply, room.review.branch.length]);
+  if (room.reviewCache && room.reviewCache.key === key) return room.reviewCache.state;
+  let s = g.init(room.options);
+  for (const mv of room.moveLog.slice(0, room.review.ply)) s = g.applyMove(s, mv, s.turn);
+  for (const mv of room.review.branch) s = g.applyMove(s, mv, s.turn);
+  room.reviewCache = { key, state: s };
+  return s;
+}
+
+function reviewView(room) {
+  if (!room.review) return null;
+  return { ply: room.review.ply, total: room.moveLog.length, branch: room.review.branch.length, state: reviewState(room) };
+}
+
+function handleReview(room, msg) {
+  const g = GAMES[room.game];
+  if (!g.reviewable || !room.state || !room.state.result) throw new UserError('感想戦は対局が終わってからできます');
+  const total = room.moveLog.length;
+  if (msg.action === 'start') { room.review = room.review || { ply: total, branch: [] }; return; }
+  if (!room.review) throw new UserError('感想戦は始まっていません');
+  if (msg.action === 'end') { room.review = null; room.reviewCache = null; return; }
+  if (msg.action === 'goto') {
+    // 本譜の好きな手数へ（変化は消える）
+    room.review = { ply: Math.max(0, Math.min(total, Math.round(Number(msg.ply) || 0))), branch: [] };
+    return;
+  }
+  if (msg.action === 'back') {
+    // 1手戻る（変化中なら変化を1手戻す）
+    if (room.review.branch.length) room.review = { ...room.review, branch: room.review.branch.slice(0, -1) };
+    else room.review = { ply: Math.max(0, room.review.ply - 1), branch: [] };
+    return;
+  }
+  if (msg.move) {
+    const s = reviewState(room);
+    if (s.result) throw new UserError('この局面は終局しています');
+    if (room.review.branch.length >= REVIEW_MAX_BRANCH) throw new UserError('変化が長すぎます');
+    g.applyMove(s, msg.move, s.turn); // 指せない手ならここでエラー
+    const mv = JSON.parse(JSON.stringify(msg.move));
+    // 本譜と同じ手なら本譜を1手進めるだけにする
+    const main = room.moveLog[room.review.ply];
+    if (!room.review.branch.length && main && JSON.stringify(main) === JSON.stringify(mv)) room.review = { ply: room.review.ply + 1, branch: [] };
+    else room.review = { ...room.review, branch: [...room.review.branch, mv] };
+    return;
+  }
+  throw new UserError('不明な操作です');
+}
+
 function finish(room, result) {
   room.state = { ...room.state, result };
   room.drawOffer = null;
@@ -328,7 +383,7 @@ function handle(ws, msg) {
       const options = g.normalizeOptions ? g.normalizeOptions(msg.options) : {};
       const multi = isMulti(g);
       const room = {
-        code: newCode(), game: msg.game, gameNo: 1, options,
+        code: newCode(), game: msg.game, gameNo: 1, options, moveLog: [], review: null,
         seats: Array(g.maxPlayers || 2).fill(null), sockets: new Set(),
         state: multi ? null : g.init(options), drawOffer: null, rematch: [false, false], chat: [],
         createdAt: Date.now(), lastActive: Date.now(), host: ws.clientId,
@@ -400,6 +455,7 @@ function handle(ws, msg) {
       const g = GAMES[room.game];
       if (room.state.turn !== seat && !g.canActOutOfTurn?.(room.state)) throw new UserError('相手の手番です');
       room.state = g.applyMove(room.state, msg.move, seat, rng, gameContext(room));
+      if (g.reviewable) room.moveLog.push(JSON.parse(JSON.stringify(msg.move)));
       room.drawOffer = null;
       broadcastRoom(room);
       if (room.state.result) broadcastLobby();
@@ -449,6 +505,8 @@ function handle(ws, msg) {
         room.state = GAMES[room.game].init(room.options, room.seats.length, rng, gameContext(room));
         room.rematch = room.seats.map(() => false);
         room.drawOffer = null;
+        room.moveLog = [];
+        room.review = null;
         room.gameNo++;
         systemChat(room, `第${room.gameNo}局を開始します（先後入れ替え）`);
         broadcastLobby();
@@ -505,6 +563,12 @@ function handle(ws, msg) {
       systemChat(room, 'ロビーに戻りました');
       broadcastRoom(room);
       broadcastLobby();
+      return;
+    }
+    case 'review': {
+      const { room } = requirePlayer(ws);
+      handleReview(room, msg);
+      broadcastRoom(room);
       return;
     }
     case 'chat': {
