@@ -1985,8 +1985,13 @@ function buildPaint(el) {
   });
   // 描く人のドラッグ
   const canDraw = () => view && view.state && view.state.phase === 'draw' && view.you === view.state.painter;
+  // 長押しのメニュー（コピーなど）や文字の選択が出ないようにする
+  x.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  x.root.querySelector('.pt-canvas-wrap').addEventListener('selectstart', (e) => e.preventDefault());
   x.canvas.addEventListener('pointerdown', (e) => {
     if (!canDraw()) return;
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     try { x.canvas.setPointerCapture(e.pointerId); } catch { /* 取れなくても描ける */ }
     const [px, py] = ptCanvasPoint(e);
     ptDrag = ptTool === 'pen' ? { type: 'path', pts: [[px, py]] } : { type: ptTool, x1: px, y1: py, x2: px, y2: py };
