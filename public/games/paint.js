@@ -668,6 +668,16 @@ function drawTheme(s, rng) {
   return s.deck.pop();
 }
 
+// むずかしいお題を1つ山から抜き出す（山になければ山を作り直す）
+function drawHard(s, rng) {
+  let i = s.deck.findLastIndex((t) => THEME_TAGS[t] === 'hard');
+  if (i < 0) {
+    s.deck = shuffle(THEME_LIST.map((_, k) => k), rng);
+    i = s.deck.findLastIndex((t) => THEME_TAGS[t] === 'hard');
+  }
+  return s.deck.splice(i, 1)[0];
+}
+
 function startRound(s, rng) {
   s.round += 1;
   // 描く人は順番に（抜けた人は飛ばす）。固定モードは同じ人（その人が抜けたら次の人が引き継ぐ）
@@ -680,7 +690,8 @@ function startRound(s, rng) {
   s.painter = p;
   s.turn = p;
   s.phase = 'choose';
-  s.choices = [drawTheme(s, rng), drawTheme(s, rng), drawTheme(s, rng)];
+  // 3つのうち1つは必ずむずかしいお題（並び順はばらばら）
+  s.choices = shuffle([drawHard(s, rng), drawTheme(s, rng), drawTheme(s, rng)], rng);
   s.theme = null;
   s.shapes = [];
   s.feed = [];

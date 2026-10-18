@@ -1257,4 +1257,13 @@ test('gungi: どちらの駒でも動ける範囲を出せる（相手の番で�
   assert.deepEqual(t[0].kinds, ['move']);
   assert.deepEqual(gungi.pieceTargets(s, 4, 4), [], '空きマスは何もない');
 });
+test('paint: お題の3つのうち1つは必ずむずかしいお題', () => {
+  let s = paint.init({ turns: 3, seconds: 60 }, 8);
+  for (let r = 0; r < 24; r++) {
+    assert.ok(s.choices.some((i) => paint.THEME_TAGS[i] === 'hard'), `第${s.round}ラウンド`);
+    assert.equal(new Set(s.choices).size, 3, '同じお題は出ない');
+    s = paint.tick(paint.tick(paint.tick(s))); // 選ぶ→時間切れ→次のラウンド
+    if (s.result) break;
+  }
+});
 console.log(`\n${n} tests passed`);
