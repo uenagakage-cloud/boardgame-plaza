@@ -15,6 +15,8 @@ import * as bk from '../public/games/blokus.js';
 import * as paint from '../public/games/paint.js';
 import * as skull from '../public/games/skull.js';
 import * as gungi from '../public/games/gungi.js';
+import * as towerbattle from '../public/games/towerbattle.js';
+import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
 const cm = (s, a, b, promo) => chess.applyMove(s, { from: sqc(a), to: sqc(b), promo });
@@ -1278,5 +1280,46 @@ test('paint: 消しゴムはどちらの描き方でも使える・普通のお�
   const idx = (w) => paint.THEME_LIST.findIndex((t) => t[0] === w);
   assert.equal(paint.THEME_TAGS[idx('カマキリ')], '');
   assert.equal(paint.THEME_TAGS[idx('リコーダー')], '');
+});
+const tbCtx = { physics: towerPhysics };
+test('towerbattle: 真ん中に積めば残り、島の外に落とした人は脱落', () => {
+  let s = towerbattle.init({ seconds: 30 }, 3);
+  assert.equal(s.turn, 0);
+  assert.equal(s.phase, 'aim');
+  assert.throws(() => towerbattle.applyMove(s, { aim: { x: 10, angle: 0 } }, 1, undefined, tbCtx), /番ではありません/);
+  s = towerbattle.applyMove(s, { aim: { x: 7, angle: 20 } }, 0, undefined, tbCtx);
+  assert.deepEqual(s.aim, { x: 7, angle: 15 }, '角度は15度ずつ');
+  s = { ...s, current: 'elephant' };
+  s = towerbattle.applyMove(s, { drop: { x: 0, angle: 0 } }, 0, undefined, tbCtx);
+  assert.equal(s.phase, 'falling');
+  assert.equal(s.pieces.length, 1);
+  assert.ok(s.drop.frames.length > 5, '落ちる様子のコマがある');
+  assert.ok(s.top < -40, '塔の高さが上がる');
+  assert.equal(s.out[0], false);
+  assert.throws(() => towerbattle.applyMove(s, { drop: { x: 0, angle: 0 } }, 0, undefined, tbCtx), /置けません/, 'ゆれている間は置けない');
+  s = towerbattle.tick(s, undefined, tbCtx);
+  assert.equal(s.turn, 1);
+  assert.equal(s.drop, null);
+  // P2 は島の外（右端）に落とす → 落ちて脱落
+  s = towerbattle.applyMove(s, { drop: { x: 300, angle: 0 } }, 1, undefined, tbCtx);
+  assert.equal(s.out[1], true);
+  assert.equal(s.fellBy, 1);
+  assert.equal(s.pieces.length, 1, '落ちた動物は消える');
+  s = towerbattle.tick(s, undefined, tbCtx);
+  assert.equal(s.turn, 2, '脱落した人は飛ばす');
+  // 時間切れは今のねらいで落とす
+  s = towerbattle.applyMove(s, { aim: { x: -300, angle: 0 } }, 2, undefined, tbCtx);
+  s = towerbattle.tick(s, undefined, tbCtx);
+  assert.equal(s.out[2], true);
+  s = towerbattle.tick(s, undefined, tbCtx);
+  assert.equal(s.result.winner, 0, '最後に残った人の勝ち');
+});
+test('towerbattle: 番の人が抜けたら次の人へ', () => {
+  let s = towerbattle.init({}, 3);
+  assert.equal(s.options.seconds, 30);
+  s = towerbattle.applyMove(s, { resign: true }, 0);
+  assert.equal(s.turn, 1);
+  s = towerbattle.applyMove(s, { resign: true }, 2);
+  assert.equal(s.result.winner, 1);
 });
 console.log(`\n${n} tests passed`);

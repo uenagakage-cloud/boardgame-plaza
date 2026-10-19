@@ -14,8 +14,9 @@ import * as blokus from './games/blokus.js';
 import * as paint from './games/paint.js';
 import * as skull from './games/skull.js';
 import * as gungi from './games/gungi.js';
+import * as towerbattle from './games/towerbattle.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -30,6 +31,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  towerbattle: { icon: '🦒', desc: '順番に動物を島に積み上げる。落とした人は脱落、最後まで残った人の勝ち。2〜8人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
   gungi: { icon: '軍', desc: '駒を最大3段まで積み上げる立体将棋。入門〜上級・CPU対戦あり。' },
   skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
@@ -194,6 +196,16 @@ function renderLobby() {
         cpuLabel.append(cpu, h('span', null, 'CPUと対戦'));
         card.append(label, cpuLabel);
         getOptions = () => ({ mode: select.value, cpu: cpu.checked });
+      }
+      if (key === 'towerbattle') {
+        const label = h('label', 'option-toggle');
+        const select = h('select', 'size-select');
+        for (const n of [15, 30, 60]) { const o = h('option', null, `${n}秒`); o.value = String(n); select.append(o); }
+        select.value = store.get('towerSeconds', '30');
+        select.onchange = () => store.set('towerSeconds', select.value);
+        label.append(h('span', null, '持ち時間'), select);
+        card.append(label);
+        getOptions = () => ({ seconds: Number(select.value) });
       }
       if (key === 'paint') {
         const mk = (labelText, storeKey, values, fmt, def) => {
@@ -2228,6 +2240,223 @@ async function openPaintGallery() {
   await load();
 }
 
+// ---------- どうぶつタワーバトル ----------
+// 骨組みは作り直さず、canvas は requestAnimationFrame で毎フレーム描く（落ちる様子のコマを再生する）
+let tb = null;
+let tbAim = { x: 0, angle: 0 };
+let tbAimKey = '';
+let tbAimSent = 0;
+let tbAimTimer = null;
+const TB_CANVAS = { w: 640, h: 800 };
+
+function tbDrawAnimal(ctx, t, x, y, a, alpha = 1) {
+  const sh = towerbattle.SHAPES[t];
+  if (!sh) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.fillStyle = sh.color;
+  ctx.strokeStyle = 'rgba(0, 0, 0, .55)';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  for (const p of sh.parts) {
+    ctx.beginPath();
+    if (p.type === 'rect') ctx.rect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h);
+    else if (p.type === 'circle') ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    else { ctx.moveTo(p.pts[0][0], p.pts[0][1]); for (const q of p.pts.slice(1)) ctx.lineTo(q[0], q[1]); ctx.closePath(); }
+    ctx.fill();
+    ctx.stroke();
+  }
+  // 目
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(sh.eye[0], sh.eye[1], 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1d1d1d';
+  ctx.beginPath(); ctx.arc(sh.eye[0] + 1.5, sh.eye[1], 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// 見える範囲（塔が高くなったら引いて全体が入るようにする）
+function tbCamera(s) {
+  const spawnY = s.top - towerbattle.DROP_GAP;
+  const bottom = 170;
+  const needH = bottom - (spawnY - 150);
+  const worldH = Math.max(660, needH);
+  const worldW = worldH * (TB_CANVAS.w / TB_CANVAS.h);
+  return { scale: TB_CANVAS.w / worldW, left: -worldW / 2, top: bottom - worldH, spawnY };
+}
+
+function tbDraw() {
+  if (!tb || !view || view.game !== 'towerbattle' || !view.state || !document.body.contains(tb.root)) { tb && (tb.raf = null); return; }
+  tb.raf = requestAnimationFrame(tbDraw);
+  const s = view.state, ctx = tb.ctx;
+  const cam = tbCamera(s);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // 空と海
+  const sky = ctx.createLinearGradient(0, 0, 0, TB_CANVAS.h);
+  sky.addColorStop(0, '#8fd3f4');
+  sky.addColorStop(1, '#e6f7ff');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, TB_CANVAS.w, TB_CANVAS.h);
+  ctx.setTransform(cam.scale, 0, 0, cam.scale, -cam.left * cam.scale, -cam.top * cam.scale);
+  const W = TB_CANVAS.w / cam.scale;
+  ctx.fillStyle = '#3d8fd1';
+  ctx.fillRect(cam.left, 120, W, 400);
+  ctx.fillStyle = 'rgba(255, 255, 255, .35)';
+  for (let i = 0; i < 8; i++) ctx.fillRect(cam.left + i * (W / 8) + 20, 140 + (i % 2) * 30, W / 16, 4);
+  // 島
+  const I = towerbattle.ISLAND;
+  ctx.fillStyle = '#7a5a3a';
+  ctx.beginPath();
+  ctx.moveTo(-I.w / 2, 0); ctx.lineTo(I.w / 2, 0); ctx.lineTo(I.w / 2 - 30, 130); ctx.lineTo(-I.w / 2 + 30, 130); ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#6bbf59';
+  ctx.fillRect(-I.w / 2, -2, I.w, 14);
+
+  // 動物（落ちている最中はコマを再生、それ以外は止まった位置）
+  const d = s.drop;
+  let playing = false;
+  if (d) {
+    const k = Math.floor((Date.now() + serverOffset - d.startAt) / towerbattle.FRAME_MS);
+    if (k < d.frames.length) {
+      const f = d.frames[Math.max(0, k)];
+      d.bodies.forEach((t, i) => tbDrawAnimal(ctx, t, f[i][0], f[i][1], f[i][2]));
+      playing = true;
+    }
+  }
+  if (!playing) for (const p of s.pieces) tbDrawAnimal(ctx, p.t, p.x, p.y, p.a);
+
+  // ねらい中の動物（自分のはその場の位置、ほかの人のはサーバーから来た位置）
+  if (s.phase === 'aim' && !s.result) {
+    const mine = view.you === s.turn;
+    const aim = mine ? tbAim : s.aim;
+    ctx.strokeStyle = 'rgba(0, 0, 0, .25)';
+    ctx.setLineDash([8, 10]);
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(aim.x, cam.spawnY); ctx.lineTo(aim.x, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    tbDrawAnimal(ctx, s.current, aim.x, cam.spawnY, (aim.angle * Math.PI) / 180, mine ? 1 : 0.75);
+  }
+  // 残り時間
+  if (s.phase === 'aim' && s.endsAt) {
+    const left = Math.max(0, Math.ceil((s.endsAt - (Date.now() + serverOffset)) / 1000));
+    tb.timer.textContent = `${left}秒`;
+    tb.timer.classList.toggle('hurry', left <= 5);
+  } else tb.timer.textContent = '';
+}
+
+function tbSendAim(force) {
+  const send1 = () => { tbAimSent = Date.now(); tbAimTimer = null; send({ type: 'move', move: { aim: tbAim } }); };
+  clearTimeout(tbAimTimer);
+  if (force || Date.now() - tbAimSent > 150) send1();
+  else tbAimTimer = setTimeout(send1, 150);
+}
+
+function tbMyTurn() {
+  return view && view.state && view.state.phase === 'aim' && !view.state.result && view.you === view.state.turn;
+}
+
+function tbMove(dx, rot) {
+  if (!tbMyTurn()) return;
+  const R = towerbattle.AIM_RANGE;
+  tbAim = { x: Math.max(-R, Math.min(R, tbAim.x + dx)), angle: (((tbAim.angle + rot) % 360) + 360) % 360 };
+  tbSendAim();
+}
+
+function tbDrop() {
+  if (!tbMyTurn()) return;
+  clearTimeout(tbAimTimer);
+  send({ type: 'move', move: { drop: tbAim } });
+}
+
+function buildTower(el) {
+  const root = h('div', 'tb');
+  root.innerHTML = `
+    <div class="tb-head">
+      <div class="tb-who"></div>
+      <div class="tb-next"></div>
+      <div class="tb-timer"></div>
+    </div>
+    <div class="tb-canvas-wrap"><canvas width="${TB_CANVAS.w}" height="${TB_CANVAS.h}"></canvas><div class="tb-banner" hidden></div></div>
+    <div class="tb-tools">
+      <button class="btn tb-left" title="左へ（←キー）">◀</button>
+      <button class="btn tb-rotl" title="左に回す（Zキー）">⟲ 15°</button>
+      <button class="btn primary tb-drop" title="落とす（スペースキー）">落とす</button>
+      <button class="btn tb-rotr" title="右に回す（Xキー）">⟳ 15°</button>
+      <button class="btn tb-right" title="右へ（→キー）">▶</button>
+    </div>
+    <p class="muted small tb-help">盤の上をドラッグしても左右に動かせます。キーボード: ← → で移動、Z / X で回転、スペースで落とす。</p>
+    <div class="uno-players tb-players"></div>`;
+  const q = (sel) => root.querySelector(sel);
+  const x = { el, root, canvas: q('canvas'), who: q('.tb-who'), next: q('.tb-next'), timer: q('.tb-timer'), banner: q('.tb-banner'), tools: q('.tb-tools'), help: q('.tb-help'), players: q('.tb-players') };
+  x.ctx = x.canvas.getContext('2d');
+  q('.tb-left').onclick = () => tbMove(-15, 0);
+  q('.tb-right').onclick = () => tbMove(15, 0);
+  q('.tb-rotl').onclick = () => tbMove(0, -15);
+  q('.tb-rotr').onclick = () => tbMove(0, 15);
+  q('.tb-drop').onclick = tbDrop;
+  // ドラッグで左右に動かす
+  let dragging = false;
+  const toWorldX = (e) => {
+    const r = x.canvas.getBoundingClientRect();
+    const cam = tbCamera(view.state);
+    return ((e.clientX - r.left) * (TB_CANVAS.w / r.width)) / cam.scale + cam.left;
+  };
+  x.canvas.addEventListener('pointerdown', (e) => {
+    if (!tbMyTurn()) return;
+    dragging = true;
+    try { x.canvas.setPointerCapture(e.pointerId); } catch { /* なくても動く */ }
+    tbMove(Math.round(toWorldX(e)) - tbAim.x, 0);
+  });
+  x.canvas.addEventListener('pointermove', (e) => { if (dragging) tbMove(Math.round(toWorldX(e)) - tbAim.x, 0); });
+  const stop = () => { dragging = false; };
+  x.canvas.addEventListener('pointerup', stop);
+  x.canvas.addEventListener('pointercancel', stop);
+  x.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  el.replaceChildren(root);
+  return x;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!view || view.game !== 'towerbattle' || !tbMyTurn()) return;
+  if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const k = e.key;
+  if (k === 'ArrowLeft') tbMove(e.shiftKey ? -2 : -10, 0);
+  else if (k === 'ArrowRight') tbMove(e.shiftKey ? 2 : 10, 0);
+  else if (k === 'z' || k === 'Z') tbMove(0, -15);
+  else if (k === 'x' || k === 'X') tbMove(0, 15);
+  else if (k === ' ' || k === 'Enter') tbDrop();
+  else return;
+  e.preventDefault();
+});
+
+function renderTower(el, v) {
+  const s = v.state, me = v.you;
+  if (!tb || tb.el !== el || !el.contains(tb.root)) tb = buildTower(el);
+  const name = (seat) => v.seats[seat]?.name || '?';
+  // 手番が変わったら、ねらいを真ん中に戻す
+  const key = `${v.code}:${v.gameNo}:${s.dropCount}:${s.turn}`;
+  if (key !== tbAimKey) { tbAimKey = key; tbAim = { x: 0, angle: 0 }; }
+  const mine = tbMyTurn();
+  tb.who.textContent = s.result ? '結果' : s.phase === 'falling' ? `${name(s.drop ? s.drop.by : s.turn)} さんの${towerbattle.ANIMALS[s.drop ? s.drop.bodies.at(-1) : s.current].name}…` : mine ? `あなたの番：${towerbattle.ANIMALS[s.current].name}` : `${name(s.turn)} さんの番：${towerbattle.ANIMALS[s.current].name}`;
+  tb.next.textContent = s.result ? '' : `つぎ：${towerbattle.ANIMALS[s.phase === 'falling' ? s.current : s.next].name}`;
+  tb.tools.hidden = !mine;
+  tb.help.hidden = !mine;
+  // 落としたときの知らせ
+  const fell = s.phase === 'falling' && s.fellBy != null;
+  tb.banner.hidden = !fell && !s.result;
+  if (s.result) tb.banner.textContent = s.result.winner != null ? `${name(s.result.winner)} さんの勝ち！` : '引き分け';
+  else if (fell) tb.banner.textContent = `落ちた！ ${name(s.fellBy)} さんは脱落`;
+  tb.players.replaceChildren(...v.seats.map((p, i) => {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.turn && !s.result ? ' turn' : '') + (s.result && s.result.winner === i ? ' winner' : ''));
+    chip.append(h('span', 'pname', p ? p.name : '?'));
+    if (s.out[i]) chip.append(h('span', 'wb-count', '脱落'));
+    else if (i === s.turn && !s.result) chip.append(h('span', 'wb-vote', 'ばん'));
+    return chip;
+  }));
+  if (!tb.raf) tb.raf = requestAnimationFrame(tbDraw);
+}
+
 // ---------- スカル ----------
 let skBid = null;
 let skKey = '';
@@ -2561,7 +2790,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

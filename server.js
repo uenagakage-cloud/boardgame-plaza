@@ -20,8 +20,10 @@ import * as blokus from './public/games/blokus.js';
 import * as paint from './public/games/paint.js';
 import * as skull from './public/games/skull.js';
 import * as gungi from './public/games/gungi.js';
+import * as towerbattle from './public/games/towerbattle.js';
+import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -161,6 +163,7 @@ function hostSeat(room) {
 const gameContext = (room) => ({
   hostSeat: hostSeat(room),
   online: room.seats.map((s) => !!s && isOnline(room, s.clientId)),
+  physics: towerPhysics, // どうぶつタワーバトルの物理（サーバーだけで計算する）
 });
 
 // state.tickAfter（ミリ秒後）か state.tickAt（その時刻）にゲームの tick() を呼ぶ（ito の答え合わせ・制限時間など）
@@ -174,7 +177,12 @@ function scheduleTick(room) {
   const delay = room.state.tickAt ? Math.max(0, room.state.tickAt - Date.now()) : room.state.tickAfter;
   room.tickTimer = setTimeout(() => {
     if (!rooms.has(room.code) || !room.state) return;
-    room.state = g.tick(room.state, rng);
+    try {
+      room.state = g.tick(room.state, rng, gameContext(room));
+    } catch (e) {
+      console.error('tick でエラー', e);
+      return;
+    }
     broadcastRoom(room);
   }, delay);
 }
