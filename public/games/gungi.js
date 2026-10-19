@@ -15,16 +15,16 @@
 //   ・謀が敵の駒にツケたとき、同じ種類の持ち駒があれば寝返らせられる（敵の駒は除外され、自分の駒に置き換わる）
 //   ・自分の帥が取られる手は指せない。相手の帥を詰ませたら勝ち。手がなければ引き分け、同一局面4回・帥だけでも引き分け
 // 移動の範囲は gungi.io（公式ルール準拠）の駒の動きの図をもとにしている。
-// 手: { from, to, kind: 'move'|'capture'|'tsuke', betray? } / { drop: 種類, to } / 配置中は { place: 種類, to } { done: true } { autoSetup: true }
+// 手: { from, to, kind: 'move'|'capture'|'tsuke', betray? } / { drop: 種類, to }
 export const id = 'gungi';
 export const title = '軍儀';
 export const sideNames = ['先手', '後手'];
 
 export const MODES = {
-  intro: { name: '入門', maxTier: 2, marshalStack: false, draft: false, specials: [] },
-  beginner: { name: '初級', maxTier: 2, marshalStack: false, draft: false, specials: ['弓'] },
-  intermediate: { name: '中級', maxTier: 2, marshalStack: true, draft: true, specials: ['弓', '砲', '筒', '謀'] },
-  advanced: { name: '上級', maxTier: 3, marshalStack: true, draft: true, specials: ['弓', '砲', '筒', '謀'] },
+  intro: { name: '入門', maxTier: 2, marshalStack: false, specials: [] },
+  beginner: { name: '初級', maxTier: 2, marshalStack: false, specials: ['弓'] },
+  intermediate: { name: '中級', maxTier: 2, marshalStack: true, specials: ['弓', '砲', '筒', '謀'] },
+  advanced: { name: '上級', maxTier: 3, marshalStack: true, specials: ['弓', '砲', '筒', '謀'] },
 };
 const SPECIALS = ['弓', '砲', '筒', '謀'];
 export const PIECE_COUNTS = { 帥: 1, 大: 1, 中: 1, 小: 2, 侍: 2, 槍: 3, 馬: 2, 忍: 2, 砦: 2, 兵: 4, 砲: 1, 弓: 2, 筒: 1, 謀: 1 };
@@ -65,7 +65,7 @@ const FIXED = {
   intro: '3img3/1s2n2s1/d1fwdwf1d/9/9/9/D1FWDWF1D/1S2N2S1/3GMI3',
   beginner: '3img3/1ra1n1as1/d1fwdwf1d/9/9/9/D1FWDWF1D/1SA1N1AR1/3GMI3',
 };
-// 自由配置で「おすすめ配置」を使うときの形（先手から見た [行, 列]。後手は180度回す）
+// おすすめ配置（中級・上級の初期配置）。先手から見た [行, 列]。後手は180度回す
 const TEMPLATE = [
   ['帥', 8, 4], ['大', 8, 3], ['中', 8, 5], ['忍', 7, 1], ['弓', 7, 2], ['槍', 7, 4], ['弓', 7, 6], ['馬', 7, 7],
   ['兵', 6, 0], ['砦', 6, 2], ['侍', 6, 3], ['兵', 6, 4], ['侍', 6, 5], ['砦', 6, 6], ['兵', 6, 8],
@@ -97,10 +97,21 @@ export function init(options) {
   const mode = MODES[opts.mode];
   const s = {
     options: opts, board: emptyBoard(), hands: [pieceSet(opts.mode), pieceSet(opts.mode)],
-    phase: mode.draft ? 'draft' : 'play', done: [false, false], turn: 0,
+    phase: 'play', turn: 0,
     lastMove: null, check: false, positions: {}, result: null, history: [],
   };
-  if (!mode.draft) {
+  if (!FIXED[opts.mode]) {
+    // おすすめ配置で始める: 型に置けない駒は持ち駒
+    for (const o of [0, 1]) {
+      for (const [t, r0, c0] of TEMPLATE) {
+        if (!s.hands[o][t]) continue;
+        const [r, c] = o === 0 ? [r0, c0] : [8 - r0, 8 - c0];
+        s.board[r][c].push({ o, t });
+        s.hands[o][t] -= 1;
+      }
+    }
+    s.positions[posKey(s)] = 1;
+  } else {
     // 固定配置: 盤にない駒は持ち駒
     FIXED[opts.mode].split('/').forEach((row, r) => {
       let c = 0;
@@ -299,45 +310,6 @@ export function legalMoves(s) {
   });
 }
 
-// ---------- 自由配置 ----------
-const homeRows = (p) => (p === 0 ? [6, 7, 8] : [0, 1, 2]);
-
-export function draftTargets(s, p, t) {
-  const mode = MODES[s.options.mode];
-  const out = [];
-  const placedMarshal = s.board.some((row) => row.some((st) => st.some((x) => x.o === p && x.t === '帥')));
-  if (!placedMarshal && t !== '帥') return out;
-  for (const r of homeRows(p)) for (let c = 0; c < 9; c++) {
-    const st = s.board[r][c];
-    if (st.length && (top(st).o !== p || top(st).t === '帥' || st.length >= mode.maxTier)) continue;
-    if (t === '帥' && st.length && !mode.marshalStack) continue;
-    out.push([r, c]);
-  }
-  return out;
-}
-
-function draftPlace(ns, p, t, r, c) {
-  if (!ns.hands[p][t]) throw new Error('その駒は持っていません');
-  if (!draftTargets(ns, p, t).some(([a, b]) => a === r && b === c)) {
-    const placedMarshal = ns.board.some((row) => row.some((st) => st.some((x) => x.o === p && x.t === '帥')));
-    throw new Error(!placedMarshal && t !== '帥' ? '最初は帥を置いてください' : 'そこには置けません（自陣の3段だけ）');
-  }
-  ns.board[r][c].push({ o: p, t });
-  ns.hands[p][t] -= 1;
-}
-
-function afterDraftStep(ns, p) {
-  if (ns.done[0] && ns.done[1]) {
-    ns.phase = 'play';
-    ns.turn = 0;
-    ns.positions[posKey(ns)] = 1;
-    ns.history.push('配置が終わりました。対局開始！');
-    return;
-  }
-  const other = 1 - p;
-  ns.turn = ns.done[other] ? p : other;
-}
-
 // ---------- 状態の見せ方 ----------
 export const canActOutOfTurn = () => false;
 export const scoreOf = (s, seat) => {
@@ -347,11 +319,6 @@ export const scoreOf = (s, seat) => {
 
 export function phaseText(s, you) {
   if (s.result) return null;
-  if (s.phase === 'draft') {
-    if (you !== s.turn) return null;
-    const placed = s.board.some((row) => row.some((st) => st.some((x) => x.o === you && x.t === '帥')));
-    return placed ? 'あなたの配置の番：駒を1つ置くか「配置完了」' : 'あなたの配置の番：まず帥を自陣に置いてください';
-  }
   if (you !== s.turn) return null;
   return s.check ? '王手！ 帥を守ってください' : 'あなたの番です';
 }
@@ -362,7 +329,7 @@ export const squareName = (r, c) => COLS[c] + ROWS[r];
 
 const clone = (s) => ({
   ...s, board: s.board.map((row) => row.map((st) => st.slice())), hands: [{ ...s.hands[0] }, { ...s.hands[1] }],
-  done: s.done.slice(), positions: { ...s.positions }, history: s.history.slice(),
+  positions: { ...s.positions }, history: s.history.slice(),
 });
 
 function finishPlayMove(ns, s, m, captured) {
@@ -405,39 +372,6 @@ export function applyMove(s, mv, seat) {
   if (s.turn !== seat) throw new Error('あなたの番ではありません');
   const ns = clone(s);
 
-  if (s.phase === 'draft') {
-    if (mv.autoSetup) {
-      // おすすめ配置: 空いている所に型どおり置いて配置完了
-      for (const [t, r0, c0] of TEMPLATE) {
-        const [r, c] = seat === 0 ? [r0, c0] : [8 - r0, 8 - c0];
-        if (!ns.hands[seat][t] || ns.board[r][c].length) continue;
-        if (!draftTargets(ns, seat, t).some(([a, b]) => a === r && b === c)) continue;
-        ns.board[r][c].push({ o: seat, t });
-        ns.hands[seat][t] -= 1;
-      }
-      if (!ns.board.some((row) => row.some((st) => st.some((x) => x.o === seat && x.t === '帥')))) throw new Error('帥を置ける場所がありません');
-      ns.done[seat] = true;
-      ns.history.push(`${sideNames[seat]}がおすすめ配置で配置完了`);
-      afterDraftStep(ns, seat);
-      return ns;
-    }
-    if (mv.done) {
-      if (!ns.board.some((row) => row.some((st) => st.some((x) => x.o === seat && x.t === '帥')))) throw new Error('先に帥を置いてください');
-      ns.done[seat] = true;
-      ns.history.push(`${sideNames[seat]}が配置完了`);
-      afterDraftStep(ns, seat);
-      return ns;
-    }
-    if (mv.place) {
-      const [r, c] = mv.to || [];
-      draftPlace(ns, seat, mv.place, r, c);
-      ns.history.push(`${seat === 0 ? '▲' : '△'}${squareName(r, c)}${mv.place}（配置）`);
-      afterDraftStep(ns, seat);
-      return ns;
-    }
-    throw new Error('配置中です');
-  }
-
   const legal = legalMoves(s);
   const m = legal.find((x) => (mv.drop ? x.drop === mv.drop && same(x.to, mv.to)
     : !x.drop && same(x.from, mv.from) && same(x.to, mv.to) && x.kind === mv.kind && !!x.betray === !!mv.betray));
@@ -452,7 +386,8 @@ export function applyMove(s, mv, seat) {
 function material(s, p) {
   let v = 0;
   for (const row of s.board) for (const st of row) st.forEach((x, i) => {
-    const w = VALUES[x.t] * (1 + 0.15 * i);
+    // 帥は取られたら負けなので点数には入れない（段の加点で帥を積みたがらないように）
+    const w = x.t === '帥' ? 0 : VALUES[x.t] * (1 + 0.15 * i);
     v += x.o === p ? w : -w;
   });
   for (const t of PIECE_ORDER) v += 0.8 * VALUES[t] * ((s.hands[p][t] || 0) - (s.hands[1 - p][t] || 0));
@@ -491,7 +426,6 @@ function replyValue(next, seat) {
 
 export function aiMove(s, seat, rng) {
   const rand = rng ? () => (rng(1000) - 1) / 1000 : Math.random;
-  if (s.phase === 'draft') return { autoSetup: true };
   let best = null, bestScore = -Infinity;
   for (const m of legalMoves(s)) {
     const { board, hands, captured } = apply(s, m);

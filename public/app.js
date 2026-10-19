@@ -2626,7 +2626,7 @@ function renderGungi(el, v, act) {
 
   // 上部: モード・操作
   const bar = h('div', 'gn-bar');
-  bar.append(h('span', 'gn-mode', `${mode.name}（${mode.maxTier}段まで${mode.draft ? '・自由配置' : '・固定配置'}）`));
+  bar.append(h('span', 'gn-mode', `${mode.name}（${mode.maxTier}段まで）`));
   const helpBtn = h('button', 'btn small', '駒の動き一覧');
   helpBtn.onclick = () => { gnHelp = !gnHelp; render(); };
   bar.append(helpBtn);
@@ -2637,7 +2637,6 @@ function renderGungi(el, v, act) {
   let targets = [];
   if (gnSel && gnSel.from) targets = legal.filter((m) => !m.drop && gnSame(m.from, gnSel.from));
   else if (gnSel && gnSel.drop && s.phase === 'play') targets = legal.filter((m) => m.drop === gnSel.drop);
-  else if (gnSel && gnSel.drop && s.phase === 'draft') targets = gungi.draftTargets(s, v.you, gnSel.drop).map((to) => ({ to, kind: 'place' }));
   // 指す駒を選んでいないときは、タップした駒（相手の駒・自分の番でないときの自分の駒）の動ける所を表示する。
   // 自分の番の自分の駒は、選んだときの「動かせる所」だけを出す（同じような表示を2つ出さない）
   const pvStack = !gnSel && gnInfo ? s.board[gnInfo[0]][gnInfo[1]] : [];
@@ -2648,7 +2647,7 @@ function renderGungi(el, v, act) {
   // 持ち駒
   const handEl = (owner) => {
     const box = h('div', 'gn-hand' + (owner === me ? ' mine' : ' theirs'));
-    box.append(h('span', 'gn-hand-label', `${gungi.sideNames[owner]}の${s.phase === 'draft' ? '手元（未配置）' : '持ち駒'}`));
+    box.append(h('span', 'gn-hand-label', `${gungi.sideNames[owner]}の持ち駒`));
     const list = h('div', 'gn-hand-list');
     let any = false;
     for (const t of gungi.PIECE_ORDER) {
@@ -2657,7 +2656,7 @@ function renderGungi(el, v, act) {
       any = true;
       const b = h('button', 'gn-hand-btn' + (gnSel && gnSel.drop === t && owner === me ? ' sel' : ''));
       b.append(gnPiece({ o: owner, t }, me), h('span', 'gn-count', `×${n}`));
-      const usable = owner === v.you && myTurn && (s.phase === 'draft' ? gungi.draftTargets(s, v.you, t).length > 0 : legal.some((m) => m.drop === t));
+      const usable = owner === v.you && myTurn && legal.some((m) => m.drop === t);
       b.disabled = !usable;
       b.onclick = () => { gnSel = gnSel && gnSel.drop === t ? null : { drop: t }; render(); };
       list.append(b);
@@ -2688,7 +2687,6 @@ function renderGungi(el, v, act) {
       if (gnSel && gnSel.from && gnSame(gnSel.from, here)) cell.classList.add('sel');
       if (gnInfo && gnSame(gnInfo, here)) cell.classList.add('info');
       if (gnSame(marshalChecked, here)) cell.classList.add('check');
-      if (s.phase === 'draft' && v.you >= 0 && (v.you === 0 ? r >= 6 : r <= 2)) cell.classList.add('home');
       if (st.length) {
         const stack = h('div', 'gn-stack');
         // 下の段の駒は少しずらして見せる
@@ -2733,22 +2731,11 @@ function renderGungi(el, v, act) {
     note.textContent = `${gungi.PIECE_NAMES[st[st.length - 1].t]}（${st.length}段目）を動かす所を選んでください${targets.some((m) => m.jump) ? '（オレンジは飛び越え）' : ''}`;
   } else if (gnSel && gnSel.drop) {
     note.classList.add('mine');
-    note.textContent = `${gungi.PIECE_NAMES[gnSel.drop]}を${s.phase === 'draft' ? '置く' : '打つ'}所を選んでください`;
+    note.textContent = `${gungi.PIECE_NAMES[gnSel.drop]}を打つ所を選んでください`;
   } else note.textContent = myTurn && s.phase === 'play'
     ? '動かす駒をタップしてください（相手の駒をタップすると、その駒の動ける所が見られます）'
     : '駒をタップすると、動ける所を盤に表示します（相手の駒もOK）';
   left.append(handEl(1 - me), note, board, handEl(me));
-  // 配置中の操作
-  if (s.phase === 'draft' && myTurn) {
-    const tools = h('div', 'gn-tools');
-    const done = h('button', 'btn primary', '配置完了（済）');
-    done.onclick = () => sendMove({ done: true });
-    const auto = h('button', 'btn', 'おすすめ配置で埋めて完了');
-    auto.title = '空いている所に例の形で駒を置いて配置を終えます（初めての人向け）';
-    auto.onclick = () => sendMove({ autoSetup: true });
-    tools.append(h('span', 'muted small', '手元の駒を選んで、光っている自陣のマスに置きます。'), done, auto);
-    left.append(tools);
-  }
   main.append(left, gnInfoPanel(s, me));
   root.append(main);
   el.replaceChildren(root);
@@ -2782,7 +2769,6 @@ async function gnClick(here, ts, s, v, legal) {
   gnInfo = here;
   // 行き先をクリックしたとき
   if (gnSel && ts.length) {
-    if (s.phase === 'draft') { sendMove({ place: gnSel.drop, to: here }); return; }
     if (gnSel.drop) { sendMove({ drop: gnSel.drop, to: here }); return; }
     let m = ts[0];
     if (ts.length > 1) {

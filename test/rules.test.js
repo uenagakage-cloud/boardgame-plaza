@@ -1077,7 +1077,15 @@ test('gungi: 入門・初級の固定配置と持ち駒', () => {
   assert.equal(count(beg, 0), 22);
   assert.equal(beg.board[7][2][0].t, '弓');
   assert.equal(beg.phase, 'play');
-  assert.equal(gungi.init({ mode: 'advanced' }).phase, 'draft');
+  // 中級・上級はおすすめ配置で始まる（後手は180度回した形）
+  const adv = gungi.init({ mode: 'advanced' });
+  assert.equal(adv.phase, 'play');
+  assert.equal(adv.board[8][4][0].t, '帥');
+  assert.equal(adv.board[0][4][0].t, '帥');
+  assert.equal(adv.board[0][4][0].o, 1);
+  assert.equal(count(adv, 0), 25);
+  assert.equal(adv.board.flat().flat().filter((x) => x.o === 0).length, 19);
+  assert.equal(adv.hands[0]['兵'], 1, '型に入らない駒は持ち駒');
 });
 test('gungi: 段が上がると遠くまで動ける・間に駒があると進めない', () => {
   const s = gEmpty();
@@ -1157,22 +1165,6 @@ test('gungi: 詰みで勝ち', () => {
   assert.equal(ns.check, true);
   assert.equal(ns.result && ns.result.winner, 0, JSON.stringify(ns.result));
 });
-test('gungi: 自由配置（帥から・自陣3段・配置完了・おすすめ配置）', () => {
-  let s = gungi.init({ mode: 'advanced' });
-  assert.throws(() => gungi.applyMove(s, { place: '兵', to: [8, 0] }, 0), /帥/);
-  assert.throws(() => gungi.applyMove(s, { place: '帥', to: [5, 4] }, 0), /置けません/);
-  s = gungi.applyMove(s, { place: '帥', to: [8, 4] }, 0);
-  assert.equal(s.turn, 1);
-  s = gungi.applyMove(s, { autoSetup: true }, 1);
-  assert.ok(s.done[1]);
-  assert.equal(s.turn, 0, '相手が完了したら自分だけ続けて置ける');
-  s = gungi.applyMove(s, { place: '兵', to: [6, 4] }, 0);
-  assert.equal(s.turn, 0);
-  s = gungi.applyMove(s, { done: true }, 0);
-  assert.equal(s.phase, 'play');
-  assert.equal(s.turn, 0);
-  assert.equal(s.board[0][4][0].t, '帥', '後手の帥は180度回した位置');
-});
 test('gungi: ランダム対局・CPU同士の対局でエラーなく進み、駒の数が増えない', () => {
   let seed = 17;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -1183,7 +1175,7 @@ test('gungi: ランダム対局・CPU同士の対局でエラーなく進み、�
       let s = gungi.init({ mode });
       let prev = total(s);
       for (let i = 0; i < (cpu ? 60 : 200) && !s.result; i++) {
-        const move = cpu || s.phase === 'draft' ? gungi.aiMove(s, s.turn, rng) : (() => { const ms = gungi.legalMoves(s); return ms[Math.floor(rnd() * ms.length)]; })();
+        const move = cpu ? gungi.aiMove(s, s.turn, rng) : (() => { const ms = gungi.legalMoves(s); return ms[Math.floor(rnd() * ms.length)]; })();
         s = gungi.applyMove(s, move, s.turn);
         const now = total(s);
         assert.ok(now <= prev, '駒が増えた');
