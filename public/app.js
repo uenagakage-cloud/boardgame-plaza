@@ -2289,6 +2289,7 @@ function tbCamera(s) {
 function tbDraw() {
   if (!tb || !view || view.game !== 'towerbattle' || !view.state || !document.body.contains(tb.root)) { tb && (tb.raf = null); return; }
   tb.raf = requestAnimationFrame(tbDraw);
+  tbRotStep();
   const s = view.state, ctx = tb.ctx;
   const cam = tbCamera(s);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2363,10 +2364,39 @@ function tbMove(dx, rot) {
   tbSendAim();
 }
 
+// 長押しの回転（1秒で TB_ROT_SPEED 度。描くたびに進める）
+const TB_ROT_SPEED = 90;
+let tbRot = { dir: 0, last: 0 };
+function tbRotStart(dir) {
+  if (!tbMyTurn() || tbRot.dir === dir) return;
+  tbRot = { dir, last: performance.now() };
+}
+function tbRotStop(dir) {
+  if (tbRot.dir !== dir) return;
+  tbRotStep();
+  tbRot = { dir: 0, last: 0 };
+  tbSendAim(true);
+}
+function tbRotStep() {
+  if (!tbRot.dir) return;
+  if (!tbMyTurn()) { tbRot = { dir: 0, last: 0 }; return; }
+  const now = performance.now();
+  const da = (tbRot.dir * TB_ROT_SPEED * (now - tbRot.last)) / 1000;
+  tbRot.last = now;
+  tbAim = { x: tbAim.x, angle: (((tbAim.angle + da) % 360) + 360) % 360 };
+  tbSendAim();
+}
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'z' || e.key === 'Z') tbRotStop(-1);
+  if (e.key === 'x' || e.key === 'X') tbRotStop(1);
+});
+window.addEventListener('blur', () => { if (tbRot.dir) tbRotStop(tbRot.dir); });
+
 function tbDrop() {
   if (!tbMyTurn()) return;
+  if (tbRot.dir) { tbRotStep(); tbRot = { dir: 0, last: 0 }; }
   clearTimeout(tbAimTimer);
-  send({ type: 'move', move: { drop: tbAim } });
+  send({ type: 'move', move: { drop: { x: tbAim.x, angle: Math.round(tbAim.angle) } } });
 }
 
 function buildTower(el) {
@@ -2380,20 +2410,29 @@ function buildTower(el) {
     <div class="tb-canvas-wrap"><canvas width="${TB_CANVAS.w}" height="${TB_CANVAS.h}"></canvas><div class="tb-banner" hidden></div></div>
     <div class="tb-tools">
       <button class="btn tb-left" title="左へ（←キー）">◀</button>
-      <button class="btn tb-rotl" title="左に回す（Zキー）">⟲ 15°</button>
+      <button class="btn tb-rotl" title="押している間、左に回る（Zキー）">⟲ 長押し</button>
       <button class="btn primary tb-drop" title="落とす（スペースキー）">落とす</button>
-      <button class="btn tb-rotr" title="右に回す（Xキー）">⟳ 15°</button>
+      <button class="btn tb-rotr" title="押している間、右に回る（Xキー）">⟳ 長押し</button>
       <button class="btn tb-right" title="右へ（→キー）">▶</button>
     </div>
-    <p class="muted small tb-help">盤の上をドラッグしても左右に動かせます。キーボード: ← → で移動、Z / X で回転、スペースで落とす。</p>
+    <p class="muted small tb-help">盤の上をドラッグしても左右に動かせます。回転ボタンは押している間だけ回ります。キーボード: ← → で移動、Z / X を押している間回転、スペースで落とす。</p>
     <div class="uno-players tb-players"></div>`;
   const q = (sel) => root.querySelector(sel);
   const x = { el, root, canvas: q('canvas'), who: q('.tb-who'), next: q('.tb-next'), timer: q('.tb-timer'), banner: q('.tb-banner'), tools: q('.tb-tools'), help: q('.tb-help'), players: q('.tb-players') };
   x.ctx = x.canvas.getContext('2d');
   q('.tb-left').onclick = () => tbMove(-15, 0);
   q('.tb-right').onclick = () => tbMove(15, 0);
-  q('.tb-rotl').onclick = () => tbMove(0, -15);
-  q('.tb-rotr').onclick = () => tbMove(0, 15);
+  // 回転ボタンは押している間ずっと回る（離すと止まる）
+  for (const [sel, dir] of [['.tb-rotl', -1], ['.tb-rotr', 1]]) {
+    const b = q(sel);
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      try { b.setPointerCapture(e.pointerId); } catch { /* なくても動く */ }
+      tbRotStart(dir);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => tbRotStop(dir));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
   q('.tb-drop').onclick = tbDrop;
   // ドラッグで左右に動かす
   let dragging = false;
@@ -2423,8 +2462,8 @@ document.addEventListener('keydown', (e) => {
   const k = e.key;
   if (k === 'ArrowLeft') tbMove(e.shiftKey ? -2 : -10, 0);
   else if (k === 'ArrowRight') tbMove(e.shiftKey ? 2 : 10, 0);
-  else if (k === 'z' || k === 'Z') tbMove(0, -15);
-  else if (k === 'x' || k === 'X') tbMove(0, 15);
+  else if (k === 'z' || k === 'Z') tbRotStart(-1);
+  else if (k === 'x' || k === 'X') tbRotStart(1);
   else if (k === ' ' || k === 'Enter') tbDrop();
   else return;
   e.preventDefault();

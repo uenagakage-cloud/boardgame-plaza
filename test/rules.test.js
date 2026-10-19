@@ -1280,7 +1280,9 @@ test('towerbattle: 真ん中に積めば残り、島の外に落とした人は�
   assert.equal(s.phase, 'aim');
   assert.throws(() => towerbattle.applyMove(s, { aim: { x: 10, angle: 0 } }, 1, undefined, tbCtx), /番ではありません/);
   s = towerbattle.applyMove(s, { aim: { x: 7, angle: 20 } }, 0, undefined, tbCtx);
-  assert.deepEqual(s.aim, { x: 7, angle: 15 }, '角度は15度ずつ');
+  assert.deepEqual(s.aim, { x: 7, angle: 20 }, '角度は好きな値（1度単位）');
+  assert.equal(towerbattle.applyMove(s, { aim: { x: 0, angle: -30.4 } }, 0, undefined, tbCtx).aim.angle, 330);
+  assert.equal(towerbattle.ANIMAL_KEYS.length, 20, '動物は20種類');
   s = { ...s, current: 'elephant' };
   s = towerbattle.applyMove(s, { drop: { x: 0, angle: 0 } }, 0, undefined, tbCtx);
   assert.equal(s.phase, 'falling');
