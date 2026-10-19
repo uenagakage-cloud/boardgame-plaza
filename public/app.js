@@ -2638,9 +2638,11 @@ function renderGungi(el, v, act) {
   if (gnSel && gnSel.from) targets = legal.filter((m) => !m.drop && gnSame(m.from, gnSel.from));
   else if (gnSel && gnSel.drop && s.phase === 'play') targets = legal.filter((m) => m.drop === gnSel.drop);
   else if (gnSel && gnSel.drop && s.phase === 'draft') targets = gungi.draftTargets(s, v.you, gnSel.drop).map((to) => ({ to, kind: 'place' }));
-  // 指す駒を選んでいないときは、タップした駒（相手の駒・自分の番でないときの自分の駒も）の動ける所を表示する
+  // 指す駒を選んでいないときは、タップした駒（相手の駒・自分の番でないときの自分の駒）の動ける所を表示する。
+  // 自分の番の自分の駒は、選んだときの「動かせる所」だけを出す（同じような表示を2つ出さない）
   const pvStack = !gnSel && gnInfo ? s.board[gnInfo[0]][gnInfo[1]] : [];
-  const pvPiece = pvStack.length ? pvStack[pvStack.length - 1] : null;
+  const pvTop = pvStack.length ? pvStack[pvStack.length - 1] : null;
+  const pvPiece = pvTop && !(myTurn && s.phase === 'play' && pvTop.o === v.you) ? pvTop : null;
   const preview = pvPiece ? gungi.pieceTargets(s, gnInfo[0], gnInfo[1]) : [];
 
   // 持ち駒
@@ -2725,7 +2727,16 @@ function renderGungi(el, v, act) {
     note.classList.add(pvPiece.o !== me ? 'opp' : 'mine');
     note.textContent = `${pvPiece.o !== me ? '相手' : '自分'}の${gungi.PIECE_NAMES[pvPiece.t]}（${pvStack.length}段目）が動ける所：${preview.length ? `${preview.length}マス` : 'なし'}`
       + (preview.some((x) => x.jump) ? '（点線の印は飛び越え）' : '');
-  } else note.textContent = '駒をタップすると、動ける所を盤に表示します（相手の駒もOK）';
+  } else if (gnSel && gnSel.from && s.phase === 'play') {
+    const st = s.board[gnSel.from[0]][gnSel.from[1]];
+    note.classList.add('mine');
+    note.textContent = `${gungi.PIECE_NAMES[st[st.length - 1].t]}（${st.length}段目）を動かす所を選んでください${targets.some((m) => m.jump) ? '（オレンジは飛び越え）' : ''}`;
+  } else if (gnSel && gnSel.drop) {
+    note.classList.add('mine');
+    note.textContent = `${gungi.PIECE_NAMES[gnSel.drop]}を${s.phase === 'draft' ? '置く' : '打つ'}所を選んでください`;
+  } else note.textContent = myTurn && s.phase === 'play'
+    ? '動かす駒をタップしてください（相手の駒をタップすると、その駒の動ける所が見られます）'
+    : '駒をタップすると、動ける所を盤に表示します（相手の駒もOK）';
   left.append(handEl(1 - me), note, board, handEl(me));
   // 配置中の操作
   if (s.phase === 'draft' && myTurn) {
