@@ -1970,6 +1970,7 @@ document.addEventListener('keydown', (e) => {
 let pt = null;
 let ptTool = 'line';
 let ptDrag = null; // 描いている途中の図形
+const PT_ERASER_WIDTH = 36;
 
 function ptDrawShapes(ctx, shapes, preview) {
   ctx.clearRect(0, 0, paint.WIDTH, paint.HEIGHT);
@@ -1979,9 +1980,11 @@ function ptDrawShapes(ctx, shapes, preview) {
   ctx.lineJoin = 'round';
   ctx.lineWidth = 7;
   const draw = (sh, color) => {
-    ctx.strokeStyle = color;
+    // 消しゴムは背景の色で太くなぞる
+    ctx.strokeStyle = sh.type === 'erase' ? '#fffdf7' : color;
+    ctx.lineWidth = sh.type === 'erase' ? PT_ERASER_WIDTH : 7;
     ctx.beginPath();
-    if (sh.type === 'path') {
+    if (sh.type === 'path' || sh.type === 'erase') {
       ctx.moveTo(sh.pts[0][0], sh.pts[0][1]);
       for (const [px, py] of sh.pts.slice(1)) ctx.lineTo(px, py);
     } else if (sh.type === 'line') { ctx.moveTo(sh.x1, sh.y1); ctx.lineTo(sh.x2, sh.y2); }
@@ -2012,6 +2015,7 @@ function buildPaint(el) {
       <button class="btn small pt-tool" data-tool="pen">✎ ペン</button>
       <button class="btn small pt-tool" data-tool="line">／ 直線</button>
       <button class="btn small pt-tool" data-tool="circle">◯ 円</button>
+      <button class="btn small pt-tool" data-tool="eraser">🧽 消しゴム</button>
       <button class="btn small pt-undo">1つ戻す</button>
       <button class="btn small pt-clear">全部消す</button>
       <button class="btn small danger pt-giveup">ギブアップ</button>
@@ -2053,12 +2057,13 @@ function buildPaint(el) {
     window.getSelection()?.removeAllRanges();
     try { x.canvas.setPointerCapture(e.pointerId); } catch { /* 取れなくても描ける */ }
     const [px, py] = ptCanvasPoint(e);
-    ptDrag = ptTool === 'pen' ? { type: 'path', pts: [[px, py]] } : { type: ptTool, x1: px, y1: py, x2: px, y2: py };
+    ptDrag = ptTool === 'pen' ? { type: 'path', pts: [[px, py]] } : ptTool === 'eraser' ? { type: 'erase', pts: [[px, py]] }
+      : { type: ptTool, x1: px, y1: py, x2: px, y2: py };
   });
   x.canvas.addEventListener('pointermove', (e) => {
     if (!ptDrag) return;
     const [px, py] = ptCanvasPoint(e);
-    if (ptDrag.type === 'path') {
+    if (ptDrag.pts) {
       const last = ptDrag.pts[ptDrag.pts.length - 1];
       if (Math.hypot(px - last[0], py - last[1]) >= 3) ptDrag.pts.push([px, py]); // 近すぎる点は省く
     } else [ptDrag.x2, ptDrag.y2] = [px, py];
@@ -2068,7 +2073,7 @@ function buildPaint(el) {
     if (!ptDrag) return;
     const sh = ptDrag;
     ptDrag = null;
-    if (sh.type === 'path') {
+    if (sh.pts) {
       let pts = sh.pts;
       if (pts.length === 1) pts = [pts[0], [pts[0][0] + 1, pts[0][1]]]; // 点を打っただけのとき
       // 点が多すぎるときは間引く
@@ -2076,7 +2081,7 @@ function buildPaint(el) {
         const step = pts.length / paint.MAX_PATH_POINTS;
         pts = Array.from({ length: paint.MAX_PATH_POINTS }, (_, i) => pts[Math.min(pts.length - 1, Math.round(i * step))]);
       }
-      send({ type: 'move', move: { shape: { type: 'path', pts: pts.map(([px, py]) => [Math.round(px), Math.round(py)]) } } });
+      send({ type: 'move', move: { shape: { type: sh.type, pts: pts.map(([px, py]) => [Math.round(px), Math.round(py)]) } } });
     } else if (Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) >= 6) send({ type: 'move', move: { shape: sh } });
     ptDrawShapes(x.ctx, view.state.shapes, null);
   };
@@ -2137,7 +2142,7 @@ function renderPaint(el, v) {
   if (pt.modeKey !== modeKey) { pt.modeKey = modeKey; ptTool = free ? 'pen' : 'line'; }
   if (!free && ptTool === 'pen') ptTool = 'line';
   pt.tools.querySelector('[data-tool="pen"]').hidden = !free;
-  pt.tools.querySelector('.pt-help').textContent = ptTool === 'pen' ? 'ドラッグで自由に描く' : ptTool === 'line' ? 'ドラッグで描く（始点→終点）' : 'ドラッグで描く（中心→半径）';
+  pt.tools.querySelector('.pt-help').textContent = ptTool === 'eraser' ? 'ドラッグでなぞった所を消す' : ptTool === 'pen' ? 'ドラッグで自由に描く' : ptTool === 'line' ? 'ドラッグで描く（始点→終点）' : 'ドラッグで描く（中心→半径）';
   pt.tools.querySelectorAll('.pt-tool').forEach((b) => b.classList.toggle('primary', b.dataset.tool === ptTool));
 
   // 答える欄

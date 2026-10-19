@@ -1266,4 +1266,17 @@ test('paint: お題の3つのうち1つは必ずむずかしいお題', () => {
     if (s.result) break;
   }
 });
+test('paint: 消しゴムはどちらの描き方でも使える・普通のお題の追加', () => {
+  let s = paint.init({ turns: 1, seconds: 60 }, 2);
+  s = paint.applyMove(s, { pick: 0 }, 0);
+  s = paint.applyMove(s, { shape: { type: 'line', x1: 10, y1: 10, x2: 300, y2: 200 } }, 0);
+  s = paint.applyMove(s, { shape: { type: 'erase', pts: [[10, 10], [100, 70]] } }, 0);
+  assert.equal(s.shapes[1].type, 'erase');
+  assert.throws(() => paint.applyMove(s, { shape: { type: 'path', pts: [[1, 1], [5, 5]] } }, 0), /直線と円/);
+  s = paint.applyMove(s, { undo: true }, 0);
+  assert.equal(s.shapes.length, 1, '消しゴムも1つ戻せる');
+  const idx = (w) => paint.THEME_LIST.findIndex((t) => t[0] === w);
+  assert.equal(paint.THEME_TAGS[idx('カマキリ')], '');
+  assert.equal(paint.THEME_TAGS[idx('リコーダー')], '');
+});
 console.log(`\n${n} tests passed`);

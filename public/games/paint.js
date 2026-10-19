@@ -7,6 +7,7 @@
 // 時間切れ・全員正解・答え発表の切り替えはサーバーが tick() で行う（state.tickAt の時刻）。
 // 手: { pick: 0〜2 } お題を選ぶ / { shape: { type: 'line'|'circle', x1, y1, x2, y2 } } 描く（座標は 0〜1000 × 0〜750）
 //     フリーハンドでは { shape: { type: 'path', pts: [[x, y], ...] } } も描ける
+//     消しゴムはどちらの描き方でも使える { shape: { type: 'erase', pts: [[x, y], ...] } }（背景の色で太くなぞる）
 //     { undo: true } 1つ戻す / { clear: true } 全部消す / { giveUp: true } 描くのをあきらめる / { guess: '答え' } / { resign: true }
 export const id = 'paint';
 export const title = 'みんなでポンコツペイント';
@@ -460,6 +461,75 @@ UFO|ユーフォー|未確認飛行物体
 ゴルフ
 卓球|たっきゅう|ピンポン
 柔道|じゅうどう
+のり|糊|ノリ
+セロハンテープ|セロテープ|テープ
+輪ゴム|わごむ
+安全ピン|あんぜんぴん
+マスク
+ネクタイ
+スカート
+靴下|くつした|ソックス
+サンダル
+マフラー
+浴衣|ゆかた
+歯みがき粉|はみがきこ|歯磨き粉
+トイレットペーパー
+ティッシュ|ティッシュペーパー
+アイロン
+やかん|ヤカン|薬缶
+おたま|お玉|オタマ
+菜箸|さいばし
+茶碗|ちゃわん|お茶碗|おちゃわん
+お皿|おさら|皿|さら
+ストロー
+水筒|すいとう
+天ぷら|てんぷら|天麩羅
+味噌汁|みそしる|お味噌汁|おみそしる
+納豆|なっとう
+卵|たまご|玉子|タマゴ
+チーズ
+バター
+せんべい|煎餅|おせんべい|センベイ
+パフェ
+ピーマン
+きゅうり|胡瓜|キュウリ
+大根|だいこん|ダイコン
+チョーク
+筆箱|ふでばこ|ペンケース
+絵の具|えのぐ
+クレヨン
+色鉛筆|いろえんぴつ
+バイオリン|ヴァイオリン
+トランペット|ラッパ|らっぱ
+カスタネット
+リコーダー|たて笛|たてぶえ
+木琴|もっきん|シロフォン
+絆創膏|ばんそうこう|バンドエイド
+車いす|くるまいす|車椅子
+自動ドア|じどうどあ
+階段|かいだん
+コンビニ|コンビニエンスストア
+駐車場|ちゅうしゃじょう
+ガソリンスタンド
+シーソー
+ローラースケート
+ぬいぐるみ|縫いぐるみ|ヌイグルミ
+人形|にんぎょう
+水鉄砲|みずでっぽう
+虫取り網|むしとりあみ|虫とり網|網|あみ
+アリ|あり|蟻
+バッタ|ばった
+カマキリ|かまきり
+ツバメ|つばめ|燕
+アヒル|あひる
+白鳥|はくちょう|ハクチョウ
+フラミンゴ
+オウム|おうむ|インコ
+ハムスター
+モグラ|もぐら
+トラ|とら|虎
+オオカミ|おおかみ|狼
+サンゴ|さんご|珊瑚
 `.trim().split('\n').map((line) => line.split('|').map((x) => x.trim()).filter(Boolean));
 // むずかしいお題（形が複雑なもの・目に見えないもの）
 const HARD_THEMES = `
@@ -831,13 +901,13 @@ export function applyMove(s, mv, seat, rng) {
     if (mv.clear) { ns.shapes = []; return ns; }
     const sh = mv.shape;
     if (ns.shapes.length >= MAX_SHAPES) throw new Error(`これ以上描けません（${MAX_SHAPES}個まで）`);
-    if (sh.type === 'path') {
-      if (s.options.mode !== 'free') throw new Error('直線と円しか描けません');
+    if (sh.type === 'path' || sh.type === 'erase') {
+      if (sh.type === 'path' && s.options.mode !== 'free') throw new Error('直線と円しか描けません');
       const pts = Array.isArray(sh.pts) ? sh.pts.slice(0, MAX_PATH_POINTS).map((p) => [num(p && p[0], WIDTH), num(p && p[1], HEIGHT)]) : [];
       if (pts.length < 2) throw new Error('線が短すぎます');
       const used = ns.shapes.reduce((a, x) => a + (x.pts ? x.pts.length : 2), 0);
       if (used + pts.length > MAX_TOTAL_POINTS) throw new Error('これ以上描けません。「1つ戻す」か「全部消す」をしてください');
-      ns.shapes.push({ type: 'path', pts });
+      ns.shapes.push({ type: sh.type, pts });
       return ns;
     }
     if (sh.type !== 'line' && sh.type !== 'circle') throw new Error('直線と円しか描けません');
