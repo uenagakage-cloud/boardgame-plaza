@@ -1316,4 +1316,84 @@ test('towerbattle: 番の人が抜けたら次の人へ', () => {
   s = towerbattle.applyMove(s, { resign: true }, 2);
   assert.equal(s.result.winner, 1);
 });
+const dfRules = (o) => ({ options: df.normalizeOptions(o) });
+test('daifugo: ルール設定（ふつうの初期値・ジョーカーの枚数・名前）', () => {
+  const o = df.normalizeOptions({});
+  assert.deepEqual([o.eightCut, o.revolution, o.spade3, o.sequence, o.exchange, o.shibari, o.elevenBack, o.fiveSkip, o.miyakoOchi, o.foulFinish, o.jokers],
+    [true, true, true, true, true, false, false, false, false, false, 1]);
+  assert.equal(df.init({ jokers: 2 }, 4).hands.flat().length, 54);
+  assert.equal(df.init({ jokers: 0 }, 4).hands.flat().length, 52);
+  assert.equal(df.init({ jokers: 5 }, 4).options.jokers, 1, '0〜2枚以外はふつう');
+  assert.match(df.variantName({ shibari: true, eightCut: false }), /しばり/);
+  assert.doesNotMatch(df.variantName({ eightCut: false }), /8切り/);
+  // ジョーカー2枚はペアで出せる
+  assert.ok(df.combos(dc('JK JK')).some((c) => c.type === 'set' && c.n === 2));
+});
+test('daifugo: ルールを切ると効かない（8切り・革命・スペ3・階段）', () => {
+  let s = dfState(['s8 sK', 'h4 h9', 'c3 c6'], dfRules({ eightCut: false }));
+  s = df.applyMove(s, { play: ids(s, 0, 's8') }, 0);
+  assert.ok(s.field, '8切りなし');
+  assert.equal(s.turn, 1);
+  let r = dfState(['s5 h5 d5 c5 s3', 'h4 h9', 'c3 c6'], dfRules({ revolution: false }));
+  r = df.applyMove(r, { play: ids(r, 0, 's5 h5 d5 c5') }, 0);
+  assert.equal(r.revolution, false, '革命なし');
+  let j = dfState(['JK s9', 's3 h9', 'c4 c6'], dfRules({ spade3: false }));
+  j = df.applyMove(j, { play: ids(j, 0, 'JK') }, 0);
+  assert.throws(() => df.applyMove(j, { play: ids(j, 1, 's3') }, 1), /強い/);
+  const q = dfState(['s5 s6 s7 h9', 'h4 h9', 'c3 c6'], dfRules({ sequence: false }));
+  assert.throws(() => df.applyMove(q, { play: ids(q, 0, 's5 s6 s7') }, 0), /同じ数字だけ/);
+});
+test('daifugo: しばり・11バック・5飛ばし', () => {
+  let s = dfState(['s4 s9 h6 s2', 's5 hK sJ', 'sQ c7 cK'], dfRules({ shibari: true }));
+  s = df.applyMove(s, { play: ids(s, 0, 's4') }, 0);
+  s = df.applyMove(s, { play: ids(s, 1, 's5') }, 1);
+  assert.deepEqual(s.lock, ['s'], '♠が続いたのでしばり');
+  assert.throws(() => df.applyMove(s, { play: ids(s, 2, 'c7') }, 2), /しばり/);
+  s = df.applyMove(s, { play: ids(s, 2, 'sQ') }, 2);
+  s = df.applyMove(s, { pass: true }, 0);
+  s = df.applyMove(s, { pass: true }, 1);
+  assert.equal(s.lock, null, '流れたらしばりは解ける');
+
+  let b = dfState(['sJ s9 s3', 'h4 hK', 'c5 c6'], dfRules({ elevenBack: true }));
+  b = df.applyMove(b, { play: ids(b, 0, 'sJ') }, 0);
+  assert.equal(b.jback, true);
+  assert.throws(() => df.applyMove(b, { play: ids(b, 1, 'hK') }, 1), /弱い/);
+  b = df.applyMove(b, { play: ids(b, 1, 'h4') }, 1);
+  b = df.applyMove(b, { pass: true }, 2);
+  b = df.applyMove(b, { pass: true }, 0);
+  assert.equal(b.jback, false, '流れたら元どおり');
+
+  let f = dfState(['s5 h5 s9', 'h7 h8', 'c9 cK', 'd9 dK'], dfRules({ fiveSkip: true }));
+  f = df.applyMove(f, { play: ids(f, 0, 's5 h5') }, 0);
+  assert.equal(f.turn, 3, '5を2枚で2人飛ばし');
+});
+test('daifugo: 都落ち・反則上がり・カード交換なし', () => {
+  // 都落ち: 前の大富豪（P1）より先に P2 が上がる
+  let s = dfState(['s4 s6', 'h9', 'c5 c7'], { ...dfRules({ miyakoOchi: true }), lastRanks: [0, 1, 2] });
+  s = df.applyMove(s, { play: ids(s, 0, 's4') }, 0);
+  s = df.applyMove(s, { play: ids(s, 1, 'h9') }, 1);
+  assert.deepEqual(s.penalty, [0], '前の大富豪はその場で大貧民');
+  assert.equal(s.phase, 'result', '残りが1人なのでラウンド終了');
+  assert.deepEqual(s.lastRanks, [1, 2, 0]);
+
+  // 反則上がり: 2で上がると大貧民
+  let r = dfState(['s2', 'h9 h3', 'c5 c7'], dfRules({ foulFinish: true }));
+  r = df.applyMove(r, { play: ids(r, 0, 's2') }, 0);
+  assert.deepEqual(r.penalty, [0]);
+  assert.deepEqual(r.finished, []);
+  r = df.applyMove(r, { pass: true }, 1);
+  r = df.applyMove(r, { pass: true }, 2);
+  assert.equal(r.turn, 1, '上がった人の次から');
+  r = df.applyMove(r, { play: ids(r, 1, 'h3') }, 1);
+  r = df.applyMove(r, { play: ids(r, 2, 'c5') }, 2);
+  r = df.applyMove(r, { play: ids(r, 1, 'h9') }, 1);
+  assert.deepEqual(r.lastRanks, [1, 2, 0]);
+
+  // カード交換なし: 次のラウンドはすぐ大貧民から
+  let x = df.applyMove(r, { next: true }, 0, null, { hostSeat: 0 });
+  assert.equal(x.phase, 'exchange', 'ふつうは交換あり');
+  let y = df.applyMove({ ...r, options: df.normalizeOptions({ exchange: false }) }, { next: true }, 0, null, { hostSeat: 0 });
+  assert.equal(y.phase, 'play');
+  assert.equal(y.turn, 0, '大貧民から');
+});
 console.log(`\n${n} tests passed`);

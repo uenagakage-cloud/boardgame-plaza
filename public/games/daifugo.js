@@ -3,8 +3,8 @@
 // 出せる組: 同じ数字の1〜4枚（ジョーカーは何にでもなる）、同じマークで3枚以上続く階段。
 // 場と同じ組・同じ枚数で、より強いものだけ出せる。出せない・出さないときはパス。
 // ほかの全員がパスしたら場が流れ、最後に出した人から始める。
-// ルール: 8切り（8を含む組で場が流れて同じ人から）、革命（4枚以上の同じ数字で強さが逆転）、
-//         スペ3返し（ジョーカー1枚には♠3で勝てる）。
+// ルールは部屋を作るときに選べる（RULES）。ふつうは 8切り・革命・スペ3返し・階段・カード交換が入り、
+// しばり・11バック・5飛ばし・都落ち・反則上がりは入っていない。ジョーカーは0〜2枚。
 // 全員の順位が決まったらラウンド終了。次のラウンドは配り直して、
 //   大貧民→大富豪に一番強い2枚、貧民→富豪に一番強い1枚を渡し、大富豪・富豪は好きなカードを同じ枚数返す。
 // 手: { play: [カードid...] } / { pass: true } / { give: [カードid...] } 交換で返す / { next: true } ホストが次のラウンドへ
@@ -15,6 +15,35 @@ export const sideNames = Array.from({ length: 6 }, (_, i) => `プレイヤー${i
 export const minPlayers = 2;
 export const maxPlayers = 6;
 export const lobbyReturn = true;
+
+// ルール: [キー, 名前, 説明, ふつうは入っているか]
+export const RULES = [
+  ['eightCut', '8切り', '8を出すと場が流れて、出した人から', true],
+  ['revolution', '革命', '同じ数字4枚以上で強さが逆転', true],
+  ['spade3', 'スペ3返し', 'ジョーカー1枚には♠3で勝てる', true],
+  ['sequence', '階段', '同じマークで3枚以上続く数字を出せる', true],
+  ['exchange', 'カード交換', '2ラウンド目から大貧民⇔大富豪・貧民⇔富豪で交換', true],
+  ['shibari', 'しばり', '同じマークが続くと、場が流れるまでそのマークしか出せない', false],
+  ['elevenBack', '11バック', 'Jを出すと、場が流れるまで強さが逆', false],
+  ['fiveSkip', '5飛ばし', '5を出した枚数だけ次の人を飛ばす', false],
+  ['miyakoOchi', '都落ち', '大富豪が1番に上がれないと、その場で大貧民', false],
+  ['foulFinish', '反則上がり', 'ジョーカー・2（革命中は3）・8で上がると大貧民', false],
+];
+export const JOKER_COUNTS = [0, 1, 2];
+const DEFAULT_RULES = Object.fromEntries(RULES.map(([k, , , on]) => [k, on]));
+
+export function normalizeOptions(o) {
+  o = o || {};
+  const rules = Object.fromEntries(RULES.map(([k, , , on]) => [k, typeof o[k] === 'boolean' ? o[k] : on]));
+  const jokers = JOKER_COUNTS.includes(Number(o.jokers)) ? Number(o.jokers) : 1;
+  return { ...rules, jokers };
+}
+// 部屋の一覧などに出す短い説明（入っているルール）
+export const variantName = (o) => {
+  const x = normalizeOptions(o);
+  const on = RULES.filter(([k]) => x[k]).map(([, name]) => name);
+  return [...on, `ジョーカー${x.jokers}枚`].join('・');
+};
 
 export const SUITS = ['s', 'h', 'd', 'c'];
 export const SUIT_MARK = { s: '♠', h: '♥', d: '♦', c: '♣', j: '' };
@@ -40,10 +69,10 @@ function shuffle(arr, rng) {
   return arr;
 }
 
-function makeDeck() {
+function makeDeck(jokers = 1) {
   const cards = [];
   for (const s of SUITS) for (let r = 3; r <= 15; r++) cards.push({ s, r });
-  cards.push({ s: 'j', r: JOKER });
+  for (let k = 0; k < jokers; k++) cards.push({ s: 'j', r: JOKER });
   return cards.map((c, i) => ({ id: i, ...c }));
 }
 
@@ -52,18 +81,19 @@ export const sortHand = (hand) => hand.slice().sort((a, b) => a.r - b.r || SUITS
 
 // ---------- 組の判定 ----------
 // 出したカードがどんな組になりうるかの候補。{ type: 'set'|'seq', n, key }（階段の key は一番下の数字）
-export function combos(cards) {
+export function combos(cards, rules = DEFAULT_RULES) {
   const n = cards.length;
   if (!n) return [];
   const normal = cards.filter((c) => c.s !== 'j');
   const jokers = n - normal.length;
   const out = [];
   if (!normal.length) {
-    if (n === 1) out.push({ type: 'set', n: 1, key: JOKER, joker: true });
+    // ジョーカーだけ（2枚ならペア）
+    out.push({ type: 'set', n, key: JOKER, joker: n === 1 });
     return out;
   }
   if (normal.every((c) => c.r === normal[0].r)) out.push({ type: 'set', n, key: normal[0].r });
-  if (n >= 3 && normal.every((c) => c.s === normal[0].s) && new Set(normal.map((c) => c.r)).size === normal.length) {
+  if (rules.sequence !== false && n >= 3 && normal.every((c) => c.s === normal[0].s) && new Set(normal.map((c) => c.r)).size === normal.length) {
     const lo = Math.min(...normal.map((c) => c.r)), hi = Math.max(...normal.map((c) => c.r));
     if (hi - lo + 1 <= n) {
       // ジョーカーで穴埋め・端の延長をした窓 [L, L+n-1]（3〜2の範囲）
@@ -76,12 +106,12 @@ export function combos(cards) {
 const strength = (key, rev) => (key === JOKER ? Infinity : rev ? -key : key);
 
 // 場に対して出せる候補のうち一番強いもの。出せなければ null
-function bestPlay(cands, field, rev, cards) {
+function bestPlay(cands, field, rev, cards, rules = DEFAULT_RULES) {
   let best = null;
   for (const c of cands) {
     if (field) {
       if (c.type !== field.type || c.n !== field.n) continue;
-      const spade3 = field.joker && c.n === 1 && cards[0].s === 's' && cards[0].r === 3; // スペ3返し
+      const spade3 = rules.spade3 && field.joker && c.n === 1 && cards[0].s === 's' && cards[0].r === 3; // スペ3返し
       if (!spade3 && !(strength(c.key, rev) > strength(field.key, rev))) continue;
     }
     if (!best || strength(c.key, rev) > strength(best.key, rev)) best = c;
@@ -89,22 +119,39 @@ function bestPlay(cands, field, rev, cards) {
   return best;
 }
 
-const isEightCut = (c) => (c.type === 'set' ? c.key === 8 : c.key <= 8 && 8 <= c.key + c.n - 1);
+const covers = (c, r) => (c.type === 'set' ? c.key === r : c.key <= r && r <= c.key + c.n - 1);
+const isEightCut = (c) => covers(c, 8);
+// 今の強さが逆かどうか（革命と11バックが両方なら元どおり）
+export const reversed = (s) => !!s.revolution !== !!s.jback;
+const rulesOf = (s) => s.options || DEFAULT_RULES;
+const suitsOf = (cards) => cards.filter((c) => c.s !== 'j').map((c) => c.s).sort();
+export const SUIT_ORDER_LABEL = (suits) => suits.map((x) => SUIT_MARK[x]).join('');
 
 // 手札のカードで出せるか調べる。出せなければ理由つきで例外
 export function checkPlay(s, seat, ids) {
   const hand = s.hands[seat] || [];
   const cards = ids.map((id) => hand.find((c) => c.id === id));
   if (!cards.length || cards.some((c) => !c) || new Set(ids).size !== ids.length) throw new Error('カードを選んでください');
-  const cands = combos(cards);
-  if (!cands.length) throw new Error('その組み合わせは出せません（同じ数字か、同じマークの3枚以上の階段）');
+  const rules = rulesOf(s);
+  const cands = combos(cards, rules);
+  if (!cands.length) throw new Error(rules.sequence ? 'その組み合わせは出せません（同じ数字か、同じマークの3枚以上の階段）' : 'その組み合わせは出せません（同じ数字だけ）');
   const field = s.field;
-  const best = bestPlay(cands, field, s.revolution, cards);
+  const rev = reversed(s);
+  const best = bestPlay(cands, field, rev, cards, rules);
   if (!best) {
     if (field && !cands.some((c) => c.type === field.type && c.n === field.n)) {
       throw new Error(`場と同じ形（${field.type === 'seq' ? '階段' : '同じ数字'}${field.n}枚）で出してください`);
     }
-    throw new Error(s.revolution ? '革命中なので、場より弱いカードを出してください' : '場より強いカードを出してください');
+    throw new Error(rev ? '強さが逆なので、場より弱いカードを出してください' : '場より強いカードを出してください');
+  }
+  // しばり: 決まったマークしか出せない（ジョーカーはどのマークにもなる）
+  if (s.lock) {
+    const need = s.lock.slice();
+    for (const x of suitsOf(cards)) {
+      const i = need.indexOf(x);
+      if (i < 0) throw new Error(`しばり中です。${SUIT_ORDER_LABEL(s.lock)} のカードしか出せません`);
+      need.splice(i, 1);
+    }
   }
   return { combo: best, cards };
 }
@@ -112,6 +159,7 @@ export function checkPlay(s, seat, ids) {
 // ---------- 状態 ----------
 export function init(options, players = 2, rng) {
   const s = {
+    options: normalizeOptions(options), jback: false, lock: null, penalty: [],
     players, out: Array(players).fill(false), hands: [], round: 0,
     points: Array(players).fill(0), lastRanks: null, finished: [],
     phase: 'play', turn: 0, field: null, passed: Array(players).fill(false), revolution: false,
@@ -122,7 +170,7 @@ export function init(options, players = 2, rng) {
 }
 
 const label = (seat) => `P${seat + 1}`;
-const playing = (s, p) => !s.out[p] && s.hands[p].length > 0 && !s.finished.includes(p);
+const playing = (s, p) => !s.out[p] && s.hands[p].length > 0 && !s.finished.includes(p) && !(s.penalty || []).includes(p);
 
 function nextActive(s, from) {
   for (let k = 1; k <= s.players; k++) {
@@ -133,7 +181,7 @@ function nextActive(s, from) {
 }
 
 function deal(s, rng) {
-  const deck = shuffle(makeDeck(), rng);
+  const deck = shuffle(makeDeck(rulesOf(s).jokers ?? 1), rng);
   const n = s.players;
   const seats = [...Array(n).keys()].filter((p) => !s.out[p]);
   s.hands = Array.from({ length: n }, () => []);
@@ -144,12 +192,18 @@ function deal(s, rng) {
   s.field = null;
   s.passed = Array(n).fill(false);
   s.revolution = false;
+  s.jback = false;
+  s.lock = null;
+  s.penalty = [];
   s.lastPlay = null;
   s.exchange = [];
   s.history.push(`第${s.round}ラウンド`);
 
   const ranks = s.lastRanks;
-  if (ranks) {
+  if (ranks && !rulesOf(s).exchange) {
+    s.phase = 'play';
+    s.turn = ranks.filter((p) => !s.out[p]).at(-1); // 交換なし: 大貧民から
+  } else if (ranks) {
     // 前のラウンドの順位で交換。貧しい側は一番強いカードを自動で渡す
     const order = ranks.filter((p) => !s.out[p]);
     const m = order.length;
@@ -200,7 +254,10 @@ function finishIfOver(ns) {
   const left = [...Array(ns.players).keys()].filter((p) => playing(ns, p));
   if (left.length > 1) return false;
   for (const p of left) ns.finished.push(p);
-  const order = [...ns.finished, ...[...Array(ns.players).keys()].filter((p) => !ns.finished.includes(p))];
+  // 反則上がり・都落ちの人は最後（先にそうなった人ほど下）
+  const penalty = ns.penalty || [];
+  const rest = [...Array(ns.players).keys()].filter((p) => !ns.finished.includes(p) && !penalty.includes(p));
+  const order = [...ns.finished, ...rest, ...penalty.slice().reverse()];
   const n = order.length;
   order.forEach((p, i) => { if (!ns.out[p]) ns.points[p] += n - 1 - i; });
   ns.lastRanks = order;
@@ -212,6 +269,8 @@ function finishIfOver(ns) {
 
 function clearField(ns, leader) {
   ns.field = null;
+  ns.lock = null;
+  ns.jback = false;
   ns.passed = Array(ns.players).fill(false);
   ns.turn = playing(ns, leader) ? leader : nextActive(ns, leader);
 }
@@ -277,28 +336,61 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
   }
 
   if (mv.play) {
+    const rules = rulesOf(s);
     const { combo, cards } = checkPlay(s, seat, mv.play);
+    const strongest = reversed(s) ? 3 : 15; // 出す前の一番強い数字（反則上がりの判定用）
     ns.hands[seat] = ns.hands[seat].filter((c) => !mv.play.includes(c.id));
-    ns.field = { ...combo, cards, by: seat };
+    const suits = suitsOf(cards);
+    let note = `${label(seat)} ${sortHand(cards).map(cardLabel).join(' ')}`;
+    // しばり: 前と同じマークの組が続いたら、場が流れるまでそのマークだけ
+    if (rules.shibari && s.field && !s.lock && s.field.suits && suits.length === cards.length
+      && s.field.suits.length === suits.length && s.field.suits.join() === suits.join()) {
+      ns.lock = suits;
+      note += ` しばり（${SUIT_ORDER_LABEL(suits)}）`;
+    }
+    ns.field = { ...combo, cards, by: seat, suits };
     ns.lastPlay = { by: seat, cards };
     ns.passed = Array(ns.players).fill(false);
-    let note = `${label(seat)} ${sortHand(cards).map(cardLabel).join(' ')}`;
-    if (combo.type === 'set' && combo.n >= 4) {
+    if (rules.revolution && combo.type === 'set' && combo.n >= 4) {
       ns.revolution = !ns.revolution;
       note += ns.revolution ? ' 革命！' : ' 革命返し！';
     }
+    if (rules.elevenBack && covers(combo, 11)) {
+      ns.jback = !ns.jback;
+      note += ' 11バック';
+    }
     const done = ns.hands[seat].length === 0;
-    if (done) { ns.finished.push(seat); note += ` 上がり（${ns.finished.length}位）`; }
+    if (done) {
+      const foul = rules.foulFinish && cards.some((c) => c.s === 'j' || c.r === strongest || (rules.eightCut && c.r === 8));
+      if (foul) {
+        ns.penalty = [...(ns.penalty || []), seat];
+        note += ' 反則上がり（大貧民）';
+      } else {
+        ns.finished.push(seat);
+        note += ` 上がり（${ns.finished.length}位）`;
+        // 都落ち: 前のラウンドの大富豪より先に誰かが上がったら、大富豪はその場で大貧民
+        const prevTop = s.lastRanks && s.lastRanks.filter((p) => !s.out[p])[0];
+        if (rules.miyakoOchi && ns.finished.length === 1 && prevTop != null && prevTop !== seat && playing(ns, prevTop)) {
+          ns.penalty = [...(ns.penalty || []), prevTop];
+          note += ` 都落ち！ ${label(prevTop)} は大貧民`;
+        }
+      }
+    }
     ns.turnNo++;
-    if (isEightCut(combo)) {
+    if (rules.eightCut && isEightCut(combo)) {
       note += ' 8切り';
       ns.history.push(note);
       if (!finishIfOver(ns)) clearField(ns, seat);
       return ns;
     }
+    // 5飛ばし: 出した5の枚数だけ次の人を飛ばす
+    const skips = rules.fiveSkip ? cards.filter((c) => c.r === 5).length : 0;
+    if (skips) note += ` 5飛ばし（${skips}人）`;
     ns.history.push(note);
     if (finishIfOver(ns)) return ns;
-    ns.turn = nextActive(ns, seat);
+    let next = nextActive(ns, seat);
+    for (let k = 0; k < skips; k++) next = nextActive(ns, next);
+    ns.turn = next;
     return ns;
   }
   throw new Error('不明な操作です');

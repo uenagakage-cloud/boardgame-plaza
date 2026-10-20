@@ -197,6 +197,40 @@ function renderLobby() {
         card.append(label, cpuLabel);
         getOptions = () => ({ mode: select.value, cpu: cpu.checked });
       }
+      if (key === 'daifugo') {
+        // ルールの細かい設定（開いて選ぶ）。選んだものは次も使えるよう覚えておく
+        let saved = {};
+        try { saved = JSON.parse(store.get('daifugoRules', '{}')) || {}; } catch { saved = {}; }
+        const rules = daifugo.normalizeOptions(saved);
+        const box = h('details', 'df-rules');
+        const summary = h('summary', null, 'ルール設定');
+        const desc = h('span', 'muted small df-rules-now');
+        const refresh = () => { desc.textContent = `（${daifugo.variantName(rules)}）`; store.set('daifugoRules', JSON.stringify(rules)); };
+        summary.append(desc);
+        box.append(summary);
+        const list = h('div', 'df-rules-list');
+        for (const [k, name, help] of daifugo.RULES) {
+          const label = h('label', 'option-toggle df-rule');
+          const cb = h('input');
+          cb.type = 'checkbox';
+          cb.checked = rules[k];
+          cb.onchange = () => { rules[k] = cb.checked; refresh(); };
+          label.append(cb, h('span', null, name));
+          label.title = help;
+          list.append(label, h('span', 'muted small df-rule-help', help));
+        }
+        const jl = h('label', 'option-toggle');
+        const js = h('select', 'size-select');
+        for (const n of daifugo.JOKER_COUNTS) { const o = h('option', null, `${n}枚`); o.value = String(n); js.append(o); }
+        js.value = String(rules.jokers);
+        js.onchange = () => { rules.jokers = Number(js.value); refresh(); };
+        jl.append(h('span', null, 'ジョーカー'), js);
+        list.append(jl);
+        box.append(list);
+        card.append(box);
+        refresh();
+        getOptions = () => ({ ...rules });
+      }
       if (key === 'towerbattle') {
         const label = h('label', 'option-toggle');
         const select = h('select', 'size-select');
@@ -1661,8 +1695,11 @@ function renderDaifugo(el, v) {
   root.append(players);
 
   // 場
-  const table = h('div', 'df-table' + (s.revolution ? ' rev' : ''));
-  if (s.revolution) table.append(h('div', 'df-rev', '革命中（強さが逆）'));
+  const rev = daifugo.reversed(s);
+  const table = h('div', 'df-table' + (rev ? ' rev' : ''));
+  if (s.revolution) table.append(h('div', 'df-rev', s.jback ? '革命中・11バック中（強さは元どおり）' : '革命中（強さが逆）'));
+  else if (s.jback) table.append(h('div', 'df-rev', '11バック中（場が流れるまで強さが逆）'));
+  if (s.lock) table.append(h('div', 'df-rev df-lock', `しばり中：${daifugo.SUIT_ORDER_LABEL(s.lock)} しか出せません`));
   if (s.phase === 'result') {
     const order = s.lastRanks.filter((q) => !s.out[q]);
     const list = h('ol', 'df-ranking');
@@ -1707,7 +1744,7 @@ function renderDaifugo(el, v) {
   }
   if (s.phase === 'result') {
     if (host) {
-      const next = h('button', 'btn primary', '次のラウンドへ（カード交換あり）');
+      const next = h('button', 'btn primary', s.options && s.options.exchange === false ? '次のラウンドへ' : '次のラウンドへ（カード交換あり）');
       next.onclick = () => sendMove({ next: true });
       bar.append(next);
     } else bar.append(h('span', 'muted', 'ホストが次のラウンドを始めるのを待っています…'));
@@ -2861,6 +2898,11 @@ $('#copy-link').onclick = async () => {
   try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); }
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
+
+// 大富豪のルール設定は、外をタップしたら閉じる
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('details.df-rules[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+});
 
 // ---------- ニコニコ風に流れるチャット ----------
 const nicoSeen = {};          // 部屋ごとに、もう流したコメントの番号
