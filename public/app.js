@@ -202,31 +202,13 @@ function renderLobby() {
         let saved = {};
         try { saved = JSON.parse(store.get('daifugoRules', '{}')) || {}; } catch { saved = {}; }
         const rules = daifugo.normalizeOptions(saved);
-        const box = h('details', 'df-rules');
-        const summary = h('summary', null, 'ルール設定');
-        const desc = h('span', 'muted small df-rules-now');
-        const refresh = () => { desc.textContent = `（${daifugo.variantName(rules)}）`; store.set('daifugoRules', JSON.stringify(rules)); };
-        summary.append(desc);
-        box.append(summary);
-        const list = h('div', 'df-rules-list');
-        for (const [k, name, help] of daifugo.RULES) {
-          const label = h('label', 'option-toggle df-rule');
-          const cb = h('input');
-          cb.type = 'checkbox';
-          cb.checked = rules[k];
-          cb.onchange = () => { rules[k] = cb.checked; refresh(); };
-          label.append(cb, h('span', null, name));
-          label.title = help;
-          list.append(label, h('span', 'muted small df-rule-help', help));
-        }
-        const jl = h('label', 'option-toggle');
-        const js = h('select', 'size-select');
-        for (const n of daifugo.JOKER_COUNTS) { const o = h('option', null, `${n}枚`); o.value = String(n); js.append(o); }
-        js.value = String(rules.jokers);
-        js.onchange = () => { rules.jokers = Number(js.value); refresh(); };
-        jl.append(h('span', null, 'ジョーカー'), js);
-        list.append(jl);
-        box.append(list);
+        const box = h('div', 'df-rules');
+        const btn = h('button', 'btn small df-rules-btn', '⚙ ルール設定');
+        btn.type = 'button';
+        const desc = h('div', 'muted small df-rules-now');
+        const refresh = () => { desc.textContent = daifugo.variantName(rules); store.set('daifugoRules', JSON.stringify(rules)); };
+        btn.onclick = () => openDaifugoRules(rules, refresh);
+        box.append(btn, desc);
         card.append(box);
         refresh();
         getOptions = () => ({ ...rules });
@@ -2935,10 +2917,49 @@ $('#copy-link').onclick = async () => {
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
 
-// 大富豪のルール設定は、外をタップしたら閉じる
-document.addEventListener('click', (e) => {
-  document.querySelectorAll('details.df-rules[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; });
-});
+// 大富豪のルール設定（画面の真ん中に ON/OFF の表を出す。変えたらすぐ反映）
+function openDaifugoRules(rules, onChange) {
+  const overlay = h('div', 'modal df-rules-modal');
+  const box = h('div', 'modal-box df-rules-box');
+  const head = h('div', 'df-rules-head');
+  const close = h('button', 'btn primary small', '決定');
+  head.append(h('h3', null, '大富豪のルール設定'), close);
+  const list = h('div', 'df-rules-list');
+  for (const [k, name, help] of daifugo.RULES) {
+    const row = h('label', 'df-rule-row');
+    const cb = h('input');
+    cb.type = 'checkbox';
+    cb.checked = rules[k];
+    cb.onchange = () => { rules[k] = cb.checked; onChange(); };
+    const text = h('span', 'df-rule-text');
+    text.append(h('b', null, name), h('span', 'muted small', help));
+    row.append(cb, text);
+    list.append(row);
+  }
+  const jl = h('label', 'df-rule-row');
+  const js = h('select', 'size-select');
+  for (const n of daifugo.JOKER_COUNTS) { const o = h('option', null, `${n}枚`); o.value = String(n); js.append(o); }
+  js.value = String(rules.jokers);
+  js.onchange = () => { rules.jokers = Number(js.value); onChange(); };
+  const jt = h('span', 'df-rule-text');
+  jt.append(h('b', null, 'ジョーカーの枚数'), h('span', 'muted small', '2枚ならジョーカー2枚のペアも出せる'));
+  jl.append(js, jt);
+  list.append(jl);
+  const reset = h('button', 'btn small ghost', 'ふつうのルールに戻す');
+  reset.type = 'button';
+  reset.onclick = () => {
+    Object.assign(rules, daifugo.normalizeOptions({}));
+    onChange();
+    overlay.remove();
+    openDaifugoRules(rules, onChange);
+  };
+  box.append(head, list, reset);
+  overlay.append(box);
+  const done = () => overlay.remove();
+  close.onclick = done;
+  overlay.onclick = (e) => { if (e.target === overlay) done(); };
+  document.body.append(overlay);
+}
 
 // ---------- ニコニコ風に流れるチャット ----------
 const nicoSeen = {};          // 部屋ごとに、もう流したコメントの番号
