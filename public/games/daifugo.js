@@ -4,10 +4,12 @@
 // 場と同じ組・同じ枚数で、より強いものだけ出せる。出せない・出さないときはパス。
 // ほかの全員がパスしたら場が流れ、最後に出した人から始める。
 // ルールは部屋を作るときに選べる（RULES）。ふつうは 8切り・革命・スペ3返し・階段・カード交換が入り、
-// しばり・11バック・5飛ばし・都落ち・反則上がりは入っていない。ジョーカーは0〜2枚。
+// しばり・11バック・5飛ばし・7渡し・10捨て・12ボンバー・都落ち・反則上がりは入っていない。ジョーカーは0〜2枚。
+// 7渡し・10捨て・12ボンバーは、出した人が続けて選ぶ（s.pending）。選び終わるまで次の人には回らない。
 // 全員の順位が決まったらラウンド終了。次のラウンドは配り直して、
 //   大貧民→大富豪に一番強い2枚、貧民→富豪に一番強い1枚を渡し、大富豪・富豪は好きなカードを同じ枚数返す。
 // 手: { play: [カードid...] } / { pass: true } / { give: [カードid...] } 交換で返す / { next: true } ホストが次のラウンドへ
+//     7渡し { give7: [カードid...] } / 10捨て { discard10: [カードid...] } / 12ボンバー { bomb: [数字...] }（ジョーカーは 16）
 //     { resign: true }
 export const id = 'daifugo';
 export const title = '大富豪';
@@ -26,6 +28,9 @@ export const RULES = [
   ['shibari', 'しばり', '同じマークが続くと、場が流れるまでそのマークしか出せない', false],
   ['elevenBack', '11バック', 'Jを出すと、場が流れるまで強さが逆', false],
   ['fiveSkip', '5飛ばし', '5を出した枚数だけ次の人を飛ばす', false],
+  ['sevenPass', '7渡し', '7を出した枚数だけ、好きなカードを次の人に渡す', false],
+  ['tenDiscard', '10捨て', '10を出した枚数だけ、好きなカードを捨てる', false],
+  ['queenBomber', '12ボンバー', 'Qを出した枚数だけ数字を選び、全員その数字のカードを捨てる', false],
   ['miyakoOchi', '都落ち', '大富豪が1番に上がれないと、その場で大貧民', false],
   ['foulFinish', '反則上がり', 'ジョーカー・2（革命中は3）・8で上がると大貧民', false],
 ];
@@ -159,7 +164,7 @@ export function checkPlay(s, seat, ids) {
 // ---------- 状態 ----------
 export function init(options, players = 2, rng) {
   const s = {
-    options: normalizeOptions(options), jback: false, lock: null, penalty: [],
+    options: normalizeOptions(options), jback: false, lock: null, penalty: [], pending: null,
     players, out: Array(players).fill(false), hands: [], round: 0,
     points: Array(players).fill(0), lastRanks: null, finished: [],
     phase: 'play', turn: 0, field: null, passed: Array(players).fill(false), revolution: false,
@@ -195,6 +200,7 @@ function deal(s, rng) {
   s.jback = false;
   s.lock = null;
   s.penalty = [];
+  s.pending = null;
   s.lastPlay = null;
   s.exchange = [];
   s.history.push(`第${s.round}ラウンド`);
@@ -233,7 +239,15 @@ export function viewFor(s, seat) {
   };
 }
 
+export const PENDING_TEXT = { seven: '7渡し', ten: '10捨て', bomber: '12ボンバー' };
 export function phaseText(s, you) {
+  if (s.pending && s.phase === 'play') {
+    const e = s.pending.effects[0];
+    if (you !== s.pending.by) return `${PENDING_TEXT[e.type]}を選んでいます…`;
+    if (e.type === 'seven') return `7渡し：次の人に渡すカードを${e.count}枚選んでください`;
+    if (e.type === 'ten') return `10捨て：捨てるカードを${e.count}枚選んでください`;
+    return `12ボンバー：全員に捨てさせる数字を${e.count}つ選んでください`;
+  }
   if (s.phase === 'exchange') {
     const mine = s.exchange.find((e) => e.from === you && !e.done);
     return mine ? `カード交換：相手に返すカードを${mine.count}枚選んでください` : 'カード交換中…';
@@ -247,7 +261,7 @@ export const scoreOf = (s, seat) => `${s.points[seat]}pt`;
 
 const clone = (s) => ({
   ...s, out: s.out.slice(), hands: s.hands.map((h) => h.slice()), points: s.points.slice(),
-  finished: s.finished.slice(), passed: s.passed.slice(), exchange: s.exchange.map((e) => ({ ...e })), history: s.history.slice(),
+  finished: s.finished.slice(), passed: s.passed.slice(), penalty: (s.penalty || []).slice(), exchange: s.exchange.map((e) => ({ ...e })), history: s.history.slice(),
 });
 
 function finishIfOver(ns) {
@@ -267,6 +281,27 @@ function finishIfOver(ns) {
   return true;
 }
 
+// 普通に上がった人を順位に入れる（都落ちの判定もここ）。履歴に足す文を返す
+function finishPlayer(ns, prevRanks, p) {
+  ns.finished.push(p);
+  let note = ` ${label(p)} 上がり（${ns.finished.length}位）`;
+  const prevTop = prevRanks && prevRanks.filter((q) => !ns.out[q])[0];
+  if (rulesOf(ns).miyakoOchi && ns.finished.length === 1 && prevTop != null && prevTop !== p && playing(ns, prevTop)) {
+    ns.penalty = [...(ns.penalty || []), prevTop];
+    note += ` 都落ち！ ${label(prevTop)} は大貧民`;
+  }
+  return note;
+}
+
+// 出したあとの続き（8切りなら場を流す、そうでなければ次の人へ。5飛ばしの人数も）
+function resumeAfterPlay(ns, seat, resume) {
+  if (finishIfOver(ns)) return;
+  if (resume.eight) { clearField(ns, seat); return; }
+  let next = nextActive(ns, seat);
+  for (let k = 0; k < resume.skips; k++) next = nextActive(ns, next);
+  ns.turn = next;
+}
+
 function clearField(ns, leader) {
   ns.field = null;
   ns.lock = null;
@@ -284,6 +319,7 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     ns.out[seat] = true;
     ns.hands[seat] = [];
     ns.history.push(`${label(seat)} が投了`);
+    if (ns.pending && ns.pending.by === seat) ns.pending = null; // 選んでいる途中で抜けたら、その効果はなし
     ns.exchange = ns.exchange.filter((e) => e.from !== seat && e.to !== seat);
     if (ns.phase === 'exchange' && ns.exchange.every((e) => e.done)) ns.phase = 'play';
     if (ns.phase === 'play' && !finishIfOver(ns) && ns.turn === seat) ns.turn = nextActive(ns, seat);
@@ -319,6 +355,54 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
 
   if (s.phase !== 'play') throw new Error('今は出せません');
   if (s.turn !== seat) throw new Error('あなたの番ではありません');
+
+  if (s.pending) {
+    const e = s.pending.effects[0];
+    const hand = ns.hands[seat];
+    let note;
+    if (e.type === 'seven' || e.type === 'ten') {
+      const ids = e.type === 'seven' ? mv.give7 : mv.discard10;
+      if (!Array.isArray(ids)) throw new Error(`${PENDING_TEXT[e.type]}のカードを選んでください`);
+      const need = Math.min(e.count, hand.length);
+      if (ids.length !== need || new Set(ids).size !== ids.length) throw new Error(`${need}枚選んでください`);
+      const cards = ids.map((id) => hand.find((c) => c.id === id));
+      if (cards.some((c) => !c)) throw new Error('手札のカードを選んでください');
+      ns.hands[seat] = hand.filter((c) => !ids.includes(c.id));
+      if (e.type === 'seven') {
+        const to = nextActive(ns, seat);
+        ns.hands[to] = sortHand([...ns.hands[to], ...cards]);
+        note = `${label(seat)} → ${label(to)} に7渡し（${cards.length}枚）`;
+      } else {
+        note = `${label(seat)} 10捨て（${sortHand(cards).map(cardLabel).join(' ')}）`;
+      }
+      if (!ns.hands[seat].length) note += finishPlayer(ns, s.lastRanks, seat);
+    } else {
+      const ranks = mv.bomb;
+      if (!Array.isArray(ranks) || ranks.length !== e.count || new Set(ranks).size !== ranks.length
+        || ranks.some((r) => !(Number.isInteger(r) && r >= 3 && r <= JOKER))) throw new Error(`数字を${e.count}つ選んでください`);
+      const lost = [];
+      // 出した人から順に、選ばれた数字のカードを全部捨てる。手札がなくなった人は上がり
+      for (let k = 0; k < ns.players; k++) {
+        const p = (seat + k) % ns.players;
+        if (ns.out[p] || !ns.hands[p].length || ns.finished.includes(p) || (ns.penalty || []).includes(p)) continue;
+        const before = ns.hands[p].length;
+        ns.hands[p] = ns.hands[p].filter((c) => !ranks.includes(c.r));
+        if (before !== ns.hands[p].length) lost.push(`${label(p)} ${before - ns.hands[p].length}枚`);
+        if (!ns.hands[p].length) lost.push(finishPlayer(ns, s.lastRanks, p).trim());
+      }
+      note = `${label(seat)} 12ボンバー：${ranks.map(rankLabel).join('・')}（${lost.join('、') || '誰も持っていなかった'}）`;
+    }
+    ns.history.push(note);
+    ns.turnNo++;
+    const rest = s.pending.effects.slice(1).filter((x) => x.type === 'bomber' || ns.hands[seat].length);
+    if (rest.length) {
+      ns.pending = { ...s.pending, effects: rest.map((x) => (x.type === 'seven' ? { ...x, count: Math.min(x.count, ns.hands[seat].length) } : x)) };
+      return ns;
+    }
+    ns.pending = null;
+    resumeAfterPlay(ns, seat, s.pending.resume);
+    return ns;
+  }
 
   if (mv.pass) {
     if (!s.field) throw new Error('親はパスできません。好きなカードを出してください');
@@ -366,31 +450,28 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
         ns.penalty = [...(ns.penalty || []), seat];
         note += ' 反則上がり（大貧民）';
       } else {
-        ns.finished.push(seat);
-        note += ` 上がり（${ns.finished.length}位）`;
-        // 都落ち: 前のラウンドの大富豪より先に誰かが上がったら、大富豪はその場で大貧民
-        const prevTop = s.lastRanks && s.lastRanks.filter((p) => !s.out[p])[0];
-        if (rules.miyakoOchi && ns.finished.length === 1 && prevTop != null && prevTop !== seat && playing(ns, prevTop)) {
-          ns.penalty = [...(ns.penalty || []), prevTop];
-          note += ` 都落ち！ ${label(prevTop)} は大貧民`;
-        }
+        note += finishPlayer(ns, s.lastRanks, seat);
       }
     }
     ns.turnNo++;
-    if (rules.eightCut && isEightCut(combo)) {
-      note += ' 8切り';
-      ns.history.push(note);
-      if (!finishIfOver(ns)) clearField(ns, seat);
-      return ns;
-    }
-    // 5飛ばし: 出した5の枚数だけ次の人を飛ばす
-    const skips = rules.fiveSkip ? cards.filter((c) => c.r === 5).length : 0;
+    const eight = rules.eightCut && isEightCut(combo);
+    if (eight) note += ' 8切り';
+    // 5飛ばし: 出した5の枚数だけ次の人を飛ばす（8切りで流れるときは飛ばさない）
+    const skips = rules.fiveSkip && !eight ? cards.filter((c) => c.r === 5).length : 0;
     if (skips) note += ` 5飛ばし（${skips}人）`;
     ns.history.push(note);
-    if (finishIfOver(ns)) return ns;
-    let next = nextActive(ns, seat);
-    for (let k = 0; k < skips; k++) next = nextActive(ns, next);
-    ns.turn = next;
+    // 7渡し・10捨て・12ボンバー（ジョーカーは数えない）。手札がなくなったら渡す・捨てるはなし
+    const count = (r) => cards.filter((c) => c.s !== 'j' && c.r === r).length;
+    const effects = [];
+    if (rules.sevenPass && count(7) && !done && nextActive(ns, seat) >= 0) effects.push({ type: 'seven', count: Math.min(count(7), ns.hands[seat].length) });
+    if (rules.tenDiscard && count(10) && !done) effects.push({ type: 'ten', count: count(10) });
+    if (rules.queenBomber && count(12)) effects.push({ type: 'bomber', count: count(12) });
+    if (effects.length) {
+      ns.pending = { by: seat, effects, resume: { eight, skips } };
+      ns.turn = seat;
+      return ns;
+    }
+    resumeAfterPlay(ns, seat, { eight, skips });
     return ns;
   }
   throw new Error('不明な操作です');

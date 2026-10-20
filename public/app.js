@@ -1662,11 +1662,21 @@ const pokerCard = (card, extra = '') => {
 let dfSel = [];
 let dfKey = '';
 
+let dfBomb = [];
+// 7渡しの相手（次に手番が回る人）
+function dfNextSeat(s, from) {
+  for (let k = 1; k <= s.players; k++) {
+    const p = (from + k) % s.players;
+    if (!s.out[p] && s.handCounts[p] > 0 && !s.finished.includes(p) && !(s.penalty || []).includes(p)) return p;
+  }
+  return from;
+}
+
 function renderDaifugo(el, v) {
   const s = v.state, me = v.you;
   const name = (seat) => v.seats[seat]?.name || '?';
   const key = `${v.code}:${v.gameNo}:${s.round}:${s.phase}:${s.turnNo}`;
-  if (key !== dfKey) { dfKey = key; dfSel = []; }
+  if (key !== dfKey) { dfKey = key; dfSel = []; dfBomb = []; }
   const myHand = me >= 0 && s.hands[me] ? s.hands[me] : [];
   dfSel = dfSel.filter((id) => myHand.some((c) => c.id === id));
   const host = me >= 0 && me === v.hostSeat;
@@ -1719,7 +1729,33 @@ function renderDaifugo(el, v) {
   // 操作
   const bar = h('div', 'df-actions');
   const hint = h('div', 'wb-hint');
-  if (s.phase === 'play' && me === s.turn && !s.out[me]) {
+  const pend = s.phase === 'play' && s.pending && me === s.pending.by ? s.pending.effects[0] : null;
+  if (pend && pend.type !== 'bomber') {
+    // 7渡し・10捨て: 手札から選んで決める
+    const need = Math.min(pend.count, myHand.length);
+    const label = pend.type === 'seven' ? `${name(dfNextSeat(s, me))} に渡す（${dfSel.length}/${need}枚）` : `捨てる（${dfSel.length}/${need}枚）`;
+    const go = h('button', 'btn primary', label);
+    go.disabled = dfSel.length !== need;
+    go.onclick = () => sendMove(pend.type === 'seven' ? { give7: dfSel } : { discard10: dfSel });
+    bar.append(go);
+    hint.textContent = pend.type === 'seven' ? '7渡し：次の人に渡すカードを選んでください' : '10捨て：捨てるカードを選んでください';
+  } else if (pend) {
+    // 12ボンバー: 数字を選ぶ
+    const ranks = h('div', 'df-bomb');
+    for (let r = 3; r <= 16; r++) {
+      const b = h('button', 'btn small' + (dfBomb.includes(r) ? ' primary' : ''), daifugo.rankLabel(r));
+      b.onclick = () => {
+        dfBomb = dfBomb.includes(r) ? dfBomb.filter((x) => x !== r) : [...dfBomb, r].slice(-pend.count);
+        render();
+      };
+      ranks.append(b);
+    }
+    const go = h('button', 'btn primary', `この数字を全員捨てる（${dfBomb.length}/${pend.count}）`);
+    go.disabled = dfBomb.length !== pend.count;
+    go.onclick = () => { const r = dfBomb; dfBomb = []; sendMove({ bomb: r }); };
+    bar.append(ranks, go);
+    hint.textContent = '12ボンバー：選んだ数字のカードを、全員（自分も）手札から捨てます';
+  } else if (s.phase === 'play' && me === s.turn && !s.out[me] && !s.pending) {
     const play = h('button', 'btn primary', dfSel.length ? `出す（${dfSel.length}枚）` : '出す');
     let ok = false;
     if (dfSel.length) {

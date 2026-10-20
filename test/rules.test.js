@@ -1396,4 +1396,46 @@ test('daifugo: 都落ち・反則上がり・カード交換なし', () => {
   assert.equal(y.phase, 'play');
   assert.equal(y.turn, 0, '大貧民から');
 });
+test('daifugo: 7渡し・10捨て・12ボンバー', () => {
+  // 7渡し: 7を2枚出したら、好きなカードを2枚次の人へ
+  let s = dfState(['s7 h7 s3 s4 sK', 'h9 hA', 'c9 cK'], dfRules({ sevenPass: true }));
+  s = df.applyMove(s, { play: ids(s, 0, 's7 h7') }, 0);
+  assert.equal(s.turn, 0, '選び終わるまで同じ人');
+  assert.equal(s.pending.effects[0].type, 'seven');
+  assert.throws(() => df.applyMove(s, { play: ids(s, 0, 's3') }, 0), /選んでください|出せません|7渡し/);
+  assert.throws(() => df.applyMove(s, { give7: ids(s, 0, 's3') }, 0), /2枚/);
+  s = df.applyMove(s, { give7: ids(s, 0, 's3 s4') }, 0);
+  assert.equal(s.pending, null);
+  assert.equal(s.hands[1].length, 4, '次の人が2枚もらう');
+  assert.equal(s.turn, 1);
+  assert.ok(!s.history.at(-1).includes('♠3'), '渡したカードは履歴に出さない');
+
+  // 10捨て: 最後の1枚を捨てたら上がり
+  let t = dfState(['s10 s4', 'h9 hA', 'c9 cK'], dfRules({ tenDiscard: true }));
+  t = df.applyMove(t, { play: ids(t, 0, 's10') }, 0);
+  t = df.applyMove(t, { discard10: ids(t, 0, 's4') }, 0);
+  assert.deepEqual(t.finished, [0], '捨てて手札がなくなったら上がり');
+  assert.equal(t.turn, 1);
+
+  // 12ボンバー: 選んだ数字を全員捨てる
+  let b = dfState(['sQ s9 sA', 'h9 hA d9', 'c9 cK'], dfRules({ queenBomber: true }));
+  b = df.applyMove(b, { play: ids(b, 0, 'sQ') }, 0);
+  assert.throws(() => df.applyMove(b, { bomb: [9, 14] }, 0), /1つ/);
+  b = df.applyMove(b, { bomb: [9] }, 0);
+  assert.deepEqual(b.hands.map((h) => h.length), [1, 1, 1], '9を全員捨てた');
+  assert.equal(b.turn, 1);
+
+  // ルールが OFF なら何も起きない
+  let n = dfState(['s7 s3', 'h9 hA', 'c9 cK']);
+  n = df.applyMove(n, { play: ids(n, 0, 's7') }, 0);
+  assert.equal(n.pending, null);
+  assert.equal(n.turn, 1);
+
+  // 選んでいる途中で投了したら、その効果はなし
+  let q = dfState(['s7 s3 s4', 'h9 hA', 'c9 cK'], dfRules({ sevenPass: true }));
+  q = df.applyMove(q, { play: ids(q, 0, 's7') }, 0);
+  q = df.applyMove(q, { resign: true }, 0);
+  assert.equal(q.pending, null);
+  assert.equal(q.turn, 1);
+});
 console.log(`\n${n} tests passed`);
