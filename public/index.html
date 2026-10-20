@@ -5,9 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ボードゲーム広場</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>">
-  <link rel="stylesheet" href="style.css">
+  <script>
+    // LINE などのアプリの中のブラウザでは、うまく読み込めないことがあるので、ふつうのブラウザで開き直す
+    // （LINE は URL に openExternalBrowser=1 を付けると Safari / Chrome で開く）
+    (function () {
+      try {
+        var ua = navigator.userAgent || '';
+        if (/\bLine\//i.test(ua) && !/openExternalBrowser=1/.test(location.search)) {
+          var q = location.search ? location.search + '&' : '?';
+          location.replace(location.pathname + q + 'openExternalBrowser=1' + location.hash);
+        }
+      } catch (e) { /* 何もしない */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- 読み込みに時間がかかったり失敗したりしたときのお知らせ（style.css が読めなくても見えるよう、見た目はここに書く） -->
+  <div id="boot" style="position:fixed;left:0;right:0;top:0;z-index:100;padding:14px 16px;background:#fff7d6;color:#3a2c00;font:15px/1.6 sans-serif;border-bottom:1px solid #e6d58a;display:none">
+    <b id="boot-title">読み込みに時間がかかっています…</b><br>
+    <span id="boot-text">サーバーが起きるまで30秒ほどかかることがあります。少し待っても変わらないときは、下のボタンで読み込み直してください。<br>
+    LINE などのアプリの中で開いている場合は、Safari や Chrome で開くと表示されやすくなります。</span><br>
+    <button type="button" onclick="location.reload()" style="margin-top:8px;padding:8px 18px;font-size:15px;border-radius:8px;border:1px solid #b89a2a;background:#f2c230;color:#3a2c00">読み込み直す</button>
+  </div>
+  <script>
+    // app.js が動き出したら window.__booted = true になる。8秒たっても動かなければお知らせを出す
+    (function () {
+      function show(title) {
+        if (window.__booted) return;
+        var b = document.getElementById('boot');
+        if (title) document.getElementById('boot-title').textContent = title;
+        b.style.display = 'block';
+      }
+      setTimeout(function () { show(); }, 8000);
+      window.addEventListener('error', function (e) {
+        // スクリプトが読めなかった・この端末では動かない書き方だったとき
+        if (e && e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) show('ファイルを読み込めませんでした');
+        else if (!window.__booted) setTimeout(function () { show('この端末・ブラウザではうまく動かないかもしれません'); }, 1500);
+      }, true);
+    })();
+  </script>
   <header class="topbar">
     <a class="brand" href="#" id="brand">♞ ボードゲーム広場</a>
     <label class="name-field">名前
@@ -91,7 +128,8 @@
     <button id="quick-chat-close" class="btn ghost" type="button" title="閉じる">✕</button>
   </form>
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-  <script type="module" src="app.js"></script>
+  <!-- 並べ替え（ito）に使う SortableJS 1.15.6（MIT）。外部サイトに頼らないよう、このサーバーから配る -->
+  <script src="/vendor/Sortable.min.js" defer></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

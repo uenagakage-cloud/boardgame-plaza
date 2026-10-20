@@ -2856,7 +2856,8 @@ $('#leave').onclick = () => send({ type: 'leave' });
 $('#brand').onclick = (e) => { e.preventDefault(); if (view) send({ type: 'leave' }); };
 
 $('#copy-link').onclick = async () => {
-  const url = `${location.origin}${location.pathname}#${view.code}`;
+  // LINE で送っても Safari / Chrome で開くよう openExternalBrowser=1 を付ける（ほかのブラウザでは何も起きない）
+  const url = `${location.origin}/?openExternalBrowser=1#${view.code}`;
   try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); }
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
@@ -2952,3 +2953,6 @@ window.addEventListener('hashchange', () => {
 
 render();
 connect();
+// 読み込めたので「時間がかかっています」のお知らせは出さない
+window.__booted = true;
+$('#boot').style.display = 'none';

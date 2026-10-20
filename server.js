@@ -1,7 +1,8 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import * as chess from './public/games/chess.js';
@@ -34,6 +35,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.txt': 'text/plain; charset=utf-8',
   '.ico': 'image/x-icon',
 };
 
@@ -100,6 +102,26 @@ function sendGallery(req, res) {
 }
 
 // ---------- 静的ファイル ----------
+// 回線が弱くても読み込みやすいよう、文字のファイルは gzip で小さくして送る。
+// 中身が変わっていなければ 304（もう持っているものを使う）を返す。圧縮した結果はメモリに置いておく
+const staticCache = new Map();
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.svg', '.txt', '.json']);
+
+async function loadStatic(file) {
+  const st = await stat(file);
+  if (!st.isFile()) throw new Error('not a file');
+  const hit = staticCache.get(file);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit;
+  const raw = await readFile(file);
+  const entry = {
+    mtimeMs: st.mtimeMs, size: st.size, raw,
+    etag: `"${crypto.createHash('sha1').update(raw).digest('base64url').slice(0, 20)}"`,
+    gz: COMPRESSIBLE.has(path.extname(file)) && raw.length > 1024 ? gzipSync(raw, { level: 9 }) : null,
+  };
+  staticCache.set(file, entry);
+  return entry;
+}
+
 const server = http.createServer(async (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { pathname = '/'; }
@@ -108,9 +130,13 @@ const server = http.createServer(async (req, res) => {
   const file = path.normalize(path.join(PUBLIC, pathname));
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403).end(); return; }
   try {
-    const data = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
-    res.end(data);
+    const e = await loadStatic(file);
+    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: e.etag, Vary: 'Accept-Encoding' };
+    if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, headers).end(); return; }
+    const gzip = e.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (gzip) headers['Content-Encoding'] = 'gzip';
+    res.writeHead(200, headers);
+    res.end(gzip ? e.gz : e.raw);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
   }
