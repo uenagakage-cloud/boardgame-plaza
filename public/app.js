@@ -275,7 +275,10 @@ function renderPlayer(el, v, seat) {
   el.replaceChildren();
   el.className = 'player' + (s && !s.result && v.ready && s.turn === seat ? ' to-move' : '');
   el.append(h('span', `side-chip ${v.game}-side${seat}`, g.sideNames[seat]));
-  el.append(h('span', 'pname', p ? p.name : '対戦相手を待っています…'));
+  const pn = h('span', p ? 'pname' : 'muted', p ? p.name : '対戦相手を待っています…');
+  pn.dataset.seat = String(seat);
+  el.append(pn);
+  if (p && seat === v.hostSeat) el.append(h('span', 'host-tag', 'ホスト'));
   if (p && seat === v.you) el.append(h('span', 'you-tag', 'あなた'));
   if (p) el.append(h('span', 'dot ' + (p.online ? 'on' : 'off'), ''));
   if (!s) return;
@@ -411,6 +414,9 @@ function renderRoom() {
     return li;
   }));
   if (atBottom) log.scrollTop = log.scrollHeight;
+  nicoFeed(v);
+  document.body.classList.toggle('is-host', v.you >= 0 && v.you === v.hostSeat);
+  $('#quick-chat-btn').hidden = !$('#quick-chat').hidden;
 
   if (v.state && v.review) RENDERERS[v.game]($('#board'), { ...v, state: v.review.state, reviewing: true }, v.you >= 0 && !v.review.state.result);
   else if (v.state) RENDERERS[v.game]($('#board'), v, canAct(v));
@@ -488,7 +494,11 @@ function render() {
   $('#lobby').hidden = !!view;
   $('#room').hidden = !view;
   if (view) renderRoom();
-  else renderLobby();
+  else {
+    renderLobby();
+    $('#quick-chat').hidden = $('#quick-chat-btn').hidden = true;
+    $('#nico').replaceChildren();
+  }
 }
 
 // ---------- チェス ----------
@@ -2850,6 +2860,83 @@ $('#copy-link').onclick = async () => {
   try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); }
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
+
+// ---------- ニコニコ風に流れるチャット ----------
+const nicoSeen = {};          // 部屋ごとに、もう流したコメントの番号
+const nicoLanes = [];         // 行ごとに、次のコメントを出してよい時刻
+const NICO_MS = 7000;
+const nicoOn = () => store.get('nicoOn', '1') === '1';
+function nicoRenderToggle() { $('#nico-toggle').textContent = nicoOn() ? 'コメントを流す：ON' : 'コメントを流す：OFF'; }
+$('#nico-toggle').onclick = () => { store.set('nicoOn', nicoOn() ? '0' : '1'); nicoRenderToggle(); if (!nicoOn()) $('#nico').replaceChildren(); };
+nicoRenderToggle();
+
+function nicoFeed(v) {
+  const key = `${v.code}`;
+  const ids = v.chat.map((c) => c.id || 0);
+  const max = ids.length ? Math.max(...ids) : 0;
+  // 部屋に入ったときにすでにあったコメントは流さない
+  if (nicoSeen[key] == null) { nicoSeen[key] = max; return; }
+  const fresh = v.chat.filter((c) => (c.id || 0) > nicoSeen[key] && !c.system);
+  nicoSeen[key] = Math.max(nicoSeen[key], max);
+  if (nicoOn()) fresh.forEach(nicoShow);
+}
+
+function nicoShow(c) {
+  const box = $('#nico');
+  const laneH = 38, top0 = 64;
+  const lanes = Math.max(3, Math.floor((window.innerHeight * 0.6 - top0) / laneH));
+  const now = Date.now();
+  // 空いている行（前のコメントが十分進んだ行）を上から探す。なければ一番早く空く行
+  let lane = 0;
+  for (let i = 0; i < lanes; i++) {
+    if ((nicoLanes[i] || 0) <= now) { lane = i; break; }
+    if ((nicoLanes[i] || 0) < (nicoLanes[lane] || 0)) lane = i;
+  }
+  const el = h('div', 'nico-msg');
+  el.append(c.text);
+  if (c.name) el.append(h('span', 'nico-name', c.name));
+  el.style.top = `${top0 + lane * laneH}px`;
+  el.style.animationDuration = `${NICO_MS}ms`;
+  box.append(el);
+  // 文字の長さに合わせて、次のコメントがぶつからない時刻を決める
+  const w = el.getBoundingClientRect().width;
+  nicoLanes[lane] = now + (NICO_MS * (w + 40)) / (window.innerWidth + w);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+// すぐ書けるチャット欄（右下の 💬）
+$('#quick-chat-btn').onclick = () => {
+  $('#quick-chat').hidden = false;
+  $('#quick-chat-btn').hidden = true;
+  $('#quick-chat-input').focus();
+};
+$('#quick-chat-close').onclick = () => { $('#quick-chat').hidden = true; $('#quick-chat-btn').hidden = !view; };
+$('#quick-chat').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#quick-chat-input');
+  if (input.value.trim()) send({ type: 'chat', text: input.value });
+  input.value = '';
+});
+
+// ---------- ホストが名前をタップして追い出す ----------
+$('#room').addEventListener('click', async (e) => {
+  const v = view;
+  if (!v || v.you < 0 || v.you !== v.hostSeat) return;
+  const el = e.target.closest('.pname');
+  if (!el) return;
+  let seat = el.dataset.seat != null ? Number(el.dataset.seat) : -1;
+  if (seat < 0) {
+    // 名前の文字から席を探す（自分以外で同じ名前の人）
+    const name = el.textContent.trim();
+    seat = v.seats.findIndex((p, i) => p && i !== v.you && p.name === name);
+  }
+  const p = v.seats[seat];
+  if (seat < 0 || seat === v.you || !p || p.bot || p.kicked) return;
+  e.stopPropagation();
+  const note = v.multi ? (v.ready && !v.state?.result ? '（ゲーム中なら、その人は脱落になります）' : '') : (v.ready ? '（対局はやり直しになり、新しい相手を待ちます）' : '');
+  const ok = await choose(`${p.name} さんを部屋から追い出しますか？${note}\nこの部屋にはもう入れなくなります。`, [['yes', '追い出す'], [null, 'キャンセル']]);
+  if (ok) send({ type: 'kick', seat });
+}, true);
 
 $('#chat-form').addEventListener('submit', (e) => {
   e.preventDefault();

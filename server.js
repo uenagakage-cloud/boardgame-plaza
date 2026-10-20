@@ -224,12 +224,12 @@ function roomView(room, ws) {
     serverTime: Date.now(),
     minPlayers: g.minPlayers || 2,
     ready: isReady(room),
-    hostSeat: isMulti(g) ? hostSeat(room) : -1,
+    hostSeat: hostSeat(room),
     options: room.options,
     variant: variantOf(room),
     gameNo: room.gameNo,
     you,
-    seats: room.seats.map((s) => s && { name: s.name, online: isOnline(room, s.clientId) }),
+    seats: room.seats.map((s) => s && { name: s.name, online: isOnline(room, s.clientId), bot: !!s.bot, kicked: !!s.kicked }),
     spectators: [...room.sockets].filter((w) => seatOf(room, w) < 0).length,
     // 手札など相手に見せない情報はゲームごとに隠す
     state: room.state && g.viewFor ? g.viewFor(room.state, you) : room.state,
@@ -268,7 +268,7 @@ function broadcastLobby() {
 }
 
 function systemChat(room, text) {
-  room.chat.push({ system: true, text, t: Date.now() });
+  room.chat.push({ id: (room.chatSeq = (room.chatSeq || 0) + 1), system: true, text, t: Date.now() });
   if (room.chat.length > 100) room.chat.shift();
 }
 
@@ -408,6 +408,7 @@ function handle(ws, msg) {
     case 'join': {
       const room = rooms.get(String(msg.code || '').trim().toUpperCase());
       if (!room) throw new UserError('部屋が見つかりません', 'NO_ROOM');
+      if (room.banned && room.banned.has(ws.clientId)) throw new UserError('この部屋からは外されています', 'NO_ROOM');
       if (ws.room === room) {
         if (seatOf(room, ws) < 0 && !msg.spectate && !isReady(room)) {
           const free = room.seats.findIndex((s) => !s);
@@ -507,8 +508,15 @@ function handle(ws, msg) {
       const { room, seat } = requirePlayer(ws);
       if (!room.state || !room.state.result) throw new UserError('対局はまだ終わっていません');
       room.rematch[seat] = true;
-      room.seats.forEach((p, i) => { if (p && p.bot) room.rematch[i] = true; }); // CPU はいつでも再戦OK
+      room.seats.forEach((p, i) => { if (p && (p.bot || p.kicked)) room.rematch[i] = true; }); // CPU・外された人は待たない
       if (room.rematch.every(Boolean)) {
+        const g = GAMES[room.game];
+        // 多人数: 外された人の席は外して、残りの人で始める
+        if (isMulti(g)) {
+          const keep = room.seats.filter((p) => p && !p.kicked);
+          if (keep.length < (g.minPlayers || 2)) throw new UserError(`${g.minPlayers || 2}人以上いないと始められません`);
+          room.seats = keep;
+        }
         room.seats.push(room.seats.shift()); // 先後（席順）を回す
         room.state = GAMES[room.game].init(room.options, room.seats.length, rng, gameContext(room));
         room.rematch = room.seats.map(() => false);
@@ -537,15 +545,29 @@ function handle(ws, msg) {
       const { room, seat } = requirePlayer(ws);
       const g = GAMES[room.game];
       const target = Number(msg.seat);
-      if (!isMulti(g) || seat !== hostSeat(room) || target === seat || !room.seats[target]) return;
+      if (seat !== hostSeat(room)) throw new UserError('ホストだけが追い出せます');
       const t = room.seats[target];
-      if (isReady(room)) {
-        room.state = g.applyMove(room.state, { resign: true }, target, rng, gameContext(room));
+      if (target === seat || !t || t.bot || t.kicked) return;
+      (room.banned = room.banned || new Set()).add(t.clientId);
+      if (!isMulti(g)) {
+        // 2人用: 席を空けて、新しい相手を待つ（対局は最初から）
+        room.seats[target] = null;
+        room.state = g.init(room.options);
+        room.rematch = [false, false];
+        room.drawOffer = null;
+        room.moveLog = [];
+        room.review = null;
+        room.gameNo++;
+        systemChat(room, `${t.name} さんが外されました。新しい対戦相手を待っています`);
+      } else if (isReady(room)) {
+        if (!room.state.result) room.state = g.applyMove(room.state, { resign: true }, target, rng, gameContext(room));
         room.seats[target] = { clientId: 'kicked:' + crypto.randomUUID(), name: t.name, kicked: true };
+        if (room.rematch) room.rematch[target] = true; // いない人のせいで「もう一度遊ぶ」が止まらないように
+        systemChat(room, `${t.name} さんが外されました`);
       } else {
         room.seats[target] = null;
+        systemChat(room, `${t.name} さんが外されました`);
       }
-      systemChat(room, `${t.name} さんが外されました`);
       for (const w of [...room.sockets]) {
         if (w.clientId !== t.clientId) continue;
         room.sockets.delete(w);
@@ -583,7 +605,7 @@ function handle(ws, msg) {
       const room = requireRoom(ws);
       const text = String(msg.text || '').trim().slice(0, 200);
       if (!text) return;
-      room.chat.push({ name: ws.name, seat: seatOf(room, ws), text, t: Date.now() });
+      room.chat.push({ id: (room.chatSeq = (room.chatSeq || 0) + 1), name: ws.name, seat: seatOf(room, ws), text, t: Date.now() });
       if (room.chat.length > 100) room.chat.shift();
       broadcastRoom(room);
       return;

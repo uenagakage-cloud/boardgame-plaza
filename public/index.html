@@ -64,7 +64,7 @@
           <ul id="history" class="history"></ul>
         </div>
         <div class="panel tight chat">
-          <h3>チャット <span id="spectators" class="muted small"></span></h3>
+          <h3>チャット <span id="spectators" class="muted small"></span><button id="nico-toggle" class="btn small ghost" type="button" title="チャットを画面に流すかどうか"></button></h3>
           <ul id="chat-log" class="chat-log"></ul>
           <form id="chat-form" class="row">
             <input id="chat-input" maxlength="200" placeholder="メッセージ" autocomplete="off">
@@ -82,6 +82,14 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
+  <!-- ニコニコ風に流れるチャット -->
+  <div id="nico" class="nico" aria-hidden="true"></div>
+  <button id="quick-chat-btn" class="quick-chat-btn" type="button" title="チャットを書く" hidden>💬</button>
+  <form id="quick-chat" class="quick-chat" hidden>
+    <input id="quick-chat-input" maxlength="200" placeholder="コメントを書く（画面に流れます）" autocomplete="off" enterkeyhint="send">
+    <button class="btn primary">送信</button>
+    <button id="quick-chat-close" class="btn ghost" type="button" title="閉じる">✕</button>
+  </form>
 
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script type="module" src="app.js"></script>

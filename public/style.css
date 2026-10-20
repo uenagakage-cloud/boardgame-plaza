@@ -442,6 +442,30 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .gob-slot .gob.s3 { width: 42px; height: 42px; }
 }
 
+/* ---------- ニコニコ風に流れるチャット ---------- */
+.nico { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 15; }
+.nico-msg {
+  position: absolute; left: 100%; white-space: nowrap; font-size: 1.6rem; font-weight: 800; color: #fff;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0, 0, 0, .6);
+  animation-name: nico-run; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+.nico-name { font-size: .55em; margin-left: .5em; opacity: .85; }
+@keyframes nico-run { to { transform: translateX(calc(-100vw - 100%)); } }
+@media (max-width: 600px) { .nico-msg { font-size: 1.25rem; } }
+.quick-chat-btn {
+  position: fixed; right: 16px; bottom: 16px; z-index: 16; width: 52px; height: 52px; border-radius: 50%;
+  border: 0; background: var(--accent, #2e86ab); color: #fff; font-size: 1.5rem; box-shadow: var(--shadow); cursor: pointer;
+}
+.quick-chat {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 16; display: flex; gap: 6px; max-width: 640px; margin: 0 auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px; box-shadow: var(--shadow);
+}
+.quick-chat input { flex: 1; min-width: 0; font-size: 1rem; }
+.chat h3 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chat h3 #nico-toggle { margin-left: auto; font-size: .72rem; }
+/* ホストは名前をタップして追い出せる */
+.is-host .pname { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+
 /* ---------- モーダル・トースト ---------- */
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
 .modal-box { background: var(--surface); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); max-width: 420px; width: 100%; }
