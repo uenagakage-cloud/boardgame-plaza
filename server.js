@@ -22,9 +22,12 @@ import * as paint from './public/games/paint.js';
 import * as skull from './public/games/skull.js';
 import * as gungi from './public/games/gungi.js';
 import * as towerbattle from './public/games/towerbattle.js';
+import * as hitblow from './public/games/hitblow.js';
+import * as dotsboxes from './public/games/dotsboxes.js';
+import * as asasore from './public/games/asasore.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -217,14 +220,17 @@ function scheduleTick(room) {
 function scheduleBot(room) {
   const g = GAMES[room.game];
   if (!g.aiMove || !room.state || room.state.result || room.botFor === room.state) return;
-  const seat = room.state.turn;
-  if (!room.seats[seat] || !room.seats[seat].bot) return;
+  // 手番の CPU か、手番に関係なく動ける場面（ヒット&ブローの数字決めなど）なら CPU が動く
+  const outOfTurn = !!g.canActOutOfTurn?.(room.state);
+  const seat = room.seats.findIndex((p, i) => p && p.bot && (i === room.state.turn || outOfTurn));
+  if (seat < 0) return;
   room.botFor = room.state;
   setTimeout(() => {
     if (!rooms.has(room.code) || room.botFor !== room.state || room.state.result) return;
     try {
       const move = g.aiMove(room.state, seat, rng);
-      if (move) room.state = g.applyMove(room.state, move, seat, rng, gameContext(room));
+      if (!move) return; // 今は何もすることがない
+      room.state = g.applyMove(room.state, move, seat, rng, gameContext(room));
     } catch (e) {
       console.error('CPU の手でエラー', e);
       return;

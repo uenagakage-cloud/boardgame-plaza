@@ -16,6 +16,9 @@ import * as paint from '../public/games/paint.js';
 import * as skull from '../public/games/skull.js';
 import * as gungi from '../public/games/gungi.js';
 import * as towerbattle from '../public/games/towerbattle.js';
+import * as hitblow from '../public/games/hitblow.js';
+import * as dotsboxes from '../public/games/dotsboxes.js';
+import * as asasore from '../public/games/asasore.js';
 import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
@@ -1444,5 +1447,97 @@ test('daifugo: 7渡し・10捨て・12ボンバー', () => {
   q = df.applyMove(q, { resign: true }, 0);
   assert.equal(q.pending, null);
   assert.equal(q.turn, 1);
+});
+test('hitblow: 秘密の数・ヒットとブロー・後攻にも最後のチャンス', () => {
+  assert.deepEqual(hitblow.judge('123', '135'), { hit: 1, blow: 1 });
+  assert.deepEqual(hitblow.judge('4567', '7654'), { hit: 0, blow: 4 });
+  let s = hitblow.init({ digits: 3 });
+  assert.equal(s.phase, 'setup');
+  assert.throws(() => hitblow.applyMove(s, { secret: '112' }, 0), /同じ数字/);
+  assert.throws(() => hitblow.applyMove(s, { secret: '12' }, 0), /3けた/);
+  s = hitblow.applyMove(s, { secret: '123' }, 1); // 後攻が先に決めてもよい
+  assert.equal(hitblow.viewFor(s, 0).secrets[1], 'set', '相手の数は見えない');
+  s = hitblow.applyMove(s, { secret: '456' }, 0);
+  assert.equal(s.phase, 'play');
+  assert.throws(() => hitblow.applyMove(s, { guess: '456' }, 1), /相手の番/);
+  s = hitblow.applyMove(s, { guess: '123' }, 0); // 先攻が当てた
+  assert.equal(s.result, null, '後攻にも同じ回数のチャンス');
+  assert.equal(s.turn, 1);
+  s = hitblow.applyMove(s, { guess: '789' }, 1);
+  assert.equal(s.result.winner, 0);
+  assert.equal(hitblow.viewFor(s, 1).secrets[0], '456', '終わったら見える');
+  // 両方当てたら引き分け
+  let d = hitblow.applyMove(hitblow.applyMove(hitblow.init({}), { secret: '123' }, 0), { secret: '456' }, 1);
+  d = hitblow.applyMove(d, { guess: '456' }, 0);
+  d = hitblow.applyMove(d, { guess: '123' }, 1);
+  assert.equal(d.result.winner, null);
+});
+test('hitblow: CPU は数を決めて、答えと食い違わない予想をする', () => {
+  let s = hitblow.init({ digits: 3, cpu: true });
+  s = hitblow.applyMove(s, hitblow.aiMove(s, 1), 1);
+  assert.ok(s.secrets[1]);
+  assert.equal(hitblow.aiMove(s, 1), null, 'もう決めたら何もしない');
+  s = hitblow.applyMove(s, { secret: '987' }, 0);
+  let turns = 0;
+  while (!s.result && turns < 40) {
+    const mv = s.turn === 1 ? hitblow.aiMove(s, 1) : { guess: '012' };
+    s = hitblow.applyMove(s, mv, s.turn);
+    turns++;
+  }
+  assert.equal(s.result.winner, 1, 'CPU はいずれ当てる');
+  assert.ok(s.guesses[1].length <= 10);
+});
+test('dotsboxes: 四角を閉じたら取ってもう1本・全部埋まったら多い人の勝ち', () => {
+  let s = dotsboxes.init({ size: 3 }, 2);
+  assert.equal(s.h.length, 4);
+  assert.equal(s.v[0].length, 4);
+  s = dotsboxes.applyMove(s, { line: ['h', 0, 0] }, 0);
+  assert.equal(s.turn, 1);
+  assert.throws(() => dotsboxes.applyMove(s, { line: ['h', 0, 0] }, 1), /もう引かれて/);
+  s = dotsboxes.applyMove(s, { line: ['v', 0, 0] }, 1);
+  s = dotsboxes.applyMove(s, { line: ['v', 0, 1] }, 0);
+  s = dotsboxes.applyMove(s, { line: ['h', 1, 0] }, 1); // 4辺目
+  assert.equal(s.boxes[0][0], 1);
+  assert.equal(s.scores[1], 1);
+  assert.equal(s.turn, 1, '取ったらもう1本');
+  // 残りを全部引くと終わる
+  let guard = 0;
+  while (!s.result && guard++ < 100) {
+    const free = [];
+    s.h.forEach((row, r) => row.forEach((x, c) => { if (x == null) free.push(['h', r, c]); }));
+    s.v.forEach((row, r) => row.forEach((x, c) => { if (x == null) free.push(['v', r, c]); }));
+    s = dotsboxes.applyMove(s, { line: free[0] }, s.turn);
+  }
+  assert.ok(s.result);
+  assert.equal(s.scores[0] + s.scores[1], 9);
+  // 抜けた人は飛ばす
+  let m = dotsboxes.init({ size: 3 }, 3);
+  m = dotsboxes.applyMove(m, { resign: true }, 1);
+  m = dotsboxes.applyMove(m, { line: ['h', 0, 0] }, 0);
+  assert.equal(m.turn, 2);
+});
+test('asasore: 全員書いたら判定・同じ答えは正解・親が確定して点数', () => {
+  let s = asasore.init({ turns: 1, seconds: 60 }, 3);
+  assert.equal(s.parent, 0);
+  assert.ok(asasore.viewFor(s, 1).themeText.length > 0);
+  s = asasore.applyMove(s, { answer: 'パン' }, 0);
+  assert.equal(asasore.viewFor(s, 1).answers[0], '✓', '書いている間はほかの人の答えは見えない');
+  s = asasore.applyMove(s, { answer: 'ぱん' }, 1);
+  s = asasore.applyMove(s, { answer: 'ごはん' }, 2);
+  assert.equal(s.phase, 'judge');
+  assert.deepEqual(s.marks, [false, true, false], 'かなの違いは同じ答え');
+  assert.throws(() => asasore.applyMove(s, { mark: 2, on: true }, 1), /親/);
+  s = asasore.applyMove(s, { mark: 2, on: true }, 0); // 親が「同じ」と決めた
+  s = asasore.applyMove(s, { confirm: true }, 0);
+  assert.deepEqual(s.scores, [2, 1, 1]);
+  assert.equal(s.phase, 'reveal');
+  s = asasore.tick(s);
+  assert.equal(s.parent, 1, '親は交代');
+  assert.equal(s.phase, 'write');
+  // 時間切れでも判定へ
+  s = asasore.applyMove(s, { answer: 'a' }, 1);
+  s = asasore.tick(s);
+  assert.equal(s.phase, 'judge');
+  assert.ok(asasore.THEMES.length >= 100);
 });
 console.log(`\n${n} tests passed`);

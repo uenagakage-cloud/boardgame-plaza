@@ -15,8 +15,11 @@ import * as paint from './games/paint.js';
 import * as skull from './games/skull.js';
 import * as gungi from './games/gungi.js';
 import * as towerbattle from './games/towerbattle.js';
+import * as hitblow from './games/hitblow.js';
+import * as dotsboxes from './games/dotsboxes.js';
+import * as asasore from './games/asasore.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -31,6 +34,9 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  hitblow: { icon: '🔢', desc: '相手の秘密の数を、ヒットとブローのヒントで当てる推理ゲーム。CPU対戦あり。' },
+  dotsboxes: { icon: '▦', desc: '点と点を線でつなぎ、四角を閉じたらもらえる陣取り。2〜4人。' },
+  asasore: { icon: '🌅', desc: '親が書きそうな答えを当てる！ お題に全員で答える心理ゲーム。3〜8人。' },
   towerbattle: { icon: '🦒', desc: '順番に動物を島に積み上げる。落とした人は脱落、最後まで残った人の勝ち。2〜8人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
   gungi: { icon: '軍', desc: '駒を最大3段まで積み上げる立体将棋。入門〜上級・CPU対戦あり。' },
@@ -212,6 +218,47 @@ function renderLobby() {
         card.append(box);
         refresh();
         getOptions = () => ({ ...rules });
+      }
+      if (key === 'hitblow') {
+        const label = h('label', 'option-toggle');
+        const select = h('select', 'size-select');
+        for (const n of hitblow.DIGIT_OPTIONS) { const o = h('option', null, `${n}けた`); o.value = String(n); select.append(o); }
+        select.value = store.get('hbDigits', '3');
+        select.onchange = () => store.set('hbDigits', select.value);
+        label.append(h('span', null, 'けた数'), select);
+        const cpuLabel = h('label', 'option-toggle');
+        const cpu = h('input');
+        cpu.type = 'checkbox';
+        cpu.checked = store.get('hbCpu', '0') === '1';
+        cpu.onchange = () => store.set('hbCpu', cpu.checked ? '1' : '0');
+        cpuLabel.append(cpu, h('span', null, 'CPUと対戦'));
+        card.append(label, cpuLabel);
+        getOptions = () => ({ digits: Number(select.value), cpu: cpu.checked });
+      }
+      if (key === 'dotsboxes') {
+        const label = h('label', 'option-toggle');
+        const select = h('select', 'size-select');
+        for (const n of dotsboxes.SIZES) { const o = h('option', null, `${n}×${n}マス`); o.value = String(n); select.append(o); }
+        select.value = store.get('dbSize', '4');
+        select.onchange = () => store.set('dbSize', select.value);
+        label.append(h('span', null, '大きさ'), select);
+        card.append(label);
+        getOptions = () => ({ size: Number(select.value) });
+      }
+      if (key === 'asasore') {
+        const mk = (labelText, storeKey, values, fmt, def) => {
+          const label = h('label', 'option-toggle');
+          const select = h('select', 'size-select');
+          for (const n of values) { const o = h('option', null, fmt(n)); o.value = String(n); select.append(o); }
+          select.value = store.get(storeKey, String(def));
+          select.onchange = () => store.set(storeKey, select.value);
+          label.append(h('span', null, labelText), select);
+          card.append(label);
+          return select;
+        };
+        const turns = mk('親の回数', 'asTurns', [1, 2, 3], (n) => `1人${n}回`, 1);
+        const secs = mk('書く時間', 'asSeconds', [60, 90, 120, 0], (n) => (n ? `${n}秒` : 'なし'), 90);
+        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value) });
       }
       if (key === 'towerbattle') {
         const label = h('label', 'option-toggle');
@@ -2652,6 +2699,248 @@ function renderTower(el, v) {
   if (!tb.raf) tb.raf = requestAnimationFrame(tbDraw);
 }
 
+// ---------- ヒット&ブロー ----------
+// 数字は画面のボタンで入れる（スマホでも打ちやすく、描き直しても消えない）
+let hbEntry = '';
+let hbKey = '';
+
+function renderHitBlow(el, v, act) {
+  const s = v.state, me = v.you;
+  const digits = s.options.digits;
+  const opp = me === 1 ? 0 : 1, self = me === 1 ? 1 : 0;
+  const key = `${v.code}:${v.gameNo}:${s.phase}:${s.guesses[0].length}:${s.guesses[1].length}`;
+  if (key !== hbKey) { hbKey = key; hbEntry = ''; }
+  const root = h('div', 'hb');
+
+  // 自分の秘密の数
+  const top = h('div', 'hb-secrets');
+  const secretBox = (seat, mine) => {
+    const box = h('div', 'hb-secret' + (mine ? ' mine' : ''));
+    box.append(h('div', 'muted small', mine ? 'あなたの秘密の数' : `${v.seats[seat]?.name || '相手'} の秘密の数`));
+    const val = s.secrets[seat];
+    box.append(h('div', 'hb-digits', val && val !== 'set' ? val : val === 'set' ? '？'.repeat(digits) : '…'));
+    return box;
+  };
+  if (me >= 0) top.append(secretBox(self, true), secretBox(opp, false));
+  else top.append(secretBox(0, false), secretBox(1, false));
+  root.append(top);
+
+  // 入力（数字ボタン）
+  const canSetup = me >= 0 && s.phase === 'setup' && !s.secrets[me];
+  const canGuess = me >= 0 && s.phase === 'play' && act && s.turn === me && !s.result;
+  if (canSetup || canGuess) {
+    const pad = h('div', 'hb-pad');
+    const shown = h('div', 'hb-entry');
+    for (let i = 0; i < digits; i++) shown.append(h('span', 'hb-slot' + (hbEntry[i] ? ' on' : ''), hbEntry[i] || ''));
+    pad.append(h('div', 'hb-pad-title', canSetup ? `秘密の数を決めよう（${digits}けた・同じ数字なし）` : '相手の数を予想しよう'), shown);
+    const keys = h('div', 'hb-keys');
+    for (const d of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']) {
+      const b = h('button', 'btn hb-key', d);
+      b.disabled = hbEntry.includes(d) || hbEntry.length >= digits;
+      b.onclick = () => { hbEntry += d; render(); };
+      keys.append(b);
+    }
+    const del = h('button', 'btn hb-key', '⌫');
+    del.disabled = !hbEntry.length;
+    del.onclick = () => { hbEntry = hbEntry.slice(0, -1); render(); };
+    keys.append(del);
+    const go = h('button', 'btn primary hb-go', canSetup ? 'この数に決める' : '予想する');
+    go.disabled = hbEntry.length !== digits;
+    go.onclick = () => { const x = hbEntry; hbEntry = ''; sendMove(canSetup ? { secret: x } : { guess: x }); };
+    pad.append(keys, go);
+    root.append(pad);
+  }
+
+  // 予想の一覧（自分・相手）
+  const lists = h('div', 'hb-lists');
+  const listOf = (seat, title) => {
+    const box = h('div', 'hb-list');
+    box.append(h('div', 'hb-list-title', title));
+    const tbl = h('table', 'hb-table');
+    const head = h('tr');
+    head.append(h('th', null, '#'), h('th', null, '予想'), h('th', null, 'ヒット'), h('th', null, 'ブロー'));
+    tbl.append(head);
+    s.guesses[seat].forEach((g, i) => {
+      const tr = h('tr', g.hit === digits ? 'hb-win' : '');
+      tr.append(h('td', null, String(i + 1)), h('td', 'hb-num', g.guess), h('td', 'hb-hit', String(g.hit)), h('td', 'hb-blow', String(g.blow)));
+      tbl.append(tr);
+    });
+    if (!s.guesses[seat].length) {
+      const tr = h('tr');
+      const td = h('td', 'muted small', 'まだありません');
+      td.colSpan = 4;
+      tr.append(td);
+      tbl.append(tr);
+    }
+    box.append(tbl);
+    return box;
+  };
+  if (me >= 0) lists.append(listOf(self, 'あなたの予想'), listOf(opp, '相手の予想'));
+  else lists.append(listOf(0, `${v.seats[0]?.name || '先攻'} の予想`), listOf(1, `${v.seats[1]?.name || '後攻'} の予想`));
+  root.append(lists);
+  root.append(h('p', 'muted small hb-help', 'ヒット＝数字も場所も合っている　ブロー＝数字は合っているが場所がちがう'));
+  el.replaceChildren(root);
+}
+
+// ---------- ドット&ボックス ----------
+const DB_COLORS = ['#e4572e', '#2e86ab', '#3bb273', '#9b5de5'];
+
+function renderDotsBoxes(el, v) {
+  const s = v.state, me = v.you, n = s.n;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const myTurn = me >= 0 && !s.result && s.turn === me && !s.out[me];
+  const root = h('div', 'db');
+  // 参加者と点数
+  const players = h('div', 'uno-players');
+  for (let i = 0; i < s.players; i++) {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.turn && !s.result ? ' turn' : '') + (s.result && s.result.winner === i ? ' winner' : ''));
+    chip.append(h('span', 'db-dot-color'), h('span', 'pname', name(i)), h('span', 'wb-count', `${s.scores[i]}個`));
+    chip.firstChild.style.background = DB_COLORS[i];
+    players.append(chip);
+  }
+  root.append(players);
+
+  // 盤（SVG）。点の間隔 100、余白 30
+  const G = 100, M = 30, W = n * G + M * 2;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${W}`);
+  svg.setAttribute('class', 'db-board' + (myTurn ? ' active' : ''));
+  const el2 = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const [k, val] of Object.entries(attrs)) e.setAttribute(k, val); return e; };
+  // 取った四角
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const o = s.boxes[r][c];
+    if (o == null) continue;
+    const fresh = s.lastBoxes.some(([a, b]) => a === r && b === c);
+    svg.append(el2('rect', { x: M + c * G + 6, y: M + r * G + 6, width: G - 12, height: G - 12, rx: 10, fill: DB_COLORS[o], opacity: fresh ? 0.75 : 0.45, class: fresh ? 'db-fresh' : '' }));
+    const t = el2('text', { x: M + c * G + G / 2, y: M + r * G + G / 2 + 12, 'text-anchor': 'middle', 'font-size': 34, 'font-weight': 900, fill: '#fff' });
+    t.textContent = (name(o) || '?').slice(0, 1);
+    svg.append(t);
+  }
+  // 線
+  const line = (k, r, c) => {
+    const owner = (k === 'h' ? s.h : s.v)[r][c];
+    const [x1, y1] = [M + c * G, M + r * G];
+    const [x2, y2] = k === 'h' ? [x1 + G, y1] : [x1, y1 + G];
+    const last = s.lastLine && s.lastLine.k === k && s.lastLine.r === r && s.lastLine.c === c;
+    if (owner != null) {
+      svg.append(el2('line', { x1, y1, x2, y2, stroke: DB_COLORS[owner], 'stroke-width': last ? 12 : 9, 'stroke-linecap': 'round', class: last ? 'db-last' : '' }));
+      return;
+    }
+    const g = el2('g', { class: 'db-free' });
+    g.append(el2('line', { x1, y1, x2, y2, class: 'db-ghost', 'stroke-width': 8, 'stroke-linecap': 'round' }));
+    // 押しやすいよう、太い透明の当たり判定
+    g.append(el2('line', { x1, y1, x2, y2, stroke: 'transparent', 'stroke-width': 34, 'stroke-linecap': 'round' }));
+    if (myTurn) {
+      g.style.cursor = 'pointer';
+      g.addEventListener('click', () => sendMove({ line: [k, r, c] }));
+    }
+    svg.append(g);
+  };
+  for (let r = 0; r <= n; r++) for (let c = 0; c < n; c++) line('h', r, c);
+  for (let r = 0; r < n; r++) for (let c = 0; c <= n; c++) line('v', r, c);
+  // 点
+  for (let r = 0; r <= n; r++) for (let c = 0; c <= n; c++) svg.append(el2('circle', { cx: M + c * G, cy: M + r * G, r: 9, fill: '#333' }));
+  root.append(svg);
+  if (myTurn) {
+    const hint = h('p', 'muted small db-hint', '点と点の間をタップして線を引こう。四角を閉じたらその四角がもらえて、もう1本引けます。');
+    hint.style.borderLeft = `6px solid ${DB_COLORS[me]}`;
+    root.append(hint);
+  }
+  el.replaceChildren(root);
+}
+
+// ---------- 朝からそれ正解 ----------
+// 入力欄を消さないよう骨組みは作り直さず、中身だけ更新する
+let as = null;
+
+function buildAsasore(el) {
+  const root = h('div', 'as');
+  root.innerHTML = `
+    <div class="as-head"><div class="as-round"></div><div class="as-timer"></div></div>
+    <div class="as-theme-card"><div class="as-parent"></div><div class="as-theme"></div></div>
+    <form class="as-form row"><input maxlength="30" autocomplete="off" placeholder="答えを書く（30文字まで）" enterkeyhint="send"><button class="btn primary">書く</button></form>
+    <div class="as-mine muted"></div>
+    <div class="as-answers"></div>
+    <div class="as-tools"></div>
+    <div class="uno-players as-players"></div>`;
+  const q = (sel) => root.querySelector(sel);
+  const x = { el, root, round: q('.as-round'), timer: q('.as-timer'), parent: q('.as-parent'), theme: q('.as-theme'), form: q('.as-form'),
+    input: q('.as-form input'), mine: q('.as-mine'), answers: q('.as-answers'), tools: q('.as-tools'), players: q('.as-players') };
+  x.form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = x.input.value.trim();
+    if (t) send({ type: 'move', move: { answer: t } });
+    x.input.value = '';
+    x.input.blur();
+  });
+  el.replaceChildren(root);
+  return x;
+}
+
+function asUpdateTimer() {
+  if (!as || !view || view.game !== 'asasore' || !view.state || !view.state.endsAt) { if (as) as.timer.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
+  as.timer.textContent = view.state.phase === 'write' ? `${left}秒` : '';
+  as.timer.classList.toggle('hurry', left <= 10);
+}
+setInterval(asUpdateTimer, 250);
+
+function renderAsasore(el, v) {
+  const s = v.state, me = v.you;
+  if (!as || as.el !== el || !el.contains(as.root)) as = buildAsasore(el);
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const isParent = me >= 0 && me === s.parent;
+  const judgeSeat = v.seats[s.parent]?.online === false && v.hostSeat >= 0 ? v.hostSeat : s.parent;
+  const canJudge = me >= 0 && me === judgeSeat && s.phase === 'judge';
+  as.round.textContent = s.phase === 'end' ? '結果' : `第${s.round}/${s.totalRounds}ラウンド`;
+  as.parent.textContent = s.phase === 'end' ? '' : `親：${name(s.parent)}${isParent ? '（あなた）' : ''}`;
+  as.theme.textContent = s.phase === 'end' ? 'おつかれさまでした！' : s.themeText;
+  asUpdateTimer();
+
+  // 書く欄
+  const writing = s.phase === 'write' && me >= 0 && !s.out[me];
+  as.form.hidden = !writing;
+  as.input.placeholder = isParent ? '自分の答えを書く（30文字まで）' : '親が書きそうな答えを書く（30文字まで）';
+  as.mine.textContent = writing && s.answers[me] ? `あなたの答え：「${s.answers[me]}」（書き直すときはもう一度書いて送ってください）` : '';
+
+  // 答え
+  as.answers.replaceChildren();
+  if (s.phase !== 'write' && s.phase !== 'end') {
+    const order = [s.parent, ...[...Array(s.players).keys()].filter((i) => i !== s.parent)];
+    for (const i of order) {
+      if (s.out[i]) continue;
+      const card = h('div', 'as-answer' + (i === s.parent ? ' parent' : '') + (s.marks[i] ? ' ok' : ''));
+      card.append(h('div', 'as-who', i === s.parent ? `親 ${name(i)}` : name(i)), h('div', 'as-text', s.answers[i] || '（書かなかった）'));
+      if (i !== s.parent) {
+        if (canJudge) {
+          const b = h('button', 'btn small' + (s.marks[i] ? ' primary' : ''), s.marks[i] ? '正解！' : '正解にする');
+          b.onclick = () => send({ type: 'move', move: { mark: i, on: !s.marks[i] } });
+          card.append(b);
+        } else if (s.marks[i]) card.append(h('span', 'as-badge', '正解！'));
+      }
+      as.answers.append(card);
+    }
+  }
+  as.tools.replaceChildren();
+  if (canJudge) {
+    const ok = h('button', 'btn primary', `この判定で確定（正解 ${s.marks.filter(Boolean).length}人）`);
+    ok.onclick = () => send({ type: 'move', move: { confirm: true } });
+    as.tools.append(h('span', 'muted small', '同じ意味なら書き方がちがっても「正解」にしてOK。'), ok);
+  }
+
+  // 参加者
+  as.players.replaceChildren(...v.seats.map((p, i) => {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.parent && s.phase !== 'end' ? ' turn' : '')
+      + (s.result && s.result.winner === i ? ' winner' : ''));
+    chip.append(h('span', 'pname', p ? p.name : '?'));
+    if (i === s.parent && s.phase !== 'end') chip.append(h('span', 'wb-vote', '親'));
+    if (s.phase === 'write' && s.answers[i]) chip.append(h('span', 'pt-ok', '書いた'));
+    chip.append(h('span', 'wb-count', `${s.scores[i]}点`));
+    return chip;
+  }));
+}
+
 // ---------- スカル ----------
 let skBid = null;
 let skKey = '';
@@ -2982,7 +3271,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore };
 
 // ---------- イベント ----------
 const nameInput = $('#name');
