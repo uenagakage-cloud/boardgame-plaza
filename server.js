@@ -25,9 +25,12 @@ import * as towerbattle from './public/games/towerbattle.js';
 import * as hitblow from './public/games/hitblow.js';
 import * as dotsboxes from './public/games/dotsboxes.js';
 import * as asasore from './public/games/asasore.js';
+import * as geister from './public/games/geister.js';
+import * as mancala from './public/games/mancala.js';
+import * as connect4 from './public/games/connect4.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4 };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');

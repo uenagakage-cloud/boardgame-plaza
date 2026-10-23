@@ -19,6 +19,9 @@ import * as towerbattle from '../public/games/towerbattle.js';
 import * as hitblow from '../public/games/hitblow.js';
 import * as dotsboxes from '../public/games/dotsboxes.js';
 import * as asasore from '../public/games/asasore.js';
+import * as geister from '../public/games/geister.js';
+import * as mancala from '../public/games/mancala.js';
+import * as connect4 from '../public/games/connect4.js';
 import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
@@ -1539,5 +1542,72 @@ test('asasore: 全員書いたら判定・同じ答えは正解・親が確定�
   s = asasore.tick(s);
   assert.equal(s.phase, 'judge');
   assert.ok(asasore.THEMES.length >= 100);
+});
+test('geister: 並べる・相手の色は見えない・取る・脱出・赤を4つ取らせたら勝ち', () => {
+  let s = geister.init({});
+  assert.throws(() => geister.applyMove(s, { layout: [true, true, true, true, true, false, false, false] }, 0), /青4つ/);
+  s = geister.applyMove(s, { layout: [true, false, true, false, true, false, true, false] }, 1);
+  s = geister.applyMove(s, { layout: [true, true, true, true, false, false, false, false] }, 0);
+  assert.equal(s.phase, 'play');
+  assert.equal(s.board[4][1].good, true);
+  assert.equal(geister.viewFor(s, 0).board[1][4].good, null, '相手の色は見えない');
+  assert.equal(geister.viewFor(s, 0).board[4][1].good, true);
+  assert.throws(() => geister.applyMove(s, { from: [4, 1], to: [4, 2] }, 0), /動かせません/, '自分のおばけには入れない');
+  // 取る
+  let t = { ...s, board: s.board.map((r) => r.slice()) };
+  t.board[3][1] = { o: 1, good: false };
+  t = geister.applyMove(t, { from: [4, 1], to: [3, 1] }, 0);
+  assert.deepEqual(t.captured[0], ['bad']);
+  // 脱出: 青が出口にいれば逃がせる
+  let e = { ...s, board: s.board.map((r) => r.map(() => null)) };
+  e.board[0][0] = { o: 0, good: true };
+  e.board[5][5] = { o: 1, good: false };
+  assert.ok(geister.legalMoves(e).some((m) => m.escape));
+  e = geister.applyMove(e, { from: [0, 0], escape: true }, 0);
+  assert.equal(e.result.winner, 0);
+  // 赤を4つ取ったら、取った方の負け
+  let b = { ...s, board: s.board.map((r) => r.map(() => null)), captured: [['bad', 'bad', 'bad'], []] };
+  b.board[2][2] = { o: 0, good: true };
+  b.board[1][2] = { o: 1, good: false };
+  b.board[5][5] = { o: 1, good: true };
+  b = geister.applyMove(b, { from: [2, 2], to: [1, 2] }, 0);
+  assert.equal(b.result.winner, 1);
+});
+test('mancala: まく・ゴールでもう1回・横取り・終わりに集める', () => {
+  let s = mancala.init({ seeds: 4 });
+  assert.equal(s.pits.reduce((a, b) => a + b), 48);
+  s = mancala.applyMove(s, { pit: 2 }, 0); // 2番目から4個 → 3,4,5,ゴール
+  assert.equal(s.pits[6], 1);
+  assert.equal(s.turn, 0, 'ゴールに入ったらもう1回');
+  s = mancala.applyMove(s, { pit: 0 }, 0); // 4個 → 1,2,3,4
+  assert.equal(s.turn, 1);
+  // 横取り: 空の穴に最後の石が入って、向かいに石がある
+  let c = { ...mancala.init({}), pits: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0] };
+  c = mancala.applyMove(c, { pit: 0 }, 0); // 0 → 1（空）。向かいは 11
+  assert.equal(c.pits[11], 0);
+  // 向かい(11)が空なので横取りなし。次: 向かいに石があるとき
+  let d = { ...mancala.init({}), pits: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0] };
+  d = mancala.applyMove(d, { pit: 1 }, 0); // 1 → 2（空）。向かいは 10（5個）
+  assert.equal(d.pits[6], 6, '5個+自分の1個を横取り');
+  assert.ok(d.result, '先手の側が空になったので終わり');
+  assert.equal(d.result.winner, 0);
+  assert.throws(() => mancala.applyMove(mancala.init({}), { pit: 0 }, 1), /相手の番/);
+});
+test('connect4: 下に落ちる・4つ並んだら勝ち・いっぱいの列には入れない', () => {
+  let s = connect4.init({});
+  s = connect4.applyMove(s, { col: 3 }, 0);
+  assert.equal(s.board[5][3], 0, 'いちばん下に入る');
+  for (const [c, p] of [[4, 1], [3, 0], [4, 1], [3, 0], [4, 1]]) s = connect4.applyMove(s, { col: c }, p);
+  assert.equal(s.result, null);
+  s = connect4.applyMove(s, { col: 3 }, 0);
+  assert.equal(s.result.winner, 0);
+  assert.equal(s.winLine.length, 4);
+  let f = connect4.init({});
+  for (let i = 0; i < 6; i++) f = connect4.applyMove(f, { col: 0 }, f.turn);
+  assert.throws(() => connect4.applyMove(f, { col: 0 }, f.turn), /いっぱい/);
+  // CPU は、すぐ勝てる手を見のがさない・負けを防ぐ
+  let w = connect4.init({});
+  for (const [c, p] of [[0, 0], [6, 1], [1, 0], [6, 1], [2, 0]]) w = connect4.applyMove(w, { col: c }, p);
+  assert.deepEqual(connect4.aiMove(w, 1), { col: 3 }, '相手の4つ目を防ぐ');
 });
 console.log(`\n${n} tests passed`);

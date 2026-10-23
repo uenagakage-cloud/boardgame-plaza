@@ -18,8 +18,11 @@ import * as towerbattle from './games/towerbattle.js';
 import * as hitblow from './games/hitblow.js';
 import * as dotsboxes from './games/dotsboxes.js';
 import * as asasore from './games/asasore.js';
+import * as geister from './games/geister.js';
+import * as mancala from './games/mancala.js';
+import * as connect4 from './games/connect4.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4 };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -34,6 +37,9 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  geister: { icon: '👻', desc: '良いおばけと悪いおばけの正体を隠して戦う、かけひきのゲーム。CPU対戦あり。' },
+  mancala: { icon: '🥣', desc: '穴に石をまいて、自分のゴールにたくさん集める。CPU対戦あり。' },
+  connect4: { icon: '🔴', desc: '上からコマを落として、縦横ななめに4つ並べたら勝ち。CPU対戦あり。' },
   hitblow: { icon: '🔢', desc: '相手の秘密の数を、ヒットとブローのヒントで当てる推理ゲーム。CPU対戦あり。' },
   dotsboxes: { icon: '▦', desc: '点と点を線でつなぎ、四角を閉じたらもらえる陣取り。2〜4人。' },
   asasore: { icon: '🌅', desc: '親が書きそうな答えを当てる！ お題に全員で答える心理ゲーム。3〜8人。' },
@@ -218,6 +224,26 @@ function renderLobby() {
         card.append(box);
         refresh();
         getOptions = () => ({ ...rules });
+      }
+      if (key === 'geister' || key === 'connect4' || key === 'mancala') {
+        let seeds = null;
+        if (key === 'mancala') {
+          const label = h('label', 'option-toggle');
+          seeds = h('select', 'size-select');
+          for (const n of mancala.SEED_OPTIONS) { const o = h('option', null, `石${n}個`); o.value = String(n); seeds.append(o); }
+          seeds.value = store.get('mcSeeds', '4');
+          seeds.onchange = () => store.set('mcSeeds', seeds.value);
+          label.append(h('span', null, '穴の石'), seeds);
+          card.append(label);
+        }
+        const cpuLabel = h('label', 'option-toggle');
+        const cpu = h('input');
+        cpu.type = 'checkbox';
+        cpu.checked = store.get(key + 'Cpu', '0') === '1';
+        cpu.onchange = () => store.set(key + 'Cpu', cpu.checked ? '1' : '0');
+        cpuLabel.append(cpu, h('span', null, 'CPUと対戦'));
+        card.append(cpuLabel);
+        getOptions = () => ({ cpu: cpu.checked, ...(seeds ? { seeds: Number(seeds.value) } : {}) });
       }
       if (key === 'hitblow') {
         const label = h('label', 'option-toggle');
@@ -2941,6 +2967,181 @@ function renderAsasore(el, v) {
   }));
 }
 
+// ---------- ガイスター ----------
+let gsSel = null;       // 動かすおばけ [r, c]
+let gsLayout = null;    // 並べ中の青/赤（8つ）
+let gsSwap = null;      // 並べ中に入れかえる1つ目
+let gsKey = '';
+
+function gsGhost(x, me, extra = '') {
+  // 自分のおばけ・終わったあとは色を見せる。相手のおばけは紫の「？」
+  const known = x.good != null;
+  const cls = known ? (x.good ? 'good' : 'bad') : 'unknown';
+  const e = h('span', `gs-ghost ${cls} ${x.o !== me ? 'opp' : ''} ${extra}`);
+  e.append(h('span', 'gs-eyes'));
+  if (!known) e.append(h('span', 'gs-q', '？'));
+  return e;
+}
+
+function renderGeister(el, v, act) {
+  const s = v.state, me = v.you === 1 ? 1 : 0, flip = me === 1;
+  const key = `${v.code}:${v.gameNo}:${s.phase}:${s.moves}`;
+  if (key !== gsKey) { gsKey = key; gsSel = null; }
+  const root = h('div', 'gs');
+  const setup = s.phase === 'setup' && v.you >= 0 && !s.layouts[v.you];
+  if (s.phase !== 'setup') gsLayout = null;
+  if (setup && !gsLayout) {
+    gsLayout = [true, true, true, true, false, false, false, false].sort(() => Math.random() - 0.5);
+    gsSwap = null;
+  }
+  const legal = act && s.phase === 'play' ? geister.legalMoves(s) : [];
+  const targets = gsSel ? legal.filter((m) => m.to && m.from[0] === gsSel[0] && m.from[1] === gsSel[1]) : [];
+  const canEscape = gsSel && legal.some((m) => m.escape && m.from[0] === gsSel[0] && m.from[1] === gsSel[1]);
+
+  // 取ったおばけ
+  const capRow = (seat) => {
+    const box = h('div', 'gs-captured');
+    box.append(h('span', 'muted small', `${seat === me ? 'あなた' : '相手'}が取った：`));
+    const got = s.captured[seat];
+    if (!got.length) box.append(h('span', 'muted small', 'なし'));
+    for (const t of got) box.append(gsGhost({ o: 1 - seat, good: t === 'good' }, me, 'small'));
+    return box;
+  };
+  if (v.you >= 0) root.append(capRow(1 - me));
+
+  const board = h('div', 'board gs-board' + (act ? ' active' : ''));
+  const N = geister.N;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const r = flip ? N - 1 - i : i, c = flip ? N - 1 - j : j, here = [r, c];
+    const cell = h('div', 'sq gs-sq');
+    // 出口（自分の出口は相手側の角）
+    for (const p of [0, 1]) if (geister.EXITS[p].some(([a, b]) => a === r && b === c)) cell.classList.add(p === me ? 'exit-mine' : 'exit-theirs');
+    if (s.lastMove && ((s.lastMove.to && eq(s.lastMove.to, here)) || eq(s.lastMove.from, here))) cell.classList.add('last');
+    if (gsSel && eq(gsSel, here)) cell.classList.add('sel');
+    let x = s.board[r][c];
+    // 並べ中は、自分の置き場所に青/赤を出す
+    const slot = setup ? geister.SLOTS[v.you].findIndex(([a, b]) => a === r && b === c) : -1;
+    if (slot >= 0) {
+      x = { o: v.you, good: gsLayout[slot] };
+      if (gsSwap === slot) cell.classList.add('sel');
+      cell.onclick = () => {
+        if (gsSwap == null) gsSwap = slot;
+        else { [gsLayout[gsSwap], gsLayout[slot]] = [gsLayout[slot], gsLayout[gsSwap]]; gsSwap = null; }
+        render();
+      };
+    }
+    if (x) cell.append(gsGhost(x, me));
+    const t = targets.find((m) => eq(m.to, here));
+    if (t) cell.append(h('span', t.capture ? 'hint cap' : 'hint dot'));
+    if (s.phase === 'play') {
+      cell.onclick = () => {
+        if (gsSel && t) { const from = gsSel; gsSel = null; sendMove({ from, to: here }); return; }
+        const mine = legal.some((m) => eq(m.from, here));
+        gsSel = mine && !(gsSel && eq(gsSel, here)) ? here : null;
+        render();
+      };
+    }
+    board.append(cell);
+  }
+  root.append(board);
+  if (v.you >= 0) root.append(capRow(me));
+
+  const tools = h('div', 'gs-tools');
+  if (setup) {
+    tools.append(h('p', 'muted small', '自分のおばけを2つタップすると入れかわります。青＝良いおばけ（出口から逃がせる）、赤＝悪いおばけ（取らせると得）。'));
+    const shuffle = h('button', 'btn', 'ランダムに並べる');
+    shuffle.onclick = () => { gsLayout = gsLayout.slice().sort(() => Math.random() - 0.5); gsSwap = null; render(); };
+    const ok = h('button', 'btn primary', 'この並びで決定');
+    ok.onclick = () => { const l = gsLayout; sendMove({ layout: l }); };
+    tools.append(shuffle, ok);
+  } else if (s.phase === 'setup' && v.you >= 0) {
+    tools.append(h('p', 'muted small', '相手が並べ終わるのを待っています…'));
+  }
+  if (canEscape) {
+    const esc = h('button', 'btn primary', 'このおばけを出口から逃がす（勝ち！）');
+    esc.onclick = () => { const from = gsSel; gsSel = null; sendMove({ from, escape: true }); };
+    tools.append(esc);
+  }
+  if (s.phase === 'play') tools.append(h('p', 'muted small gs-help', '★の角が出口。青いおばけが出口のマスにいる番に、外へ逃がせます。'));
+  root.append(tools);
+  el.replaceChildren(root);
+}
+
+// ---------- マンカラ ----------
+function renderMancala(el, v, act) {
+  const s = v.state, me = v.you === 1 ? 1 : 0;
+  const opp = 1 - me;
+  const legal = act ? mancala.legalMoves(s) : [];
+  const root = h('div', 'mc');
+  const board = h('div', 'mc-board');
+  const path = new Set(s.last ? s.last.path : []);
+  const pit = (p, k) => {
+    const i = mancala.pitIndex(p, k);
+    const n = s.pits[i];
+    const b = h('button', 'mc-pit' + (p === me ? ' mine' : '') + (path.has(i) ? ' sown' : '') + (s.last && s.last.last === i ? ' last' : '')
+      + (s.last && s.last.from === i ? ' from' : ''));
+    b.append(mcSeeds(n), h('span', 'mc-count', String(n)));
+    const canPlay = p === me && legal.includes(k);
+    b.disabled = !canPlay;
+    if (canPlay) b.onclick = () => sendMove({ pit: k });
+    return b;
+  };
+  // 上が相手（右から左へ並ぶ）、下が自分（左から右）。ゴールは自分が右、相手が左
+  const store = (p) => {
+    const i = mancala.storeOf(p);
+    const e = h('div', 'mc-store' + (p === me ? ' mine' : '') + (s.last && s.last.last === i ? ' last' : ''));
+    e.append(h('span', 'mc-store-label', p === me ? 'あなた' : '相手'), mcSeeds(s.pits[i]), h('span', 'mc-count big', String(s.pits[i])));
+    return e;
+  };
+  const top = h('div', 'mc-row');
+  for (let k = 5; k >= 0; k--) top.append(pit(opp, k));
+  const bottom = h('div', 'mc-row');
+  for (let k = 0; k < 6; k++) bottom.append(pit(me, k));
+  const mid = h('div', 'mc-mid');
+  mid.append(top, bottom);
+  board.append(store(opp), mid, store(me));
+  root.append(board);
+  const msg = s.last && s.last.captured ? `${v.seats[s.last.by]?.name || ''} が${s.last.captured}個横取り！` : '';
+  root.append(h('p', 'muted small mc-help', msg || '自分の穴（下の列）をタップすると、石を右へ（反時計回りに）1つずつまきます。最後の石が自分のゴールに入るともう1回。'));
+  el.replaceChildren(root);
+}
+
+// 石を小さな丸で見せる（多いときは数字だけ）
+function mcSeeds(n) {
+  const box = h('span', 'mc-seeds');
+  for (let i = 0; i < Math.min(n, 12); i++) box.append(h('span', 'mc-seed'));
+  return box;
+}
+
+// ---------- 四目並べ ----------
+function renderConnect4(el, v, act) {
+  const s = v.state;
+  const legal = act ? connect4.legalMoves(s) : [];
+  const root = h('div', 'c4');
+  const board = h('div', 'c4-board' + (act ? ' active' : ''));
+  const win = new Set((s.winLine || []).map(([r, c]) => `${r},${c}`));
+  for (let c = 0; c < connect4.COLS; c++) {
+    const col = h('button', 'c4-col');
+    col.disabled = !legal.includes(c);
+    col.onclick = () => sendMove({ col: c });
+    for (let r = 0; r < connect4.ROWS; r++) {
+      const x = s.board[r][c];
+      const cell = h('span', 'c4-cell');
+      if (x != null) {
+        const last = s.lastMove && s.lastMove.r === r && s.lastMove.c === c;
+        const disc = h('span', `c4-disc p${x}` + (last ? ' drop' : '') + (win.has(`${r},${c}`) ? ' win' : ''));
+        if (last) disc.style.setProperty('--fall', `${r + 1}`);
+        cell.append(disc);
+      }
+      col.append(cell);
+    }
+    board.append(col);
+  }
+  root.append(board);
+  if (act) root.append(h('p', 'muted small c4-help', '入れたい列をタップすると、いちばん下に落ちます。'));
+  el.replaceChildren(root);
+}
+
 // ---------- スカル ----------
 let skBid = null;
 let skKey = '';
@@ -3271,7 +3472,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4 };
 
 // ---------- イベント ----------
 const nameInput = $('#name');
