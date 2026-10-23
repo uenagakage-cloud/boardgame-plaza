@@ -1296,13 +1296,20 @@ test('towerbattle: 真ん中に積めば残り、島の外に落とした人は�
   assert.equal(s.drop, null);
   // P2 は島の外（右端）に落とす → 落ちて脱落
   s = towerbattle.applyMove(s, { drop: { x: 300, angle: 0 } }, 1, undefined, tbCtx);
+  assert.equal(s.out[1], false, '揺れている間はまだ知らせない');
+  assert.equal(s.fellBy, null);
+  assert.ok(!s.history.at(-1).includes('脱落'));
+  assert.equal(s.pieces.length, 1, '落ちた動物は消える');
+  s = towerbattle.tick(s, undefined, tbCtx); // 揺れ終わった
+  assert.equal(s.phase, 'fell');
   assert.equal(s.out[1], true);
   assert.equal(s.fellBy, 1);
-  assert.equal(s.pieces.length, 1, '落ちた動物は消える');
+  assert.ok(s.history.at(-1).includes('脱落'));
   s = towerbattle.tick(s, undefined, tbCtx);
   assert.equal(s.turn, 2, '脱落した人は飛ばす');
   // 時間切れは今のねらいで落とす
   s = towerbattle.applyMove(s, { aim: { x: -300, angle: 0 } }, 2, undefined, tbCtx);
+  s = towerbattle.tick(s, undefined, tbCtx);
   s = towerbattle.tick(s, undefined, tbCtx);
   assert.equal(s.out[2], true);
   s = towerbattle.tick(s, undefined, tbCtx);

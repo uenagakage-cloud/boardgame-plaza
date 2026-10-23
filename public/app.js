@@ -1645,6 +1645,58 @@ let dfSel = [];
 let dfKey = '';
 
 let dfBomb = [];
+// 前に描いたときの様子（何が変わったかを見せるため）
+let dfPrev = null;
+let dfFx = { ghostField: null, gone: [], fresh: {}, events: [], timer: null };
+const DF_GHOST_MS = 1600, DF_HAND_MS = 3000, DF_EVENT_MS = 1900;
+// 履歴のうち、目立たせて知らせる出来事
+const DF_EVENT_WORDS = ['8切り', '場が流れました', '革命', '11バック', 'しばり', '5飛ばし', '7渡し', '10捨て', '12ボンバー', '都落ち', '反則上がり', '上がり'];
+
+function dfSchedule() {
+  // 一番早く消える効果の時刻に描き直す
+  clearTimeout(dfFx.timer);
+  const now = Date.now();
+  const times = [dfFx.ghostField && dfFx.ghostField.until, ...dfFx.gone.map((g) => g.until), ...Object.values(dfFx.fresh), dfFx.events[0] && dfFx.events[0].until]
+    .filter((t) => t && t > now);
+  if (times.length) dfFx.timer = setTimeout(() => { if (view && view.game === 'daifugo') render(); }, Math.min(...times) - now + 20);
+}
+
+// 前の状態と比べて、場が流れた・手札が増えた／減った・出来事を見つける
+function dfTrack(v, named) {
+  const s = v.state, me = v.you, now = Date.now();
+  const roundKey = `${v.code}:${v.gameNo}:${s.round}`;
+  const hand = me >= 0 && s.hands[me] ? s.hands[me] : [];
+  const prev = dfPrev;
+  dfPrev = { roundKey, hand, field: s.field, histLen: s.history.length, phase: s.phase };
+  if (!prev || prev.roundKey !== roundKey) {
+    // 新しいラウンド（配り直し）: 比べない。交換でもらったカードだけ目立たせる
+    dfFx = { ghostField: null, gone: [], fresh: {}, events: [], timer: dfFx.timer };
+    for (const e of s.exchange || []) if (e.from === me && e.received) for (const id of e.received) dfFx.fresh[id] = now + DF_HAND_MS * 2;
+    return;
+  }
+  // 場が流れた: 前に出ていたカードを少しの間残して見せる
+  if (prev.field && !s.field) {
+    const lines = s.history.slice(prev.histLen).join(' ');
+    dfFx.ghostField = { cards: prev.field.cards, by: prev.field.by, until: now + DF_GHOST_MS, label: lines.includes('8切り') ? '8切り！ 場が流れます' : '場が流れました' };
+  } else if (s.field) dfFx.ghostField = null;
+  // 手札の変化（自分で出したカードは場に行くので除く）
+  const nowIds = new Set(hand.map((c) => c.id));
+  const prevIds = new Set(prev.hand.map((c) => c.id));
+  const played = new Set(s.lastPlay && s.lastPlay.by === me ? s.lastPlay.cards.map((c) => c.id) : []);
+  const why = s.history.slice(prev.histLen).join(' ');
+  const lostLabel = why.includes('12ボンバー') ? '12ボンバーで捨てた' : why.includes('7渡し') ? '7渡しで渡した' : why.includes('10捨て') ? '10捨てで捨てた' : '交換で渡した';
+  const gone = prev.hand.filter((c) => !nowIds.has(c.id) && !played.has(c.id));
+  if (gone.length) dfFx.gone.push({ cards: gone, label: lostLabel, until: now + DF_HAND_MS });
+  for (const c of hand) if (!prevIds.has(c.id)) dfFx.fresh[c.id] = now + DF_HAND_MS;
+  // 出来事のお知らせ（新しく増えた履歴から）
+  for (const line of s.history.slice(prev.histLen)) {
+    if (DF_EVENT_WORDS.some((w) => line.includes(w))) {
+      const start = Math.max(now, dfFx.events.length ? dfFx.events[dfFx.events.length - 1].until : now);
+      dfFx.events.push({ text: named(line), start, until: start + DF_EVENT_MS });
+    }
+  }
+}
+
 // 7渡しの相手（次に手番が回る人）
 function dfNextSeat(s, from) {
   for (let k = 1; k <= s.players; k++) {
@@ -1657,6 +1709,13 @@ function dfNextSeat(s, from) {
 function renderDaifugo(el, v) {
   const s = v.state, me = v.you;
   const name = (seat) => v.seats[seat]?.name || '?';
+  const named = (t) => t.replace(/P(\d+)/g, (all, n) => v.seats[n - 1]?.name || all);
+  dfTrack(v, named);
+  const now = Date.now();
+  dfFx.gone = dfFx.gone.filter((g) => g.until > now);
+  dfFx.events = dfFx.events.filter((e) => e.until > now);
+  for (const id of Object.keys(dfFx.fresh)) if (dfFx.fresh[id] <= now) delete dfFx.fresh[id];
+  if (dfFx.ghostField && dfFx.ghostField.until <= now) dfFx.ghostField = null;
   const key = `${v.code}:${v.gameNo}:${s.round}:${s.phase}:${s.turnNo}`;
   if (key !== dfKey) { dfKey = key; dfSel = []; dfBomb = []; }
   const myHand = me >= 0 && s.hands[me] ? s.hands[me] : [];
@@ -1701,12 +1760,38 @@ function renderDaifugo(el, v) {
     const cards = h('div', 'df-cards');
     cards.append(...daifugo.sortHand(s.field.cards).map((c) => playingCard(c, 'big')));
     table.append(h('div', 'df-field-label', `${name(s.field.by)} が出したカード`), cards);
+  } else if (s.phase === 'play' && dfFx.ghostField) {
+    // 流れた直後: さっきまでのカードを薄くして見せる
+    const g = dfFx.ghostField;
+    const cards = h('div', 'df-cards df-cleared');
+    cards.style.animationDelay = `-${now - (g.until - DF_GHOST_MS)}ms`; // 描き直しても続きから
+    cards.append(...daifugo.sortHand(g.cards).map((c) => playingCard(c, 'big')));
+    table.append(h('div', 'df-field-label df-flow', g.label), cards);
   } else if (s.phase === 'play') {
     table.append(h('div', 'df-field-label', `場は空いています（親：${name(s.turn)}）`));
   } else {
     table.append(h('div', 'df-field-label', 'カード交換中…'));
   }
+  // 出来事のお知らせ（順番に1つずつ大きく出す）
+  const ev = dfFx.events.find((e) => e.start <= now);
+  if (ev) {
+    const b = h('div', 'df-event', ev.text);
+    b.style.animationDuration = `${DF_EVENT_MS}ms`;
+    b.style.animationDelay = `-${now - ev.start}ms`;
+    table.append(b);
+  }
   root.append(table);
+
+  // 手札から消えたカード（12ボンバー・7渡し・10捨て・交換）
+  for (const g of dfFx.gone) {
+    const row = h('div', 'df-gone');
+    row.style.animationDelay = `-${now - (g.until - DF_HAND_MS)}ms`;
+    row.append(h('span', 'df-gone-label', `${g.label}カード`));
+    const cards = h('div', 'df-cards');
+    cards.append(...daifugo.sortHand(g.cards).map((c) => playingCard(c)));
+    row.append(cards);
+    root.append(row);
+  }
 
   // 操作
   const bar = h('div', 'df-actions');
@@ -1780,8 +1865,13 @@ function renderDaifugo(el, v) {
     const canSelect = (s.phase === 'play' && me === s.turn) || !!ex;
     const hand = h('div', 'df-hand');
     for (const c of myHand) {
-      const b = h('button', 'df-card-btn' + (dfSel.includes(c.id) ? ' sel' : ''));
+      const fresh = dfFx.fresh[c.id];
+      const b = h('button', 'df-card-btn' + (dfSel.includes(c.id) ? ' sel' : '') + (fresh ? ' df-new' : ''));
       b.append(playingCard(c));
+      if (fresh) {
+        b.append(h('span', 'df-new-tag', 'NEW'));
+        b.firstChild.style.animationDelay = `-${Math.max(0, now - (fresh - DF_HAND_MS))}ms`;
+      }
       b.disabled = !canSelect;
       b.onclick = () => {
         dfSel = dfSel.includes(c.id) ? dfSel.filter((x) => x !== c.id) : [...dfSel, c.id];
@@ -1792,6 +1882,7 @@ function renderDaifugo(el, v) {
     root.append(h('div', 'cc-hand-title', `あなたの手札（${myHand.length}枚）・カードを選んで「出す」`), hand);
   }
   el.replaceChildren(root);
+  dfSchedule();
 }
 
 // ---------- ポーカー ----------
@@ -2542,12 +2633,12 @@ function renderTower(el, v) {
   const key = `${v.code}:${v.gameNo}:${s.dropCount}:${s.turn}`;
   if (key !== tbAimKey) { tbAimKey = key; tbAim = { x: 0, angle: 0 }; }
   const mine = tbMyTurn();
-  tb.who.textContent = s.result ? '結果' : s.phase === 'falling' ? `${name(s.drop ? s.drop.by : s.turn)} さんの${towerbattle.ANIMALS[s.drop ? s.drop.bodies.at(-1) : s.current].name}…` : mine ? `あなたの番：${towerbattle.ANIMALS[s.current].name}` : `${name(s.turn)} さんの番：${towerbattle.ANIMALS[s.current].name}`;
-  tb.next.textContent = s.result ? '' : `つぎ：${towerbattle.ANIMALS[s.phase === 'falling' ? s.current : s.next].name}`;
+  tb.who.textContent = s.result ? '結果' : s.phase === 'fell' ? `${name(s.fellBy)} さんが落としました` : s.phase === 'falling' ? `${name(s.drop ? s.drop.by : s.turn)} さんの${towerbattle.ANIMALS[s.drop ? s.drop.bodies.at(-1) : s.current].name}…` : mine ? `あなたの番：${towerbattle.ANIMALS[s.current].name}` : `${name(s.turn)} さんの番：${towerbattle.ANIMALS[s.current].name}`;
+  tb.next.textContent = s.result ? '' : `つぎ：${towerbattle.ANIMALS[s.phase === 'falling' || s.phase === 'fell' ? s.current : s.next].name}`;
   tb.tools.hidden = !mine;
   tb.help.hidden = !mine;
   // 落としたときの知らせ
-  const fell = s.phase === 'falling' && s.fellBy != null;
+  const fell = s.phase === 'fell' && s.fellBy != null; // 揺れ終わってからサーバーが知らせる
   tb.banner.hidden = !fell && !s.result;
   if (s.result) tb.banner.textContent = s.result.winner != null ? `${name(s.result.winner)} さんの勝ち！` : '引き分け';
   else if (fell) tb.banner.textContent = `落ちた！ ${name(s.fellBy)} さんは脱落`;
@@ -3016,6 +3107,11 @@ $('#quick-chat').addEventListener('submit', (e) => {
   const input = $('#quick-chat-input');
   if (input.value.trim()) send({ type: 'chat', text: input.value });
   input.value = '';
+});
+
+// ゲーム画面の長押しメニュー（コピーなど）を出さない（入力欄は今までどおり）
+$('#board').addEventListener('contextmenu', (e) => {
+  if (!/INPUT|TEXTAREA/.test(e.target.tagName)) e.preventDefault();
 });
 
 // ---------- ホストが名前をタップして追い出す ----------

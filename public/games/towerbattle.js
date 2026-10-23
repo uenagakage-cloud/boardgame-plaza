@@ -17,6 +17,7 @@ export const DROP_GAP = 170;                // 塔の一番上からどれだけ
 export const FALL_Y = 160;                  // ここより下に行った動物は「落ちた」
 export const TURN_MS = 30000;
 export const FRAME_MS = 1000 / 30;          // 落ちる様子のコマの間隔
+export const FELL_SHOW_MS = 2200;           // 「落ちた！」を見せる時間
 
 // 動物の形（パーツの組み合わせ。座標は動物の中心からのずれ）
 // rect: [x, y, w, h] / circle: [x, y, r] / poly: 凸多角形の頂点
@@ -133,11 +134,8 @@ function doDrop(s, aim, rng, ctx) {
   s.endsAt = null;
   s.tickAt = s.drop.startAt + sim.frames.length * FRAME_MS + 700;
   s.fellBy = null;
-  if (sim.fallen > 0) {
-    s.out[seat] = true;
-    s.fellBy = seat;
-    s.history.push(`${sim.fallen}匹落ちた！ ${label(seat)} は脱落`);
-  }
+  // 落ちたかどうかは、落ちる様子を見せ終わってから知らせる（先に分かってしまわないように）
+  s.pendingFall = sim.fallen > 0 ? { seat, n: sim.fallen } : null;
   s.current = s.next;
   s.next = pickAnimal(rng);
 }
@@ -145,8 +143,21 @@ function doDrop(s, aim, rng, ctx) {
 export function tick(s, rng, ctx) {
   const ns = clone(s);
   if (s.phase === 'aim') { doDrop(ns, s.aim, rng, ctx); return ns; } // 時間切れ: 今のねらいで落とす
-  if (s.phase === 'falling') {
+  if (s.phase === 'falling' && s.pendingFall) {
+    // 揺れ終わった: ここで初めて脱落を知らせて、少し見せる
+    const { seat, n } = s.pendingFall;
     ns.drop = null;
+    ns.pendingFall = null;
+    ns.out[seat] = true;
+    ns.fellBy = seat;
+    ns.history.push(`${n}匹落ちた！ ${label(seat)} は脱落`);
+    ns.phase = 'fell';
+    ns.tickAt = Date.now() + FELL_SHOW_MS;
+    return ns;
+  }
+  if (s.phase === 'falling' || s.phase === 'fell') {
+    ns.drop = null;
+    ns.fellBy = null;
     if (active(ns).length < 2) finish(ns);
     else startTurn(ns, nextSeat(ns, s.drop ? s.drop.by : s.turn));
     return ns;
@@ -159,6 +170,7 @@ export const canActOutOfTurn = () => true;
 export function phaseText(s, you) {
   if (s.result) return null;
   if (s.phase === 'falling') return 'ゆれています…';
+  if (s.phase === 'fell') return '落ちた！';
   if (you === s.turn) return '左右に動かして、回して、落とそう！';
   return null;
 }
