@@ -11,8 +11,6 @@ import * as gobblet from './public/games/gobblet.js';
 import * as othello from './public/games/othello.js';
 import * as wordbasket from './public/games/wordbasket.js';
 import * as catchoco from './public/games/catchoco.js';
-import * as uno from './public/games/uno.js';
-import * as werewolf from './public/games/werewolf.js';
 import * as ito from './public/games/ito.js';
 import * as daifugo from './public/games/daifugo.js';
 import * as poker from './public/games/poker.js';
@@ -27,7 +25,6 @@ import * as asasore from './public/games/asasore.js';
 import * as geister from './public/games/geister.js';
 import * as mancala from './public/games/mancala.js';
 import * as connect4 from './public/games/connect4.js';
-import * as wordwolf from './public/games/wordwolf.js';
 import * as hagetaka from './public/games/hagetaka.js';
 import * as itchi from './public/games/itchi.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
@@ -36,7 +33,7 @@ import { createRequire } from 'node:module';
 // ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
 const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');

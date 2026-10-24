@@ -5,8 +5,6 @@ import * as gobblet from '../public/games/gobblet.js';
 import * as othello from '../public/games/othello.js';
 import * as wbk from '../public/games/wordbasket.js';
 import * as cc from '../public/games/catchoco.js';
-import * as uno from '../public/games/uno.js';
-import * as ww from '../public/games/werewolf.js';
 import * as ito from '../public/games/ito.js';
 import * as df from '../public/games/daifugo.js';
 import * as pk from '../public/games/poker.js';
@@ -21,7 +19,6 @@ import * as asasore from '../public/games/asasore.js';
 import * as geister from '../public/games/geister.js';
 import * as mancala from '../public/games/mancala.js';
 import * as connect4 from '../public/games/connect4.js';
-import * as wordwolf from '../public/games/wordwolf.js';
 import * as hagetaka from '../public/games/hagetaka.js';
 import * as itchi from '../public/games/itchi.js';
 import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
@@ -309,174 +306,6 @@ test('catchoco: 手番の人が抜けたら次の人へ', () => {
   assert.equal(s.won[1].length, 1);
   s = cc.applyMove(s, { resign: true }, 1);
   assert.ok(s.result);
-});
-
-
-// UNO: 手札と場を指定した状態を作る
-let unoId = 1000;
-const uc = (c, v) => ({ id: unoId++, c, v });
-const unoState = (players, hands, topCard, color) => {
-  const s = uno.init({}, players);
-  s.hands = hands;
-  s.discard = [topCard];
-  s.color = color || topCard.c;
-  return s;
-};
-const unoTotal = (s) => s.deck.length + s.discard.length + s.hands.reduce((a, h) => a + h.length, 0);
-test('uno: 配り方', () => {
-  const s = uno.init({}, 4);
-  assert.ok(s.hands.every((h) => h.length === 7));
-  assert.match(uno.top(s).v, /^\d$/);
-  assert.equal(unoTotal(s), 108);
-  const v = uno.viewFor(s, 1);
-  assert.equal(v.hands[0], null);
-  assert.equal(v.deck, null);
-});
-test('uno: 色か数字を合わせる・ワイルドドロー4の制限', () => {
-  const r5 = uc('r', '5'), b5 = uc('b', '5'), g7 = uc('g', '7'), w4 = uc(null, '+4'), w = uc(null, 'wild');
-  const s = unoState(2, [[r5, b5, g7, w4, w], [uc('y', '1')]], uc('r', '3'));
-  const ids = uno.playableIds(s, 0);
-  assert.ok(ids.includes(r5.id) && ids.includes(w.id));
-  assert.ok(!ids.includes(b5.id) && !ids.includes(g7.id));
-  assert.ok(!ids.includes(w4.id), '場の色を持っているとドロー4は出せない');
-  assert.throws(() => uno.applyMove(s, { play: w.id }, 0), /色を選んで/);
-  const ns = uno.applyMove(s, { play: w.id, color: 'g' }, 0);
-  assert.equal(ns.color, 'g');
-  assert.equal(ns.turn, 1);
-  assert.throws(() => uno.applyMove(ns, { play: g7.id }, 0), /あなたの番では/);
-});
-test('uno: スキップ・リバース・ドロー2', () => {
-  const s = unoState(3, [[uc('r', 'skip'), uc('r', 'rev'), uc('r', '+2'), uc('r', '1')], [uc('y', '1')], [uc('y', '2')]], uc('r', '3'));
-  let ns = uno.applyMove(s, { play: s.hands[0][0].id }, 0);
-  assert.equal(ns.turn, 2, 'スキップで1人飛ばす');
-  ns = uno.applyMove({ ...s, turn: 0 }, { play: s.hands[0][1].id }, 0);
-  assert.equal(ns.direction, -1);
-  assert.equal(ns.turn, 2, 'リバースで逆回り');
-  const before = s.hands[1].length;
-  ns = uno.applyMove(s, { play: s.hands[0][2].id }, 0);
-  assert.equal(ns.hands[1].length, before + 2);
-  assert.equal(ns.turn, 2);
-});
-test('uno: 2人のリバースはもう一度自分の番', () => {
-  const s = unoState(2, [[uc('r', 'rev'), uc('r', '1')], [uc('y', '1')]], uc('r', '3'));
-  assert.equal(uno.applyMove(s, { play: s.hands[0][0].id }, 0).turn, 0);
-});
-test('uno: 引いたカードはそのまま出せる・出せなければパス', () => {
-  const s = unoState(2, [[uc('b', '1')], [uc('y', '1')]], uc('r', '3'));
-  s.deck.push(uc('r', '9'));
-  let ns = uno.applyMove(s, { draw: true }, 0);
-  assert.equal(ns.turn, 0);
-  assert.equal(uno.playableIds(ns, 0).length, 1, '引いたカードだけ出せる');
-  assert.throws(() => uno.applyMove(ns, { draw: true }, 0), /もう引きました/);
-  ns = uno.applyMove(ns, { pass: true }, 0);
-  assert.equal(ns.turn, 1);
-  const s2 = unoState(2, [[uc('b', '1')], [uc('y', '1')]], uc('r', '3'));
-  s2.deck.push(uc('g', '9'));
-  assert.equal(uno.applyMove(s2, { draw: true }, 0).turn, 1, '出せないカードなら自動で次へ');
-});
-test('uno: UNO の言い忘れを指摘されると2枚・宣言すれば指摘されない', () => {
-  const s = unoState(3, [[uc('r', '1'), uc('r', '2')], [uc('y', '1')], [uc('y', '2')]], uc('r', '3'));
-  let ns = uno.applyMove(s, { play: s.hands[0][0].id }, 0);
-  assert.equal(ns.unoPending, 0);
-  ns = uno.applyMove(ns, { catchUno: 0 }, 2);
-  assert.equal(ns.hands[0].length, 3);
-  const said = uno.applyMove(s, { play: s.hands[0][0].id, uno: true }, 0);
-  assert.equal(said.unoPending, null);
-  assert.throws(() => uno.applyMove(said, { catchUno: 0 }, 2), /指摘できません/);
-  // 次の人が動いたら指摘できない
-  let late = uno.applyMove(s, { play: s.hands[0][0].id }, 0);
-  late = uno.applyMove(late, { draw: true }, 1);
-  assert.equal(late.unoPending, null);
-});
-test('uno: ランダム対局が終わり、カード枚数が保たれる', () => {
-  let seed = 5;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const rng = (n = 6) => 1 + Math.floor(rnd() * n);
-  for (let game = 0; game < 40; game++) {
-    let s = uno.init({}, 2 + (game % 5), rng), guard = 0;
-    while (!s.result && guard++ < 3000) {
-      const p = s.turn, ids = uno.playableIds(s, p);
-      if (ids.length) {
-        const id = ids[Math.floor(rnd() * ids.length)];
-        s = uno.applyMove(s, { play: id, color: uno.COLORS[Math.floor(rnd() * 4)], uno: rnd() < 0.7 }, p, rng);
-      } else if (s.drawn != null) s = uno.applyMove(s, { pass: true }, p, rng);
-      else s = uno.applyMove(s, { draw: true }, p, rng);
-      if (s.unoPending !== null && rnd() < 0.5) s = uno.applyMove(s, { catchUno: s.unoPending }, (s.unoPending + 1) % s.players, rng);
-      assert.equal(unoTotal(s), 108);
-    }
-    assert.ok(s.result, '対局が終わらない');
-  }
-});
-
-
-// ワンナイト人狼: 役職を指定した状態を作る
-const wwState = (roles, center) => Object.assign(ww.init({}, roles.length), { roles, center });
-const wwNightAll = (s, acts = {}) => {
-  for (let p = 0; p < s.players; p++) s = ww.applyMove(s, { night: acts[p] || {} }, p);
-  return s;
-};
-const wwVote = (s, votes) => votes.reduce((st, t, p) => ww.applyMove(st, { vote: t }, p), s);
-test('werewolf: 役職の構成と秘密', () => {
-  assert.deepEqual(ww.composition(3).sort(), ['seer', 'thief', 'villager', 'wolf', 'wolf']);
-  assert.ok(ww.composition(5).includes('madman'));
-  const s = ww.init({}, 4);
-  assert.equal(s.roles.length + s.center.length, 6);
-  const v = ww.viewFor(s, 0);
-  assert.equal(v.roles.filter((r) => r !== null).length, 1);
-  assert.equal(v.center, null);
-});
-test('werewolf: 占い師は交換前のカードを見る・怪盗は交換後の役職になる', () => {
-  let s = wwState(['seer', 'thief', 'wolf', 'villager'], ['wolf', 'villager']);
-  s = ww.applyMove(s, { night: { swap: 2 } }, 1);
-  s = ww.applyMove(s, { night: { look: 1 } }, 0);
-  assert.ok(s.night[0].info[0].includes('怪盗'));
-  assert.ok(s.night[1].info[0].includes('人狼'));
-  s = ww.applyMove(s, { night: {} }, 2);
-  assert.equal(s.night[2].info[0], '人狼はあなた1人です');
-  assert.equal(s.phase, 'night');
-  s = ww.applyMove(s, { night: {} }, 3);
-  assert.equal(s.phase, 'day');
-  assert.deepEqual(s.final, ['seer', 'wolf', 'thief', 'villager']);
-});
-test('werewolf: 占い師は中央2枚も見られる', () => {
-  const s = wwState(['seer', 'wolf', 'wolf'], ['thief', 'villager']);
-  assert.throws(() => ww.applyMove(s, { night: { center: [0] } }, 0), /2枚/);
-  const ns = ww.applyMove(s, { night: { center: [0, 1] } }, 0);
-  assert.equal(ns.night[0].info.length, 2);
-});
-test('werewolf: 人狼を処刑すれば村人陣営の勝ち', () => {
-  let s = wwNightAll(wwState(['seer', 'wolf', 'villager', 'villager'], ['wolf', 'thief']));
-  assert.throws(() => ww.applyMove(s, { vote: 0 }, 0), /投票できません/);
-  s = wwVote(s, [1, 0, 1, 1]);
-  assert.deepEqual(s.executed, [1]);
-  assert.deepEqual(s.result.winners, [0, 2, 3]);
-  assert.equal(s.result.team, 0);
-});
-test('werewolf: 人狼が生き残れば人狼陣営（狂人も）の勝ち・投票は変更できる', () => {
-  let s = wwNightAll(wwState(['wolf', 'madman', 'villager', 'villager', 'seer'], ['wolf', 'thief']));
-  s = ww.applyMove(s, { vote: 3 }, 0);
-  s = ww.applyMove(s, { vote: 4 }, 0); // 変更
-  assert.equal(s.votes[0], 4);
-  s = wwVote(s, [2, 2, 1, 2, 3]);
-  assert.deepEqual(s.executed, [2]);
-  assert.deepEqual(s.result.winners, [0, 1]);
-});
-test('werewolf: 全員1票ずつなら処刑なし・人狼が中央なら平和村で村人の勝ち', () => {
-  let s = wwNightAll(wwState(['seer', 'thief', 'villager'], ['wolf', 'wolf']));
-  s = wwVote(s, [1, 2, 0]);
-  assert.deepEqual(s.executed, []);
-  assert.deepEqual(s.result.winners, [0, 1, 2]);
-  let t = wwNightAll(wwState(['seer', 'thief', 'villager'], ['wolf', 'wolf']));
-  t = wwVote(t, [2, 2, 0]);
-  assert.deepEqual(t.result.winners, []);
-  assert.ok(t.result.allLose);
-});
-test('werewolf: 怪盗が人狼と交換すると人狼陣営になる', () => {
-  let s = wwState(['thief', 'wolf', 'villager'], ['wolf', 'seer']);
-  s = wwNightAll(s, { 0: { swap: 1 } });
-  s = wwVote(s, [2, 2, 1]); // 元人狼（今は怪盗）の1に1票、2に2票
-  assert.deepEqual(s.executed, [2]);
-  assert.deepEqual(s.result.winners, [0]);
 });
 
 
@@ -1573,54 +1402,6 @@ test('connect4: 下に落ちる・4つ並んだら勝ち・いっぱいの列に
   for (const [c, p] of [[0, 0], [6, 1], [1, 0], [6, 1], [2, 0]]) w = connect4.applyMove(w, { col: c }, p);
   assert.deepEqual(connect4.aiMove(w, 1), { col: 3 }, '相手の4つ目を防ぐ');
 });
-test('wordwolf: お題が配られ、投票で処刑、ウルフの逆転、点数', () => {
-  let s = wordwolf.init({ minutes: 1, rounds: 1 }, 4);
-  assert.equal(s.wolves.length, 1);
-  const wolf = s.wolves[0];
-  const citizens = [0, 1, 2, 3].filter((p) => p !== wolf);
-  assert.ok(citizens.every((p) => s.words[p] === s.major));
-  assert.equal(s.words[wolf], s.minor);
-  const v = wordwolf.viewFor(s, citizens[0]);
-  assert.equal(v.words[wolf], null, 'ほかの人のお題は見えない');
-  assert.deepEqual(v.wolves, [], 'ウルフが誰かは見えない');
-  assert.throws(() => wordwolf.applyMove(s, { endTalk: true }, citizens[0], undefined, { hostSeat: wolf }), /ホスト/);
-  s = wordwolf.applyMove(s, { endTalk: true }, 0, undefined, { hostSeat: 0 });
-  assert.equal(s.phase, 'vote');
-  assert.throws(() => wordwolf.applyMove(s, { vote: 0 }, 0), /自分/);
-  // 全員でウルフに投票（ウルフは市民の1人に）
-  for (const p of citizens) s = wordwolf.applyMove(s, { vote: wolf }, p);
-  s = wordwolf.applyMove(s, { vote: citizens[0] }, wolf);
-  assert.equal(s.executed, wolf);
-  assert.equal(s.phase, 'guess');
-  assert.throws(() => wordwolf.applyMove(s, { guess: 'x' }, citizens[0]), /答えられません/);
-  s = wordwolf.applyMove(s, { guess: 'ぜったいちがう' }, wolf);
-  assert.equal(s.winner, 'citizen');
-  assert.ok(citizens.every((p) => s.scores[p] === 1));
-  s = wordwolf.tick(s);
-  assert.ok(s.result, '1ラウンドで終わり');
-
-  // 逆転: ウルフがみんなのお題を当てる・同数なら処刑なしでウルフの勝ち
-  let r = wordwolf.init({ rounds: 1 }, 3);
-  const w = r.wolves[0];
-  const others = [0, 1, 2].filter((p) => p !== w);
-  r = wordwolf.tick(r); // 話し合いの時間切れ → 投票
-  r = wordwolf.applyMove(r, { vote: w }, others[0]);
-  r = wordwolf.applyMove(r, { vote: w }, others[1]);
-  r = wordwolf.applyMove(r, { vote: others[0] }, w);
-  r = wordwolf.applyMove(r, { guess: r.major }, w);
-  assert.equal(r.winner, 'wolf');
-  assert.equal(r.scores[w], 3);
-  let t = wordwolf.init({ rounds: 1 }, 3);
-  t = wordwolf.tick(t);
-  t = wordwolf.applyMove(t, { vote: 1 }, 0);
-  t = wordwolf.applyMove(t, { vote: 2 }, 1);
-  t = wordwolf.applyMove(t, { vote: 0 }, 2);
-  assert.equal(t.executed, null);
-  assert.equal(t.winner, 'wolf', '同数は処刑なしでウルフの勝ち');
-  // 6人以上でウルフ2人
-  assert.equal(wordwolf.init({ wolves: 2 }, 6).wolves.length, 2);
-  assert.equal(wordwolf.init({ wolves: 2 }, 5).wolves.length, 1);
-});
 test('hagetaka: 同じ数は打ち消し・プラスは大きい数・マイナスは小さい数・持ち越し', () => {
   assert.equal(hagetaka.resolve(5, [15, 15, 3], [0, 1, 2]), 2, '15どうしは打ち消し、次に大きい3が取る');
   assert.equal(hagetaka.resolve(-3, [1, 2, 9], [0, 1, 2]), 0, 'マイナスは一番小さい数');
@@ -1712,10 +1493,7 @@ test('手札の公開: 終わったあと・観戦者・上がった人・抜け
   s = df.applyMove(s, { play: ids(s, 0, 's9') }, 0); // P1 が上がった
   assert.ok(df.viewFor(s, 0).hands[2], '上がった人');
   assert.equal(df.viewFor(s, 1).hands[2], null, 'まだ遊んでいる人には見えない');
-  // UNO・ハゲタカ・ワードバスケット・キャット＆チョコレート: 観戦者と抜けた人
-  const u = uno.applyMove(uno.init({}, 3), { resign: true }, 2);
-  assert.ok(uno.viewFor(u, 2).hands[0], '投了した人');
-  assert.equal(uno.viewFor(u, 1).hands[0], null);
+  // ハゲタカ・ワードバスケット・キャット＆チョコレート: 観戦者
   assert.ok(hagetaka.viewFor(hagetaka.init({}, 3), -1).hands[1]);
   assert.ok(wbk.viewFor(wbk.init({}, 3), -1).hands[1]);
   assert.ok(cc.viewFor(cc.init({}, 3), -1).hands[1]);
@@ -1741,10 +1519,5 @@ test('ログ: 次のラウンド（試合）になったら最初から', () => 
   assert.ok(s.history.length > 5);
   s = df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
   assert.equal(s.history[0], '第2ラウンド', '前のラウンドのログは消える');
-  let w = wordwolf.init({ rounds: 3 }, 3);
-  w = wordwolf.tick(w); // 投票へ
-  for (const p of [0, 1, 2]) w = wordwolf.applyMove(w, { vote: (p + 1) % 3 }, p); // 同数
-  w = wordwolf.tick(w); // 次のラウンド
-  assert.ok(w.history[0].startsWith("第2/3ラウンド"), w.history[0]);
 });
 console.log(`\n${n} tests passed`);

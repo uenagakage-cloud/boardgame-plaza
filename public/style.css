@@ -634,26 +634,6 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .my-rooms { display: grid; gap: 6px; margin-bottom: 12px; }
 .my-room-btn { font-size: 1rem; padding: 12px; white-space: normal; }
 
-/* ---------- ワードウルフ ---------- */
-.wf { width: min(100%, 640px); display: grid; gap: 10px; justify-self: center; }
-.wf-head { display: flex; justify-content: space-between; align-items: center; }
-.wf-timer { font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; }
-.wf-timer.hurry { color: #e0261b; }
-.wf-card { background: linear-gradient(135deg, #3b4a6b, #1f2a44); color: #fff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow); display: grid; gap: 6px; }
-.wf-label { font-size: .8rem; opacity: .8; font-weight: 700; }
-.wf-word { font-size: 2rem; font-weight: 900; }
-.wf-word.wolf { color: #ffb4a8; }
-.wf-tools { display: grid; gap: 8px; justify-items: center; text-align: center; }
-.wf-tools p { margin: 0; }
-.wf-sub { font-weight: 800; }
-.wf-vote-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.wf-guess { width: min(100%, 360px); }
-.wf-guess input { flex: 1; font-size: 1.05rem; }
-.wf-result { font-size: 1.6rem; font-weight: 900; padding: 6px 22px; border-radius: 99px; }
-.wf-result.wolf { background: #e0453a; color: #fff; }
-.wf-result.citizen { background: #2a9d5c; color: #fff; }
-.wb-player.wf-wolf { border-color: #e0453a; }
-
 /* ---------- ハゲタカのえじき ---------- */
 .hg { width: min(100%, 720px); display: grid; gap: 10px; justify-self: center; }
 .hg-table { background: radial-gradient(circle at 50% 40%, #6b8f3a, #3f5a1f); color: #fff; border-radius: 16px; padding: 16px; display: grid; gap: 8px; justify-items: center; box-shadow: var(--shadow); min-height: 160px; align-content: center; }
@@ -877,81 +857,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .cc-badge { margin-left: auto; font-size: .78rem; font-weight: 700; }
 .cc-log-text { margin: 0; font-size: .9rem; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 
-/* ---------- UNO ---------- */
-.uno { width: min(100%, 680px); display: grid; gap: 12px; }
+/* 参加者の並び（いろいろなゲームで使う） */
 .uno-players { display: flex; flex-wrap: wrap; gap: 6px; }
-.uno-badge { font-size: .7rem; font-weight: 800; color: #fff; background: #e0261b; border-radius: 99px; padding: 0 6px; }
-.uno-table {
-  display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap;
-  background: radial-gradient(circle at 50% 40%, #2e7d4f, #1b5434); border-radius: 16px; padding: 22px; box-shadow: var(--shadow);
-}
-.uno-pile { position: relative; border: 0; background: transparent; padding: 0; cursor: default; display: grid; justify-items: center; gap: 4px; }
-.uno-pile.active { cursor: pointer; }
-.uno-pile.active .uno-back { box-shadow: 0 0 0 4px #ffd84a, 0 3px 6px rgba(0,0,0,.4); }
-.uno-back {
-  width: 74px; height: 108px; border-radius: 10px; background: #1d1d1d; border: 4px solid #fff;
-  display: flex; align-items: center; justify-content: center; color: #f2c230; font-weight: 900; font-size: 1.3rem;
-  transform: rotate(-8deg); box-shadow: 0 3px 6px rgba(0,0,0,.4); text-shadow: 2px 2px 0 #e0261b;
-}
-.uno-pile-count { font-size: .75rem; color: #fff; }
-.uno-info { display: grid; gap: 6px; color: #fff; font-size: .85rem; font-weight: 700; }
-.uno-color-chip { padding: 3px 10px; border-radius: 99px; color: #fff; text-align: center; }
-.uno-card {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: 56px; height: 84px; border-radius: 8px; border: 3px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,.35);
-  font-weight: 900; color: #fff; overflow: hidden; flex: none;
-}
-.uno-card .uno-oval { position: absolute; width: 120%; height: 62%; background: rgba(255,255,255,.92); border-radius: 50%; transform: rotate(-30deg); }
-.uno-card .uno-val { position: relative; font-size: 1.5rem; line-height: 1; }
-.c-r { background: #d72a20; } .c-r .uno-val { color: #d72a20; }
-.c-y { background: #f0b400; } .c-y .uno-val { color: #c48f00; }
-.c-g { background: #2e9e48; } .c-g .uno-val { color: #2e9e48; }
-.c-b { background: #1f6fd1; } .c-b .uno-val { color: #1f6fd1; }
-.uno-card.wild { background: conic-gradient(#d72a20 0 25%, #1f6fd1 0 50%, #f0b400 0 75%, #2e9e48 0); }
-.uno-card.wild .uno-oval { background: #1d1d1d; }
-.uno-card.wild .uno-val { color: #fff; }
-.uno-card.big { width: 82px; height: 122px; }
-.uno-card.big .uno-val { font-size: 2.2rem; }
-.uno-card.small { width: 30px; height: 44px; border-width: 2px; }
-.uno-card.small .uno-val { font-size: .8rem; }
-.uno-last { text-align: center; font-weight: 700; color: var(--muted); }
-.uno-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-.uno-call { font-weight: 800; color: #e0261b; border-color: #e0261b; }
-.uno-call.armed { background: #e0261b; color: #fff; }
-.uno-hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 6px 0; }
-.uno-hand-card { border: 0; padding: 0; background: transparent; border-radius: 10px; cursor: default; transition: transform .12s; }
-.uno-hand-card:disabled .uno-card { opacity: .45; }
-.uno-hand-card.playable { cursor: pointer; }
-.uno-hand-card.playable:hover { transform: translateY(-6px); }
-.uno-hand-card.drawn .uno-card { box-shadow: 0 0 0 3px #ffd84a, 0 2px 4px rgba(0,0,0,.35); }
-
-/* ---------- ワンナイト人狼 ---------- */
-.ww { width: min(100%, 640px); display: grid; gap: 12px; }
-.ww-comp { font-size: .85rem; color: var(--muted); }
-.ww-wolf-tag { font-size: .7rem; font-weight: 800; color: #fff; background: #8b1e1e; border-radius: 99px; padding: 0 6px; }
-.ww-role { border-radius: 14px; padding: 18px; text-align: center; color: #fff; box-shadow: var(--shadow); }
-.ww-role.team0 { background: linear-gradient(160deg, #2f6f8f, #1d4459); }
-.ww-role.team1 { background: linear-gradient(160deg, #8b1e1e, #4a0f0f); }
-.ww-role-label { font-size: .8rem; opacity: .8; }
-.ww-role-name { font-size: 2rem; font-weight: 900; letter-spacing: .1em; }
-.ww-role-desc { margin: 6px 0 0; font-size: .9rem; opacity: .9; }
-.ww-panel, .ww-info { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
-.ww-info p { margin: 0; font-weight: 600; }
-.ww-targets, .ww-center { display: flex; flex-wrap: wrap; gap: 8px; }
-.ww-card-back {
-  width: 70px; height: 96px; border-radius: 8px; border: 3px solid #fff; cursor: pointer;
-  background: repeating-linear-gradient(45deg, #3a2a5a, #3a2a5a 6px, #4c3a72 6px, #4c3a72 12px);
-  color: #fff; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,.3);
-}
-.ww-card-back.sel { box-shadow: 0 0 0 4px #ffd84a, 0 2px 4px rgba(0,0,0,.3); }
-.ww-result { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; font-size: .92rem; }
-.ww-result th, .ww-result td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
-.ww-result th { font-size: .8rem; color: var(--muted); font-weight: 600; }
-.ww-result tr.win td:first-child { font-weight: 800; }
-.ww-result td.team1 { color: #b4412f; font-weight: 700; }
-.ww-result td.team0 { color: #2f6f8f; font-weight: 700; }
-.ww-centers { margin: 0; font-weight: 600; }
-
 
 /* ---------- ito（itogame の見た目を引き継ぐ） ---------- */
 .ito, .waiting-room { --ito-accent: #e4572e; --ito-accent2: #2e86ab; --ito-ok: #2a9d5c; --ito-ng: #d1495b; --ito-back1: #2b3a67; --ito-back2: #496a81; }
