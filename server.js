@@ -298,8 +298,19 @@ function broadcastRoom(room) {
 }
 
 function broadcastLobby() {
-  const msg = { type: 'lobby', rooms: lobbyList(), online: clients.size };
-  for (const ws of clients) if (!ws.room) send(ws, msg);
+  const rooms = lobbyList();
+  for (const ws of clients) if (!ws.room) send(ws, lobbyMsg(ws, rooms));
+}
+
+// この人の席（同じ接続 ID・同じ端末・同じ名前）がある、続きを遊べる部屋
+const ownsSeat = (ws, s) => s && !s.bot && !s.kicked && (s.clientId === ws.clientId || (ws.deviceId && s.deviceId === ws.deviceId));
+function myRooms(ws) {
+  return [...rooms.values()]
+    .filter((r) => (!r.banned || !r.banned.has(ws.clientId)) && r.seats.some((s) => ownsSeat(ws, s)) && !(r.state && r.state.result))
+    .map((r) => ({ code: r.code, game: r.game, playing: isReady(r) }));
+}
+function lobbyMsg(ws, list = lobbyList()) {
+  return { type: 'lobby', rooms: list, online: clients.size, mine: myRooms(ws) };
 }
 
 function systemChat(room, text) {
@@ -393,6 +404,19 @@ function handleReview(room, msg) {
   throw new UserError('不明な操作です');
 }
 
+// 途中で抜けた人が戻ってきたとき: 接続していない席のうち、同じ端末か同じ名前の席に戻す
+function reclaimSeat(room, ws) {
+  if (seatOf(room, ws) >= 0) return;
+  const named = ws.name && ws.name !== '名無し';
+  const i = room.seats.findIndex((s) => s && !s.bot && !s.kicked && !isOnline(room, s.clientId)
+    && ((ws.deviceId && s.deviceId === ws.deviceId) || (named && s.name === ws.name)));
+  if (i < 0) return;
+  const old = room.seats[i].clientId;
+  room.seats[i] = { ...room.seats[i], clientId: ws.clientId, deviceId: ws.deviceId, name: ws.name };
+  if (room.host === old) room.host = ws.clientId;
+  systemChat(room, `${ws.name} さんが戻ってきました`);
+}
+
 function finish(room, result) {
   room.state = { ...room.state, result };
   room.drawOffer = null;
@@ -403,8 +427,9 @@ function handle(ws, msg) {
   switch (msg.type) {
     case 'hello': {
       ws.clientId = String(msg.clientId || '').slice(0, 64) || crypto.randomUUID();
+      ws.deviceId = String(msg.deviceId || '').slice(0, 64) || null; // 同じ端末（タブを閉じて開き直しても同じ）
       ws.name = cleanName(msg.name);
-      send(ws, { type: 'lobby', rooms: lobbyList(), online: clients.size });
+      send(ws, lobbyMsg(ws));
       return;
     }
     case 'setName': {
@@ -417,7 +442,7 @@ function handle(ws, msg) {
       return;
     }
     case 'list':
-      send(ws, { type: 'lobby', rooms: lobbyList(), online: clients.size });
+      send(ws, lobbyMsg(ws));
       return;
     case 'create': {
       const g = GAMES[msg.game];
@@ -448,7 +473,7 @@ function handle(ws, msg) {
         if (seatOf(room, ws) < 0 && !msg.spectate && !isReady(room)) {
           const free = room.seats.findIndex((s) => !s);
           if (free >= 0) {
-            room.seats[free] = { clientId: ws.clientId, name: ws.name };
+            room.seats[free] = { clientId: ws.clientId, deviceId: ws.deviceId, name: ws.name };
             systemChat(room, `${ws.name} さんが参加しました`);
             broadcastRoom(room);
             broadcastLobby();
@@ -459,13 +484,14 @@ function handle(ws, msg) {
         return;
       }
       leaveRoom(ws, true);
+      reclaimSeat(room, ws);
       const seat = seatOf(room, ws);
       if (seat >= 0) {
         room.seats[seat].name = ws.name;
       } else if (!msg.spectate && !isReady(room)) {
         const free = room.seats.findIndex((s) => !s);
         if (free >= 0) {
-          room.seats[free] = { clientId: ws.clientId, name: ws.name };
+          room.seats[free] = { clientId: ws.clientId, deviceId: ws.deviceId, name: ws.name };
           systemChat(room, isMulti(GAMES[room.game]) ? `${ws.name} さんが参加しました` : `${ws.name} さんが参加しました。対局開始！`);
         }
       }
@@ -475,7 +501,7 @@ function handle(ws, msg) {
     case 'leave':
       leaveRoom(ws, true);
       send(ws, { type: 'left' });
-      send(ws, { type: 'lobby', rooms: lobbyList(), online: clients.size });
+      send(ws, lobbyMsg(ws));
       return;
     case 'start': {
       const { room, seat } = requirePlayer(ws);
@@ -609,7 +635,7 @@ function handle(ws, msg) {
         w.room = null;
         send(w, { type: 'kicked' });
         send(w, { type: 'left' });
-        send(w, { type: 'lobby', rooms: lobbyList(), online: clients.size });
+        send(w, lobbyMsg(w));
       }
       broadcastRoom(room);
       broadcastLobby();

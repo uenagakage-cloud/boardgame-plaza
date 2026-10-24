@@ -63,6 +63,12 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* 保存できなくても動く */ } },
 };
 const uid = () => Array.from({ length: 24 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+// 端末ID: タブやアプリを閉じて開き直しても同じ。抜けた部屋の席に戻るのに使う
+const DEVICE_ID = (() => {
+  let id = store.get('deviceId', '');
+  if (!id) { id = uid(); store.set('deviceId', id); }
+  return id;
+})();
 // タブごとに別のプレイヤーとして扱い、リロードしても席が戻るよう sessionStorage に保存
 const CLIENT_ID = (() => {
   try {
@@ -84,7 +90,7 @@ function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   ws.onopen = () => {
     $('#conn').className = 'conn on';
-    send({ type: 'hello', clientId: CLIENT_ID, name: myName() });
+    send({ type: 'hello', clientId: CLIENT_ID, deviceId: DEVICE_ID, name: myName() });
     const code = location.hash.slice(1);
     if (code) send({ type: 'join', code });
   };
@@ -331,6 +337,15 @@ function renderLobby() {
     }
   }
   $('#online').textContent = lobby.online ? `・${lobby.online}人が接続中` : '';
+  const back = $('#my-rooms');
+  back.replaceChildren();
+  for (const r of lobby.mine || []) {
+    if (!GAMES[r.game]) continue;
+    const b = h('button', 'btn primary my-room-btn', `▶ ${GAMES[r.game].title}の部屋に戻る（${r.code}・${r.playing ? '遊んでいる途中' : '開始前'}）`);
+    b.onclick = () => send({ type: 'join', code: r.code });
+    back.append(b);
+  }
+  back.hidden = !back.childElementCount;
   const list = $('#room-list');
   list.replaceChildren();
   if (!lobby.rooms.length) list.append(h('li', 'empty muted', 'まだ部屋はありません。上のボタンから作成できます。'));
@@ -2907,7 +2922,7 @@ function buildAsasore(el) {
 function asUpdateTimer() {
   if (!as || !view || view.game !== 'asasore' || !view.state || !view.state.endsAt) { if (as) as.timer.textContent = ''; return; }
   const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
-  as.timer.textContent = view.state.phase === 'write' ? `${left}秒` : '';
+  as.timer.textContent = view.state.phase === 'write' || view.state.phase === 'judge' ? `${left}秒` : '';
   as.timer.classList.toggle('hurry', left <= 10);
 }
 setInterval(asUpdateTimer, 250);
@@ -2917,8 +2932,7 @@ function renderAsasore(el, v) {
   if (!as || as.el !== el || !el.contains(as.root)) as = buildAsasore(el);
   const name = (seat) => v.seats[seat]?.name || '?';
   const isParent = me >= 0 && me === s.parent;
-  const judgeSeat = v.seats[s.parent]?.online === false && v.hostSeat >= 0 ? v.hostSeat : s.parent;
-  const canJudge = me >= 0 && me === judgeSeat && s.phase === 'judge';
+  const voting = me >= 0 && !s.out[me] && s.phase === 'judge';
   as.round.textContent = s.phase === 'end' ? '結果' : `第${s.round}/${s.totalRounds}ラウンド`;
   as.parent.textContent = s.phase === 'end' ? '' : `親：${name(s.parent)}${isParent ? '（あなた）' : ''}`;
   as.theme.textContent = s.phase === 'end' ? 'おつかれさまでした！' : s.themeText;
@@ -2938,21 +2952,34 @@ function renderAsasore(el, v) {
       if (s.out[i]) continue;
       const card = h('div', 'as-answer' + (i === s.parent ? ' parent' : '') + (s.marks[i] ? ' ok' : ''));
       card.append(h('div', 'as-who', i === s.parent ? `親 ${name(i)}` : name(i)), h('div', 'as-text', s.answers[i] || '（書かなかった）'));
-      if (i !== s.parent) {
-        if (canJudge) {
-          const b = h('button', 'btn small' + (s.marks[i] ? ' primary' : ''), s.marks[i] ? '正解！' : '正解にする');
-          b.onclick = () => send({ type: 'move', move: { mark: i, on: !s.marks[i] } });
-          card.append(b);
+      if (i !== s.parent && s.answers[i]) {
+        if (s.phase === 'judge') {
+          // 投票中: ○ の数と、自分の ○
+          const voters = [...Array(s.players).keys()].filter((p) => !s.out[p] && p !== i).length;
+          const yes = s.votes[i].length;
+          if (s.auto[i]) card.append(h('span', 'as-badge', '親と同じ！'));
+          else {
+            card.append(h('span', 'as-votes', `○ ${yes}/${voters}人`));
+            if (voting && i !== me) {
+              const mineOn = s.votes[i].includes(me);
+              const b = h('button', 'btn small' + (mineOn ? ' primary' : ''), mineOn ? '○ 同じだと思う' : '同じだと思う？');
+              b.onclick = () => send({ type: 'move', move: { vote: i, on: !mineOn } });
+              card.append(b);
+            }
+          }
         } else if (s.marks[i]) card.append(h('span', 'as-badge', '正解！'));
       }
       as.answers.append(card);
     }
   }
   as.tools.replaceChildren();
-  if (canJudge) {
-    const ok = h('button', 'btn primary', `この判定で確定（正解 ${s.marks.filter(Boolean).length}人）`);
-    ok.onclick = () => send({ type: 'move', move: { confirm: true } });
-    as.tools.append(h('span', 'muted small', '同じ意味なら書き方がちがっても「正解」にしてOK。'), ok);
+  if (voting) {
+    const done = s.voted.filter((x, i) => x && !s.out[i]).length;
+    const total = [...Array(s.players).keys()].filter((p) => !s.out[p]).length;
+    const ok = h('button', 'btn primary', s.voted[me] ? `投票おわり済み（${done}/${total}人）` : `投票おわり（${done}/${total}人）`);
+    ok.disabled = !!s.voted[me];
+    ok.onclick = () => send({ type: 'move', move: { voteDone: true } });
+    as.tools.append(h('span', 'muted small', '同じ意味なら書き方がちがっても ○ でOK。半分より多く ○ なら正解（同数なら親の ○ で決まり）。'), ok);
   }
 
   // 参加者
@@ -2962,6 +2989,7 @@ function renderAsasore(el, v) {
     chip.append(h('span', 'pname', p ? p.name : '?'));
     if (i === s.parent && s.phase !== 'end') chip.append(h('span', 'wb-vote', '親'));
     if (s.phase === 'write' && s.answers[i]) chip.append(h('span', 'pt-ok', '書いた'));
+    if (s.phase === 'judge' && s.voted[i]) chip.append(h('span', 'pt-ok', '投票済み'));
     chip.append(h('span', 'wb-count', `${s.scores[i]}点`));
     return chip;
   }));

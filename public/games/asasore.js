@@ -1,9 +1,11 @@
 // 朝からそれ正解（サーバーとブラウザで共通）
 // 3〜8人。毎ラウンド1人が「親」。お題（例：朝から食べたいもの）に、全員がこっそり答えを1つ書く。
 // 親以外は「親が書きそうな答え」を当てにいく。全員そろったら答えを見せ合い、
-// 親が自分の答えと同じだと思うものに「正解」を付けて確定する（書き方が違っても親が決めてよい）。
+// 全員で「親の答えと同じ」だと思う答えに ○ を投票する（書き方が違っても、同じ意味なら ○ でよい）。
+// ○ が投票できる人の半分より多ければ正解（ちょうど半分なら親の ○ で決まる）。親とまったく同じ答えは自動で正解。
 // 点数: 正解した子は +1点、親は正解した子の人数ぶん +1点。親は順番に交代、全員が決めた回数親をやったら終わり。
-// 手: { answer: '文字' } 書く（書き直しもできる） / { mark: 席, on: true|false } 親が正解を付ける / { confirm: true } 親が確定
+// 手: { answer: '文字' } 書く（書き直しもできる） / { vote: 席, on: true|false } その人の答えに ○ を付ける・外す
+//     { voteDone: true } 投票おわり（全員おわるか、時間切れで結果）
 //     { resign: true }
 export const id = 'asasore';
 export const title = '朝からそれ正解';
@@ -13,6 +15,7 @@ export const maxPlayers = 8;
 export const lobbyReturn = true;
 export const logTitle = 'ログ';
 export const REVEAL_MS = 6000;
+export const JUDGE_MS = 60000; // 投票の時間
 
 // お題（オリジナル）
 export const THEMES = `
@@ -178,6 +181,7 @@ export function init(options, players = 3, rng) {
     players, options: opts, out: Array(players).fill(false), scores: Array(players).fill(0),
     deck: shuffle(THEMES.map((_, i) => i), rng), round: 0, totalRounds: players * opts.turns,
     parent: -1, theme: null, phase: 'write', answers: Array(players).fill(null), marks: Array(players).fill(false),
+    auto: Array(players).fill(false), votes: Array.from({ length: players }, () => []), voted: Array(players).fill(false),
     endsAt: null, tickAt: null, turn: 0, result: null, history: [],
   };
   startRound(s, rng);
@@ -195,21 +199,39 @@ function startRound(s, rng) {
   s.phase = 'write';
   s.answers = Array(s.players).fill(null);
   s.marks = Array(s.players).fill(false);
+  s.auto = Array(s.players).fill(false);
+  s.votes = Array.from({ length: s.players }, () => []);
+  s.voted = Array(s.players).fill(false);
   s.endsAt = s.options.seconds ? Date.now() + s.options.seconds * 1000 : null;
   s.tickAt = s.endsAt;
   s.history.push(`第${s.round}/${s.totalRounds}ラウンド：親は ${label(p)}「${THEMES[s.theme]}」`);
 }
 
-// 全員書いた（または時間切れ）: 答えを見せて、親が判定する。同じ答えには最初から正解を付けておく
+// 全員書いた（または時間切れ）: 答えを見せて、全員で投票する。親とまったく同じ答えは最初から正解
 function toJudge(s) {
   s.phase = 'judge';
-  s.endsAt = null;
-  s.tickAt = null;
+  s.endsAt = Date.now() + JUDGE_MS;
+  s.tickAt = s.endsAt;
   const mine = normalizeAnswer(s.answers[s.parent]);
-  s.marks = s.answers.map((a, i) => i !== s.parent && !s.out[i] && !!a && !!mine && normalizeAnswer(a) === mine);
+  s.auto = s.answers.map((a, i) => i !== s.parent && !s.out[i] && !!a && !!mine && normalizeAnswer(a) === mine);
+  s.marks = s.auto.slice();
+  s.votes = Array.from({ length: s.players }, () => []);
+  s.voted = Array(s.players).fill(false);
+}
+
+// その人の答えに投票できる人（抜けていない、本人以外）
+const votersFor = (s, i) => active(s).filter((p) => p !== i);
+// ○ の数で正解かを決める
+export function isCorrect(s, i) {
+  if (s.auto[i]) return true;
+  if (i === s.parent || s.out[i] || !s.answers[i]) return false;
+  const voters = votersFor(s, i);
+  const yes = s.votes[i].filter((p) => voters.includes(p)).length;
+  return yes * 2 > voters.length || (yes * 2 === voters.length && s.votes[i].includes(s.parent));
 }
 
 function finishRound(s) {
+  s.marks = s.answers.map((_, i) => isCorrect(s, i));
   const winners = s.marks.map((m, i) => (m && i !== s.parent && !s.out[i] ? i : -1)).filter((i) => i >= 0);
   for (const i of winners) s.scores[i] += 1;
   if (!s.out[s.parent]) s.scores[s.parent] += winners.length;
@@ -232,6 +254,7 @@ function finishGame(s) {
 export function tick(s, rng) {
   const ns = clone(s);
   if (s.phase === 'write') { toJudge(ns); return ns; } // 時間切れ
+  if (s.phase === 'judge') { finishRound(ns); return ns; } // 投票の時間切れ
   if (s.phase === 'reveal') {
     if (ns.round >= ns.totalRounds || active(ns).length < 3) finishGame(ns);
     else startRound(ns, rng);
@@ -259,7 +282,10 @@ export function phaseText(s, you) {
     if (s.answers[you]) return 'ほかの人を待っています（書き直しもできます）';
     return parent ? '親です。お題への自分の答えを書いてください' : '親が書きそうな答えを書いてください';
   }
-  if (s.phase === 'judge') return parent ? '自分の答えと同じものに「正解」を付けて、確定してください' : '親が判定しています…';
+  if (s.phase === 'judge') {
+    if (you < 0) return 'みんなが投票しています…';
+    return s.voted[you] ? 'ほかの人の投票を待っています…' : '親の答えと同じだと思う答えに ○ を付けて、「投票おわり」を押してください';
+  }
   if (s.phase === 'reveal') return '結果発表！ まもなく次のラウンド';
   return null;
 }
@@ -268,7 +294,8 @@ export const scoreOf = (s, seat) => `${s.scores[seat]}点`;
 
 const clone = (s) => ({
   ...s, out: s.out.slice(), scores: s.scores.slice(), deck: s.deck ? s.deck.slice() : [], answers: s.answers.slice(),
-  marks: s.marks.slice(), history: s.history.slice(),
+  marks: s.marks.slice(), auto: (s.auto || []).slice(), votes: (s.votes || []).map((v) => v.slice()), voted: (s.voted || []).slice(),
+  history: s.history.slice(),
 });
 
 export function applyMove(s, mv, seat, rng, ctx = {}) {
@@ -287,6 +314,7 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
       ns.tickAt = Date.now() + 1500;
       ns.endsAt = ns.tickAt;
     } else if (s.phase === 'write' && active(ns).every((p) => ns.answers[p])) toJudge(ns);
+    else if (s.phase === 'judge' && active(ns).every((p) => ns.voted[p])) finishRound(ns);
     return ns;
   }
   if (s.out[seat]) throw new Error('抜けています');
@@ -299,20 +327,21 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     if (active(ns).every((p) => ns.answers[p])) toJudge(ns);
     return ns;
   }
-  // 判定は親（親がいないときはホスト）
-  const judgeSeat = ctx.online && ctx.online[s.parent] === false && ctx.hostSeat >= 0 ? ctx.hostSeat : s.parent;
-  if (mv.mark != null) {
-    if (s.phase !== 'judge') throw new Error('今は判定できません');
-    if (seat !== judgeSeat) throw new Error('判定するのは親です');
-    const i = Number(mv.mark);
-    if (!(i in s.answers) || i === s.parent || s.out[i]) throw new Error('その人は選べません');
-    ns.marks[i] = !!mv.on;
+  if (mv.vote != null) {
+    if (s.phase !== 'judge') throw new Error('今は投票できません');
+    const i = Number(mv.vote);
+    if (!(i in s.answers) || i === s.parent || s.out[i] || !s.answers[i]) throw new Error('その答えには投票できません');
+    if (i === seat) throw new Error('自分の答えには投票できません');
+    if (s.auto[i]) return s; // 同じ答えはもう正解
+    ns.votes[i] = ns.votes[i].filter((p) => p !== seat);
+    if (mv.on) ns.votes[i].push(seat);
+    ns.voted[seat] = false; // 変えたら、もう一度「投票おわり」
     return ns;
   }
-  if (mv.confirm) {
-    if (s.phase !== 'judge') throw new Error('今は確定できません');
-    if (seat !== judgeSeat) throw new Error('確定するのは親です');
-    finishRound(ns);
+  if (mv.voteDone) {
+    if (s.phase !== 'judge') throw new Error('今は投票できません');
+    ns.voted[seat] = true;
+    if (active(ns).every((p) => ns.voted[p])) finishRound(ns);
     return ns;
   }
   throw new Error('不明な操作です');

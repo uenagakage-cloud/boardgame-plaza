@@ -539,6 +539,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .as-who { font-size: .8rem; font-weight: 700; opacity: .8; }
 .as-text { font-size: 1.15rem; font-weight: 900; word-break: break-word; }
 .as-badge { font-size: .8rem; font-weight: 900; color: #fff; background: #2a9d5c; border-radius: 99px; padding: 1px 10px; }
+.as-votes { font-size: .85rem; font-weight: 800; color: #2a9d5c; }
 .as-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
 
 /* ---------- ガイスター ---------- */
@@ -602,6 +603,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .c4-help { margin: 0; text-align: center; }
 .connect4-side0 { background: #e0261b; color: #fff; border-color: #e0261b; }
 .connect4-side1 { background: #f2c230; color: #3a2c00; border-color: #f2c230; }
+
+/* 抜けた部屋に戻るボタン（ロビーの上） */
+.my-rooms { display: grid; gap: 6px; margin-bottom: 12px; }
+.my-room-btn { font-size: 1rem; padding: 12px; white-space: normal; }
 
 /* ---------- ニコニコ風に流れるチャット ---------- */
 .nico { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 15; }

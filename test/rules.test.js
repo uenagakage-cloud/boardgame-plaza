@@ -1528,10 +1528,16 @@ test('asasore: 全員書いたら判定・同じ答えは正解・親が確定�
   s = asasore.applyMove(s, { answer: 'ぱん' }, 1);
   s = asasore.applyMove(s, { answer: 'ごはん' }, 2);
   assert.equal(s.phase, 'judge');
-  assert.deepEqual(s.marks, [false, true, false], 'かなの違いは同じ答え');
-  assert.throws(() => asasore.applyMove(s, { mark: 2, on: true }, 1), /親/);
-  s = asasore.applyMove(s, { mark: 2, on: true }, 0); // 親が「同じ」と決めた
-  s = asasore.applyMove(s, { confirm: true }, 0);
+  assert.deepEqual(s.auto, [false, true, false], 'かなの違いは同じ答え（自動で正解）');
+  assert.throws(() => asasore.applyMove(s, { vote: 2 }, 2), /自分/);
+  assert.throws(() => asasore.applyMove(s, { vote: 0, on: true }, 1), /投票できません/, '親の答えには投票しない');
+  // 「ごはん」に ○: 投票できるのは P1・P2 の2人。P1（親）だけ ○ → 同数なので親の ○ で正解
+  s = asasore.applyMove(s, { vote: 2, on: true }, 0);
+  assert.equal(asasore.isCorrect(s, 2), true);
+  s = asasore.applyMove(s, { voteDone: true }, 0);
+  s = asasore.applyMove(s, { voteDone: true }, 1);
+  assert.equal(s.phase, 'judge', '全員おわるまで待つ');
+  s = asasore.applyMove(s, { voteDone: true }, 2);
   assert.deepEqual(s.scores, [2, 1, 1]);
   assert.equal(s.phase, 'reveal');
   s = asasore.tick(s);
@@ -1541,6 +1547,18 @@ test('asasore: 全員書いたら判定・同じ答えは正解・親が確定�
   s = asasore.applyMove(s, { answer: 'a' }, 1);
   s = asasore.tick(s);
   assert.equal(s.phase, 'judge');
+  // P1 の答え（なし）・P3 の答え「x」… 親でない人だけの ○ が同数なら不正解
+  let q = asasore.init({ turns: 1 }, 3);
+  q = asasore.applyMove(q, { answer: 'うどん' }, 0);
+  q = asasore.applyMove(q, { answer: 'そば' }, 1);
+  q = asasore.applyMove(q, { answer: 'ラーメン' }, 2);
+  q = asasore.applyMove(q, { vote: 1, on: true }, 2);
+  assert.equal(asasore.isCorrect(q, 1), false, '親でない1人だけの ○（同数）は不正解');
+  q = asasore.applyMove(q, { vote: 1, on: true }, 0);
+  assert.equal(asasore.isCorrect(q, 1), true, '2人とも ○ なら正解');
+  q = asasore.tick(q); // 投票の時間切れで結果
+  assert.equal(q.phase, 'reveal');
+  assert.deepEqual(q.scores, [1, 1, 0]);
   assert.ok(asasore.THEMES.length >= 100);
 });
 test('geister: 並べる・相手の色は見えない・取る・脱出・赤を4つ取らせたら勝ち', () => {
