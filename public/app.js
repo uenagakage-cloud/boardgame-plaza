@@ -363,15 +363,35 @@ function renderLobby() {
         card.append(gal);
         getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value, painter: painterSel.value });
       }
-      const row = h('div', 'side-pick');
-      const sides = (g.maxPlayers || 2) > 2 ? [[null, '']] : [[null, 'おまかせ'], [0, g.sideNames[0]], [1, g.sideNames[1]]];
-      for (const [side, label] of sides) {
-        const b = h('button', side === null ? 'btn primary' : 'btn', side === null ? '部屋を作る' : label);
-        b.title = side === null ? ((g.maxPlayers || 2) > 2 ? `${g.minPlayers}〜${g.maxPlayers}人で遊べます` : '手番はランダムに決まります') : `${label}（${side === 0 ? '先手' : '後手'}）で部屋を作る`;
-        b.onclick = () => send({ type: 'create', game: key, side, options: getOptions() });
-        row.append(b);
+      // 説明・設定は「詳細」の中にしまう（ゲームが多いので、ふだんは名前とボタンだけ）
+      const more = h('div', 'card-more');
+      more.hidden = true;
+      more.append(...[...card.children].filter((x) => x !== head));
+      if (!multi) {
+        const pick = h('div', 'side-pick');
+        pick.append(h('span', 'muted small', '先後を選んで作る：'));
+        for (const side of [0, 1]) {
+          const label = g.sideNames[side];
+          const b = h('button', 'btn small', label);
+          b.title = `${label}（${side === 0 ? '先手' : '後手'}）で部屋を作る`;
+          b.onclick = () => send({ type: 'create', game: key, side, options: getOptions() });
+          pick.append(b);
+        }
+        more.append(pick);
       }
-      card.append(row);
+      const row = h('div', 'card-actions');
+      const create = h('button', 'btn primary', '部屋を作る');
+      create.title = multi ? `${g.minPlayers}〜${g.maxPlayers}人で遊べます` : '手番はランダムに決まります';
+      create.onclick = () => send({ type: 'create', game: key, side: null, options: getOptions() });
+      const info = h('button', 'btn card-info', '詳細');
+      info.title = '説明と設定を見る';
+      info.onclick = () => {
+        more.hidden = !more.hidden;
+        card.classList.toggle('open', !more.hidden);
+        info.textContent = more.hidden ? '詳細' : '閉じる';
+      };
+      row.append(create, info);
+      card.append(more, row);
     }
   }
   $('#online').textContent = lobby.online ? `・${lobby.online}人が接続中` : '';
@@ -3210,7 +3230,7 @@ function renderConnect4(el, v, act) {
 let wwGuess = ''; // ウルフの逆転の答え（描き直しても消えないよう覚えておく）
 
 function wwUpdateTimer() {
-  const t = document.querySelector('.ww-timer');
+  const t = document.querySelector('.wf-timer');
   if (!t || !view || view.game !== 'wordwolf' || !view.state || !view.state.endsAt) { if (t) t.textContent = ''; return; }
   const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
   t.textContent = view.state.phase === 'talk' ? `残り ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : `${left}秒`;
@@ -3223,25 +3243,25 @@ function renderWordWolf(el, v) {
   const name = (seat) => v.seats[seat]?.name || '?';
   const playing = me >= 0 && !s.out[me];
   const host = me >= 0 && me === v.hostSeat;
-  const root = h('div', 'ww');
-  const head = h('div', 'ww-head');
-  head.append(h('div', 'muted small', s.phase === 'end' ? '結果' : `第${s.round}/${s.options.rounds}ラウンド・ウルフ${s.wolfCount}人`), h('div', 'ww-timer'));
+  const root = h('div', 'wf');
+  const head = h('div', 'wf-head');
+  head.append(h('div', 'muted small', s.phase === 'end' ? '結果' : `第${s.round}/${s.options.rounds}ラウンド・ウルフ${s.wolfCount}人`), h('div', 'wf-timer'));
   root.append(head);
 
   // 自分のお題
-  const card = h('div', 'ww-card');
+  const card = h('div', 'wf-card');
   if (s.phase === 'reveal' || s.phase === 'end') {
     card.classList.add('open');
-    card.append(h('div', 'ww-label', 'みんなのお題'), h('div', 'ww-word', s.major),
-      h('div', 'ww-label', 'ウルフのお題'), h('div', 'ww-word wolf', s.minor));
+    card.append(h('div', 'wf-label', 'みんなのお題'), h('div', 'wf-word', s.major),
+      h('div', 'wf-label', 'ウルフのお題'), h('div', 'wf-word wolf', s.minor));
   } else if (playing) {
-    card.append(h('div', 'ww-label', 'あなたのお題'), h('div', 'ww-word', s.words[me] || '？'),
+    card.append(h('div', 'wf-label', 'あなたのお題'), h('div', 'wf-word', s.words[me] || '？'),
       h('div', 'muted small', '自分がウルフ（少数派）かもしれません。お題そのものは言わずに話し合おう'));
-  } else card.append(h('div', 'ww-label', '観戦中'), h('div', 'ww-word', '？'));
+  } else card.append(h('div', 'wf-label', '観戦中'), h('div', 'wf-word', '？'));
   root.append(card);
 
   // 段階ごとの操作
-  const tools = h('div', 'ww-tools');
+  const tools = h('div', 'wf-tools');
   if (s.phase === 'talk') {
     tools.append(h('p', 'muted small', '通話やチャットで、お題の特徴を話し合おう（「好き？」「よく行く？」など）。時間になったら投票です。'));
     if (host) {
@@ -3251,8 +3271,8 @@ function renderWordWolf(el, v) {
     }
   }
   if (s.phase === 'vote') {
-    tools.append(h('div', 'ww-sub', 'ウルフだと思う人に投票'));
-    const list = h('div', 'ww-vote-list');
+    tools.append(h('div', 'wf-sub', 'ウルフだと思う人に投票'));
+    const list = h('div', 'wf-vote-list');
     for (let i = 0; i < s.players; i++) {
       if (s.out[i]) continue;
       const mine = s.votes[me] === i;
@@ -3266,7 +3286,7 @@ function renderWordWolf(el, v) {
   }
   if (s.phase === 'guess') {
     if (me === s.executed) {
-      const form = h('form', 'row ww-guess');
+      const form = h('form', 'row wf-guess');
       const input = h('input');
       input.maxLength = 30;
       input.placeholder = 'みんなのお題は？';
@@ -3275,13 +3295,13 @@ function renderWordWolf(el, v) {
       const b = h('button', 'btn primary', '答える');
       form.append(input, b);
       form.onsubmit = (e) => { e.preventDefault(); if (input.value.trim()) { send({ type: 'move', move: { guess: input.value } }); wwGuess = ''; } };
-      tools.append(h('div', 'ww-sub', 'あなたはウルフでした！ みんなのお題を当てれば逆転勝ち'), form);
+      tools.append(h('div', 'wf-sub', 'あなたはウルフでした！ みんなのお題を当てれば逆転勝ち'), form);
       setTimeout(() => { if (!document.activeElement || document.activeElement === document.body) input.focus(); }, 0);
-    } else tools.append(h('div', 'ww-sub', `${name(s.executed)} さんはウルフでした！ 逆転を考えています…`));
+    } else tools.append(h('div', 'wf-sub', `${name(s.executed)} さんはウルフでした！ 逆転を考えています…`));
   }
   if (s.phase === 'reveal' || s.phase === 'end') {
-    const res = h('div', 'ww-result ' + (s.winner === 'wolf' ? 'wolf' : 'citizen'), s.winner === 'wolf' ? 'ウルフの勝ち！' : '市民の勝ち！');
-    tools.append(res, h('div', 'ww-sub', `ウルフは ${s.wolves.map(name).join('・')} さん${s.executed != null ? `（処刑：${name(s.executed)} さん）` : '（処刑なし）'}`));
+    const res = h('div', 'wf-result ' + (s.winner === 'wolf' ? 'wolf' : 'citizen'), s.winner === 'wolf' ? 'ウルフの勝ち！' : '市民の勝ち！');
+    tools.append(res, h('div', 'wf-sub', `ウルフは ${s.wolves.map(name).join('・')} さん${s.executed != null ? `（処刑：${name(s.executed)} さん）` : '（処刑なし）'}`));
     if (s.guess) tools.append(h('div', 'muted small', `ウルフの逆転の答え：「${s.guess}」`));
   }
   root.append(tools);
@@ -3291,7 +3311,7 @@ function renderWordWolf(el, v) {
   for (let i = 0; i < s.players; i++) {
     const open = s.phase === 'reveal' || s.phase === 'end';
     const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.result && s.result.winner === i ? ' winner' : '')
-      + (open && s.wolves.includes(i) ? ' ww-wolf' : ''));
+      + (open && s.wolves.includes(i) ? ' wf-wolf' : ''));
     chip.append(h('span', 'pname', name(i)));
     if (open && s.wolves.includes(i)) chip.append(h('span', 'wb-vote', 'ウルフ'));
     if (s.phase === 'vote' && s.votes[i] != null) chip.append(h('span', 'pt-ok', '投票済み'));

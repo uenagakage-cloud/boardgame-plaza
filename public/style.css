@@ -110,7 +110,22 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .game-groups { display: grid; gap: 10px; }
 .cards-title { font-size: 1rem; margin-top: 6px; }
 /* 小さめのカードを何列かに並べて一覧しやすくする */
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
+@media (max-width: 760px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 小さいカード: 名前と「部屋を作る」「詳細」だけ。詳細を開くとそのカードだけ広がる */
+.card-actions { display: flex; gap: 4px; }
+.card-actions .btn { padding: 6px 4px; font-size: .8rem; }
+.card-actions .btn.primary { flex: 1 1 auto; }
+.card-actions .card-info { flex: 0 0 auto; padding: 6px 10px; }
+.card-more { display: grid; gap: 6px; }
+.card.open { grid-column: span 2; border-color: var(--accent, #2e86ab); }
+@media (max-width: 760px) { .card.open { grid-column: 1 / -1; } }
+@media (max-width: 600px) {
+  .card { padding: 8px; gap: 5px; }
+  .card-head h3 { font-size: .84rem; }
+  .card-actions .btn { font-size: .74rem; padding: 6px 2px; }
+  .card-actions .card-info { padding: 6px 7px; }
+}
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -133,6 +148,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .game-shogi .card-icon { color: #a2681d; }
 .game-gobblet .card-icon { color: var(--orange); }
 .side-pick { display: flex; flex-wrap: wrap; gap: 4px; }
+.side-pick { align-items: center; }
 .side-pick .btn { padding: 6px 4px; font-size: .78rem; }
 .side-pick .btn.primary { flex: 2 0 auto; }
 .side-pick .btn:not(.primary) { flex: 1 0 auto; }
@@ -621,24 +637,24 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .my-room-btn { font-size: 1rem; padding: 12px; white-space: normal; }
 
 /* ---------- ワードウルフ ---------- */
-.ww { width: min(100%, 640px); display: grid; gap: 10px; justify-self: center; }
-.ww-head { display: flex; justify-content: space-between; align-items: center; }
-.ww-timer { font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; }
-.ww-timer.hurry { color: #e0261b; }
-.ww-card { background: linear-gradient(135deg, #3b4a6b, #1f2a44); color: #fff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow); display: grid; gap: 6px; }
-.ww-label { font-size: .8rem; opacity: .8; font-weight: 700; }
-.ww-word { font-size: 2rem; font-weight: 900; }
-.ww-word.wolf { color: #ffb4a8; }
-.ww-tools { display: grid; gap: 8px; justify-items: center; text-align: center; }
-.ww-tools p { margin: 0; }
-.ww-sub { font-weight: 800; }
-.ww-vote-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.ww-guess { width: min(100%, 360px); }
-.ww-guess input { flex: 1; font-size: 1.05rem; }
-.ww-result { font-size: 1.6rem; font-weight: 900; padding: 6px 22px; border-radius: 99px; }
-.ww-result.wolf { background: #e0453a; color: #fff; }
-.ww-result.citizen { background: #2a9d5c; color: #fff; }
-.wb-player.ww-wolf { border-color: #e0453a; }
+.wf { width: min(100%, 640px); display: grid; gap: 10px; justify-self: center; }
+.wf-head { display: flex; justify-content: space-between; align-items: center; }
+.wf-timer { font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.wf-timer.hurry { color: #e0261b; }
+.wf-card { background: linear-gradient(135deg, #3b4a6b, #1f2a44); color: #fff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow); display: grid; gap: 6px; }
+.wf-label { font-size: .8rem; opacity: .8; font-weight: 700; }
+.wf-word { font-size: 2rem; font-weight: 900; }
+.wf-word.wolf { color: #ffb4a8; }
+.wf-tools { display: grid; gap: 8px; justify-items: center; text-align: center; }
+.wf-tools p { margin: 0; }
+.wf-sub { font-weight: 800; }
+.wf-vote-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.wf-guess { width: min(100%, 360px); }
+.wf-guess input { flex: 1; font-size: 1.05rem; }
+.wf-result { font-size: 1.6rem; font-weight: 900; padding: 6px 22px; border-radius: 99px; }
+.wf-result.wolf { background: #e0453a; color: #fff; }
+.wf-result.citizen { background: #2a9d5c; color: #fff; }
+.wb-player.wf-wolf { border-color: #e0453a; }
 
 /* ---------- ハゲタカのえじき ---------- */
 .hg { width: min(100%, 720px); display: grid; gap: 10px; justify-self: center; }
