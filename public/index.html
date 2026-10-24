@@ -60,6 +60,19 @@
       <p>ゲームを選んで部屋を作り、招待リンクを送るだけ。</p>
     </section>
 
+    <section class="panel lounge" id="lounge">
+      <div class="lounge-head">
+        <h2>ラウンジ</h2>
+        <span class="muted small">ここで話して、遊ぶゲームを決めよう</span>
+      </div>
+      <div class="lounge-members" id="lounge-members"></div>
+      <ul class="chat-log lounge-log" id="lounge-log"></ul>
+      <form id="lounge-form" class="row">
+        <input id="lounge-input" maxlength="200" placeholder="ラウンジのみんなに話しかける" autocomplete="off" enterkeyhint="send">
+        <button class="btn primary">送信</button>
+      </form>
+    </section>
+
     <section class="game-groups" id="game-cards"></section>
 
     <section class="panel join-panel">
@@ -84,6 +97,7 @@
         <span class="muted small">部屋コード</span>
         <code id="room-code"></code>
         <button id="copy-link" class="btn small">招待リンクをコピー</button>
+        <button id="lounge-invite" class="btn small" title="ロビーのラウンジに、この部屋へのお誘いを出します">ラウンジで誘う</button>
       </div>
     </div>
 

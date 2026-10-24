@@ -604,6 +604,18 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .connect4-side0 { background: #e0261b; color: #fff; border-color: #e0261b; }
 .connect4-side1 { background: #f2c230; color: #3a2c00; border-color: #f2c230; }
 
+/* ---------- ラウンジ ---------- */
+.lounge { display: grid; gap: 8px; }
+.lounge-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.lounge-head h2 { margin: 0; }
+.lounge-members { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lounge-member { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0; border: 1px solid var(--border); background: var(--surface-2); border-radius: 10px; padding: 4px 10px; line-height: 1.25; font: inherit; color: inherit; }
+.lounge-member.busy { cursor: pointer; border-color: var(--accent, #2e86ab); }
+.lounge-member:disabled { opacity: 1; cursor: default; }
+.lounge-log { max-height: 200px; min-height: 80px; }
+.lounge-invite { background: #fff6dc; border-radius: 8px; padding: 4px 6px; color: #3a2c00; }
+.lounge-invite .btn { margin-left: 6px; }
+
 /* 抜けた部屋に戻るボタン（ロビーの上） */
 .my-rooms { display: grid; gap: 6px; margin-bottom: 12px; }
 .my-room-btn { font-size: 1rem; padding: 12px; white-space: normal; }

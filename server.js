@@ -304,6 +304,24 @@ function broadcastLobby() {
   for (const ws of clients) if (!ws.room) send(ws, lobbyMsg(ws, rooms));
 }
 
+// ---------- ラウンジ（ロビーの全体チャット・オンラインの人） ----------
+const lounge = { chat: [], seq: 0 };
+const LOUNGE_MAX = 100;
+function loungePost(entry) {
+  lounge.chat.push({ id: ++lounge.seq, t: Date.now(), ...entry });
+  if (lounge.chat.length > LOUNGE_MAX) lounge.chat.shift();
+  broadcastLobby();
+}
+// 今つながっている人（名前と、どの部屋で遊んでいるか）
+function loungeMembers() {
+  return [...clients].filter((w) => w.clientId).map((w) => {
+    const r = w.room;
+    if (!r) return { name: w.name, where: null };
+    const seat = seatOf(r, w);
+    return { name: w.name, where: { code: r.code, game: r.game, playing: isReady(r) && !(r.state && r.state.result), spectating: seat < 0 } };
+  });
+}
+
 // この人の席（同じ接続 ID・同じ端末・同じ名前）がある、続きを遊べる部屋
 const ownsSeat = (ws, s) => s && !s.bot && !s.kicked && (s.clientId === ws.clientId || (ws.deviceId && s.deviceId === ws.deviceId));
 function myRooms(ws) {
@@ -312,7 +330,7 @@ function myRooms(ws) {
     .map((r) => ({ code: r.code, game: r.game, playing: isReady(r) }));
 }
 function lobbyMsg(ws, list = lobbyList()) {
-  return { type: 'lobby', rooms: list, online: clients.size, mine: myRooms(ws) };
+  return { type: 'lobby', rooms: list, online: clients.size, mine: myRooms(ws), lounge: { chat: lounge.chat.slice(-60), members: loungeMembers() } };
 }
 
 function systemChat(room, text) {
@@ -430,6 +448,7 @@ function handle(ws, msg) {
     case 'hello': {
       ws.clientId = String(msg.clientId || '').slice(0, 64) || crypto.randomUUID();
       ws.deviceId = String(msg.deviceId || '').slice(0, 64) || null; // 同じ端末（タブを閉じて開き直しても同じ）
+      setTimeout(broadcastLobby, 0); // ラウンジのオンラインの人を更新
       ws.name = cleanName(msg.name);
       send(ws, lobbyMsg(ws));
       return;
@@ -441,6 +460,25 @@ function handle(ws, msg) {
         const seat = seatOf(room, ws);
         if (seat >= 0) { room.seats[seat].name = ws.name; broadcastRoom(room); }
       }
+      broadcastLobby();
+      return;
+    }
+    case 'loungeChat': {
+      const text = String(msg.text || '').trim().slice(0, 200);
+      if (!text) return;
+      loungePost({ name: ws.name, text });
+      return;
+    }
+    case 'loungeInvite': {
+      // 部屋の中から、ラウンジにお誘いを出す（同じ部屋は30秒に1回まで）
+      const room = requireRoom(ws);
+      if (room.lastInvite && Date.now() - room.lastInvite < 30000) throw new UserError('お誘いは30秒に1回までです');
+      room.lastInvite = Date.now();
+      const g = GAMES[room.game];
+      const free = room.seats.some((s) => !s) && !isReady(room);
+      loungePost({ name: ws.name, invite: { code: room.code, game: room.game, title: g.title, variant: variantOf(room), free } });
+      systemChat(room, `${ws.name} さんがラウンジでお誘いを出しました`);
+      broadcastRoom(room);
       return;
     }
     case 'list':

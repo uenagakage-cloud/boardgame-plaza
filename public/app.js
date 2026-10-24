@@ -358,6 +358,7 @@ function renderLobby() {
     }
   }
   $('#online').textContent = lobby.online ? `・${lobby.online}人が接続中` : '';
+  renderLounge();
   const back = $('#my-rooms');
   back.replaceChildren();
   for (const r of lobby.mine || []) {
@@ -620,10 +621,12 @@ function render() {
   $('#room').hidden = !view;
   if (view) renderRoom();
   else {
+    // 部屋からロビーに戻ったときだけ、部屋のコメントを消す（ロビーではラウンジのコメントが流れる）
+    if (render.wasRoom) $('#nico').replaceChildren();
     renderLobby();
     $('#quick-chat').hidden = $('#quick-chat-btn').hidden = true;
-    $('#nico').replaceChildren();
   }
+  render.wasRoom = !!view;
 }
 
 // ---------- チェス ----------
@@ -3809,6 +3812,52 @@ $('#quick-chat').addEventListener('submit', (e) => {
 $('#board').addEventListener('contextmenu', (e) => {
   if (!/INPUT|TEXTAREA/.test(e.target.tagName)) e.preventDefault();
 });
+
+// ---------- ラウンジ ----------
+function renderLounge() {
+  const L = lobby.lounge;
+  if (!L) return;
+  // オンラインの人（遊んでいる人は、押すとその部屋へ）
+  const members = $('#lounge-members');
+  members.replaceChildren(h('span', 'muted small', `オンライン ${L.members.length}人：`));
+  for (const m of L.members) {
+    const chip = h('button', 'lounge-member' + (m.where ? ' busy' : ''));
+    chip.type = 'button';
+    const where = m.where ? `${GAMES[m.where.game]?.title || ''}${m.where.spectating ? 'を観戦中' : m.where.playing ? 'で遊んでいる' : 'の部屋で待っている'}` : 'ロビー';
+    chip.append(h('b', null, m.name), h('span', 'muted small', where));
+    if (m.where) {
+      chip.title = m.where.playing ? 'この部屋を見に行く' : 'この部屋に入る';
+      chip.onclick = () => send({ type: 'join', code: m.where.code });
+    } else chip.disabled = true;
+    members.append(chip);
+  }
+  // チャットとお誘い
+  const log = $('#lounge-log');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+  log.replaceChildren(...L.chat.map((c) => {
+    const li = h('li', c.invite ? 'lounge-invite' : '');
+    li.append(h('b', null, c.name), ' ');
+    if (c.invite) {
+      const inv = c.invite;
+      li.append(`が「${inv.title}${inv.variant ? `（${inv.variant}）` : ''}」に誘っています `);
+      const b = h('button', 'btn small primary', inv.free ? '参加する' : '見に行く');
+      b.onclick = () => send({ type: 'join', code: inv.code });
+      li.append(b);
+    } else li.append(c.text);
+    return li;
+  }));
+  if (atBottom || !log.dataset.ready) { log.scrollTop = log.scrollHeight; log.dataset.ready = '1'; }
+  // 新しい発言は画面に流す（ロビーにいるときだけ）
+  nicoFeed({ code: 'lounge', chat: L.chat.map((c) => (c.invite ? { ...c, text: `${c.invite.title}に誘っています！` } : c)) });
+}
+
+$('#lounge-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#lounge-input');
+  if (input.value.trim()) send({ type: 'loungeChat', text: input.value });
+  input.value = '';
+});
+$('#lounge-invite').onclick = () => { send({ type: 'loungeInvite' }); toast('ラウンジにお誘いを出しました'); };
 
 // ---------- ホストが名前をタップして追い出す ----------
 $('#room').addEventListener('click', async (e) => {
