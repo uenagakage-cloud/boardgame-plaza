@@ -454,6 +454,17 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* 大富豪のルール設定（ロビー） */
 .df-rules { display: grid; gap: 4px; }
+/* ゲームの説明（ルール） */
+.rules-modal { align-items: flex-start; overflow-y: auto; }
+.rules-box { max-width: 560px; display: grid; gap: 8px; margin: auto 0; text-align: left; }
+.rules-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; background: inherit; }
+.rules-head h3 { margin: 0; }
+.rules-goal { margin: 0; font-weight: bold; }
+.rules-sec h4 { margin: 6px 0 2px; }
+.rules-sec ul { margin: 0; padding-left: 1.3em; display: grid; gap: 3px; line-height: 1.5; }
+.rules-local { list-style: none; padding-left: 0 !important; }
+.rules-local li.off { opacity: 0.55; }
+.rules-open { justify-self: start; }
 .df-rules-btn { justify-self: start; }
 .df-rules-now { line-height: 1.35; }
 .df-rules-modal { align-items: flex-start; overflow-y: auto; }

@@ -20,6 +20,7 @@ import * as mancala from './games/mancala.js';
 import * as connect4 from './games/connect4.js';
 import * as hagetaka from './games/hagetaka.js';
 import * as itchi from './games/itchi.js';
+import { RULES } from './rules.js';
 
 const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi };
 const GAME_INFO = {
@@ -386,6 +387,11 @@ function renderLobby() {
         card.classList.toggle('open', !more.hidden);
         info.textContent = more.hidden ? '詳細' : '閉じる';
       };
+      if (RULES[key]) {
+        const rb = h('button', 'btn small ghost rules-open', '📖 ルールを読む');
+        rb.onclick = () => openRules(key);
+        more.append(rb);
+      }
       row.append(create, info);
       card.append(more, row);
     }
@@ -485,6 +491,7 @@ function renderRoom() {
   const v = view, g = GAMES[v.game], bottom = v.you === 1 ? 1 : 0;
   $('#room-title').textContent = g.title + (v.variant ? ` · ${v.variant}` : '') + (v.gameNo > 1 && !g.lobbyReturn ? `（第${v.gameNo}局）` : '');
   $('#room-code').textContent = v.code;
+  $('#room-rules').hidden = !RULES[v.game];
   $('#player-top').hidden = $('#player-bottom').hidden = v.multi;
   if (!v.multi) {
     renderPlayer($('#player-top'), v, 1 - bottom);
@@ -644,6 +651,11 @@ function renderWaiting(el, v) {
     const join = h('button', 'btn primary', 'この部屋に参加する');
     join.onclick = () => send({ type: 'join', code: v.code });
     box.append(join);
+  }
+  if (RULES[v.game]) {
+    const rb = h('button', 'btn rules-open', '📖 ルールを読む');
+    rb.onclick = () => openRules(v.game, v.options);
+    box.append(rb);
   }
   box.append(h('p', 'muted small', '招待リンクを送って友だちを呼びましょう。開始後に入った人は観戦になります。'));
   if (v.game === 'ito') renderItoSettings(box, v);
@@ -3442,6 +3454,47 @@ $('#copy-link').onclick = async () => {
   try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); }
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
+
+// ゲームの説明（ルール）を画面の真ん中に出す。options があれば、その部屋の設定も書く
+function openRules(key, options) {
+  const r = RULES[key], g = GAMES[key];
+  const overlay = h('div', 'modal rules-modal');
+  const box = h('div', 'modal-box rules-box');
+  const head = h('div', 'rules-head');
+  const close = h('button', 'btn primary small', '閉じる');
+  head.append(h('h3', null, `${GAME_INFO[key].icon} ${g.title}のルール`), close);
+  box.append(head, h('p', 'rules-goal', r.goal));
+  const players = (g.maxPlayers || 2) > 2 ? `${g.minPlayers}〜${g.maxPlayers}人` : '2人';
+  box.append(h('p', 'muted small', `遊べる人数: ${players}`));
+  for (const [title, items] of r.sections) {
+    const sec = h('section', 'rules-sec');
+    const ul = h('ul');
+    for (const t of items) ul.append(h('li', null, t));
+    sec.append(h('h4', null, title), ul);
+    box.append(sec);
+  }
+  if (key === 'daifugo') {
+    // ローカルルール（この部屋で入っているかどうか）
+    const rules = options ? daifugo.normalizeOptions(options) : null;
+    const sec = h('section', 'rules-sec');
+    const ul = h('ul', 'rules-local');
+    for (const [k, name, help, on] of daifugo.RULES) {
+      const yes = rules ? rules[k] : on;
+      const li = h('li', yes ? 'on' : 'off');
+      li.append(h('b', null, `${yes ? '○' : '×'} ${name}`), '：', help);
+      ul.append(li);
+    }
+    sec.append(h('h4', null, rules ? 'この部屋のローカルルール（○ が入っている）' : 'ローカルルール（○ がふつうは入っている）'), ul);
+    if (rules) sec.append(h('p', 'muted small', `ジョーカー ${rules.jokers}枚`));
+    box.append(sec);
+  }
+  overlay.append(box);
+  const done = () => overlay.remove();
+  close.onclick = done;
+  overlay.onclick = (e) => { if (e.target === overlay) done(); };
+  document.body.append(overlay);
+}
+$('#room-rules').onclick = () => { if (view) openRules(view.game, view.options); };
 
 // 大富豪のルール設定（画面の真ん中に ON/OFF の表を出す。変えたらすぐ反映）
 function openDaifugoRules(rules, onChange) {
