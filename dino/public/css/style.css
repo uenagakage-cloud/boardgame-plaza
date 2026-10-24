@@ -1,0 +1,1199 @@
+:root {
+  --bg: #f7f7f7;
+  --ink: #535353;
+  --ink-soft: #8a8a8a;
+  --card: #ffffff;
+  --line: #dedede;
+  --accent: #e5533d;
+  --good: #27ae60;
+  --blue: #2f80ed;
+  --font: 'DotGothic16', system-ui, sans-serif;
+  --pixel: 'Press Start 2P', 'DotGothic16', monospace;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  /* ダブルタップでの拡大を防ぐ（iPhone は viewport の拡大禁止を無視するため） */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#app {
+  position: absolute;
+  inset: 0;
+  height: 100dvh;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+  font-size: 16px;
+  color: inherit;
+}
+
+input,
+select {
+  user-select: text;
+  -webkit-user-select: text;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  min-width: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- 画面 ---------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  padding-top: var(--safe-t);
+}
+
+.screen.active {
+  display: flex;
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.bar h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+}
+
+/* ---------- ボタン ---------- */
+.btn {
+  border: 2px solid var(--ink);
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--ink);
+  transition: transform 0.05s;
+  touch-action: manipulation;
+}
+
+.btn:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 3px 0 #2c2c2c;
+}
+
+.btn.big {
+  font-size: 20px;
+  padding: 14px 18px;
+  width: 100%;
+}
+
+.btn.tiny {
+  font-size: 13px;
+  padding: 4px 10px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.btn.icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.row > * {
+  flex: 1;
+}
+
+.row.center {
+  justify-content: center;
+}
+
+.row > .btn.icon {
+  flex: none;
+}
+
+/* ---------- タイトル ---------- */
+#screen-title {
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.title-box {
+  width: min(360px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  padding: 16px 0;
+}
+
+#title-dino {
+  width: 88px;
+  height: 88px;
+  align-self: center;
+  image-rendering: pixelated;
+}
+
+.logo {
+  font-family: var(--pixel);
+  font-size: 30px;
+  text-align: center;
+  margin: 0;
+  letter-spacing: 2px;
+}
+
+.sub {
+  text-align: center;
+  margin: -6px 0 4px;
+  color: var(--ink-soft);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field input {
+  flex: 1;
+}
+
+.colors {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.colors button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.colors button.on {
+  border-color: #000;
+  box-shadow: 0 0 0 2px #fff inset;
+}
+
+.best {
+  text-align: center;
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+}
+
+.best span {
+  font-family: var(--pixel);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* ---------- カード / リスト ---------- */
+.card {
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.seg {
+  display: flex;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg button {
+  flex: 1;
+  border: 0;
+  background: #fff;
+  padding: 10px 4px;
+  cursor: pointer;
+}
+
+.seg button + button {
+  border-left: 2px solid var(--ink);
+}
+
+.seg button.on {
+  background: var(--ink);
+  color: #fff;
+}
+
+.seg.locked button:not(.on) {
+  opacity: 0.4;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+}
+
+#join-code {
+  font-family: var(--pixel);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-align: center;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.list li:last-child {
+  border-bottom: 0;
+}
+
+.list .empty {
+  color: var(--ink-soft);
+  justify-content: center;
+}
+
+.list .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.list .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  font-size: 12px;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.tag.ok {
+  background: var(--good);
+  border-color: var(--good);
+  color: #fff;
+}
+
+.tag.wait {
+  color: var(--ink-soft);
+  border-color: var(--line);
+}
+
+.code {
+  font-family: var(--pixel);
+  font-size: 18px;
+  letter-spacing: 3px;
+}
+
+.mode-desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.settings select {
+  padding: 6px 8px;
+}
+
+.room-actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(12px + var(--safe-b));
+  border-top: 2px solid var(--ink);
+  background: var(--bg);
+}
+
+.net-status {
+  font-size: 12px;
+}
+
+/* ---------- ゲーム画面 ---------- */
+/* 縦画面：上から「順位バー → 通知 → プレイ画面 → 操作ボタン」。何もプレイ画面に重ならない */
+#screen-game {
+  background: var(--bg);
+  /* ゲーム中はダブルタップでの拡大・スクロール・長押しの選択を全部止める（タッチの取りこぼし防止） */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.game-bar {
+  /* 横画面・パソコンではタップ領域が全面に重なるので、✕ や 💬 ボタンをその上に出す */
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 4px;
+  min-height: 48px;
+  flex: none;
+}
+
+#game-hud {
+  flex: 1;
+  min-width: 0;
+}
+
+.ping {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+#game-feed {
+  position: relative;
+  flex: none;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  overflow: hidden;
+}
+
+.feed-msg {
+  max-width: 100%;
+  font-size: 13px;
+  padding: 3px 12px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: toast-in 0.2s ease-out;
+  transition: opacity 0.4s;
+}
+
+.feed-msg.danger {
+  background: var(--accent);
+}
+
+.feed-msg.good {
+  background: var(--good);
+}
+
+.feed-msg.chat {
+  background: #fff;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+}
+
+#feed-box {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* ---------- チャット（スタンプ） ---------- */
+.stamps {
+  display: flex;
+  gap: 8px;
+}
+
+.stamps .btn.stamp {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* ゲーム中は通知の行に重ねて出す（プレイ画面には重ならない） */
+.stamp-bar {
+  position: absolute;
+  inset: 0 8px;
+  z-index: 6;
+  align-items: center;
+  background: var(--bg);
+}
+
+.stamp-bar .btn.stamp {
+  padding: 2px 4px;
+  font-size: 14px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+.chat-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+.chat-log li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.chat-log .empty {
+  color: var(--ink-soft);
+}
+
+.chat-log .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.chat-text {
+  background: #f0f0f0;
+  border-radius: 10px;
+  padding: 1px 10px;
+}
+
+.feed-msg.fade {
+  opacity: 0;
+}
+
+#stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  flex: none;
+  overflow: hidden;
+  /* 縦画面では上に寄りすぎないよう少し下げる */
+  margin: 8vh 0 3vh;
+}
+
+#game-canvas {
+  display: block;
+  image-rendering: pixelated;
+  touch-action: none;
+}
+
+/* バトルは背景と同じ色なので、プレイ範囲（左右がつながる端）がわかるよう薄い枠を付ける */
+.mode-battle #game-canvas {
+  outline: 2px solid var(--line);
+}
+
+.mode-race #stage {
+  aspect-ratio: 3 / 1;
+}
+
+.mode-battle #stage {
+  aspect-ratio: 16 / 9;
+}
+
+/* 順位・HP の表示：中身（名前の長さ・スコアの桁数・✖）が変わっても各項目の幅が変わらないよう、
+   同じ幅のマスに並べる。並び順はルームに入った順で固定 */
+.standings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 4px 6px;
+}
+
+.standings li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2px 8px;
+}
+
+.standings li.me {
+  border-color: var(--ink);
+  font-weight: bold;
+}
+
+.standings li.out {
+  opacity: 0.45;
+}
+
+.standings i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.standings .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standings .sc {
+  font-family: var(--pixel);
+  font-size: 9px;
+  min-width: 3.6em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.standings i,
+.standings .hpbar {
+  flex: none;
+}
+
+.hpbar {
+  width: 30px;
+  height: 6px;
+  background: #ddd;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hpbar b {
+  display: block;
+  height: 100%;
+  background: var(--good);
+}
+
+/* ---------- 操作ボタン ---------- */
+/* キーボードの操作キー：マウスで操作する端末（パソコン）のときだけ表示 */
+.controls kbd {
+  display: none;
+  margin-top: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .controls kbd {
+    display: inline-block;
+  }
+}
+
+.dpad-half,
+.ctl-btn {
+  flex-direction: column;
+}
+
+.controls {
+  position: relative;
+  flex: 1;
+  min-height: 160px;
+  touch-action: none;
+  padding-bottom: var(--safe-b);
+}
+
+.controls-race {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ctl-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 2px solid var(--line);
+  touch-action: none;
+}
+
+.ctl-zone + .ctl-zone {
+  border-left: 2px solid var(--line);
+}
+
+.ctl-zone.active {
+  background: #ececec;
+}
+
+.ctl-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 40px;
+  color: #bdbdbd;
+  pointer-events: none;
+}
+
+.ctl-label small {
+  font-size: 15px;
+}
+
+.ctl-item {
+  position: absolute;
+  left: 50%;
+  bottom: calc(16px + var(--safe-b));
+  transform: translateX(-50%);
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  color: #bdbdbd;
+}
+
+.ctl-item small {
+  font-size: 11px;
+}
+
+.ctl-item-icon {
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.ctl-item.has-item {
+  border-color: #f2b705;
+  color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.3);
+  animation: pulse 0.8s infinite alternate;
+}
+
+.ctl-item.active {
+  transform: translateX(-50%) scale(0.92);
+}
+
+@keyframes pulse {
+  to {
+    box-shadow: 0 0 0 10px rgba(242, 183, 5, 0.1);
+  }
+}
+
+.controls-battle {
+  display: flex;
+}
+
+.ctl-dpad {
+  flex: 1.3;
+  display: flex;
+  gap: 8px;
+  padding: 16px 8px 16px 16px;
+  touch-action: none;
+  border-top: 2px solid var(--line);
+}
+
+.dpad-half {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #fff;
+  font-size: 34px;
+  pointer-events: none;
+}
+
+.dpad-half small {
+  font-size: 11px;
+}
+
+.dpad-half.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.ctl-buttons {
+  flex: 1;
+  position: relative;
+  border-top: 2px solid var(--line);
+}
+
+.ctl-btn {
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  color: var(--accent);
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  touch-action: none;
+}
+
+.ctl-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 縦画面：2 × 2 で並べる（上：かむ・アイテム / 下：ジャンプ・しゃがむ） */
+.controls-battle .ctl-buttons {
+  flex: 1.15;
+}
+
+.controls-battle .ctl-btn {
+  width: 74px;
+  height: 74px;
+  font-size: 15px;
+}
+
+.ctl-bite {
+  left: 6px;
+  top: 14%;
+}
+
+.ctl-jump {
+  left: 6px;
+  top: 52%;
+}
+
+.ctl-duck {
+  right: 6px;
+  top: 52%;
+}
+
+.ctl-jump,
+.ctl-duck {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.ctl-jump.active,
+.ctl-duck.active {
+  background: var(--ink);
+}
+
+.ctl-duck {
+  font-size: 15px;
+}
+
+/* アイテムボタン（右上）。アイテムを持っているときは光る */
+.ctl-itembtn {
+  right: 6px;
+  top: 14%;
+  border-color: var(--line);
+  color: #bdbdbd;
+  font-size: 12px;
+}
+
+.ctl-itembtn .ctl-item-icon {
+  font-size: 26px;
+}
+
+.ctl-itembtn.has-item {
+  border-color: #f2b705;
+  color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.3);
+  animation: pulse 0.8s infinite alternate;
+}
+
+.ctl-itembtn.active {
+  background: #fff6d6;
+  color: var(--ink);
+}
+
+/* 横画面：上に順位バーと通知の細い行。
+   レース：プレイ画面の下に操作ラベル用の帯を確保し、左右半分のタップ領域は透明で全面に置く
+   バトル：左右に操作ボタン用の列を確保し、真ん中にプレイ画面 */
+@media (orientation: landscape) {
+  .game-bar {
+    min-height: 0;
+    padding: 4px 8px 0;
+  }
+
+  /* 横画面は 1 行に全員を同じ幅で並べる */
+  #game-hud .standings {
+    display: flex;
+    overflow: hidden;
+  }
+
+  #game-hud .standings li {
+    flex: 1 1 0;
+  }
+
+  #game-hud .standings .sc {
+    min-width: 3.2em;
+  }
+
+  #game-hud .hpbar {
+    width: 28px;
+  }
+
+  #game-feed {
+    height: 26px;
+  }
+
+  .feed-msg {
+    font-size: 12px;
+    padding: 2px 12px;
+  }
+
+  #stage {
+    margin: 0;
+  }
+
+  .mode-race #stage,
+  .mode-battle #stage {
+    aspect-ratio: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* レース */
+  .mode-race #stage {
+    margin-bottom: calc(64px + var(--safe-b));
+  }
+
+  .mode-race .controls {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    min-height: 0;
+  }
+
+  .ctl-zone {
+    border: 0 !important;
+    align-items: flex-end;
+    padding-bottom: calc(14px + var(--safe-b));
+  }
+
+  .ctl-zone.active {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .ctl-label {
+    flex-direction: row;
+    gap: 6px;
+    font-size: 22px;
+    align-items: baseline;
+  }
+
+  .ctl-item {
+    width: 58px;
+    height: 58px;
+    bottom: calc(4px + var(--safe-b));
+  }
+
+  .ctl-item small {
+    display: none;
+  }
+
+  .ctl-item-icon {
+    font-size: 24px;
+  }
+
+  /* バトル */
+  #screen-game.mode-battle.active {
+    --side: clamp(130px, 19vw, 190px);
+    display: grid;
+    grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'bar bar bar'
+      'feed feed feed'
+      'left stage right';
+  }
+
+  .mode-battle .game-bar {
+    grid-area: bar;
+  }
+
+  .mode-battle #game-feed {
+    grid-area: feed;
+  }
+
+  .mode-battle #stage {
+    grid-area: stage;
+  }
+
+  .mode-battle .controls {
+    display: contents;
+  }
+
+  .ctl-dpad {
+    grid-area: left;
+    border: 0;
+    padding: 8px 6px calc(12px + var(--safe-b)) calc(8px + env(safe-area-inset-left, 0px));
+    align-self: end;
+    height: min(150px, 100%);
+    gap: 6px;
+  }
+
+  .dpad-half {
+    font-size: 24px;
+  }
+
+  .ctl-buttons {
+    grid-area: right;
+    border: 0;
+  }
+
+  /* 横画面：右の列に 2 × 2 で並べる（上：かむ・アイテム / 下：ジャンプ・しゃがむ） */
+  .controls-battle .ctl-btn {
+    width: 72px;
+    height: 72px;
+    left: auto;
+    right: auto;
+    top: auto;
+    transform: none;
+    font-size: 14px;
+  }
+
+  .controls-battle .ctl-bite {
+    left: 6px;
+    bottom: calc(96px + var(--safe-b));
+  }
+
+  .controls-battle .ctl-itembtn {
+    right: 6px;
+    bottom: calc(96px + var(--safe-b));
+  }
+
+  .ctl-itembtn small {
+    display: none;
+  }
+
+  .controls-battle .ctl-jump {
+    left: 6px;
+    bottom: calc(12px + var(--safe-b));
+  }
+
+  .controls-battle .ctl-duck {
+    right: 6px;
+    bottom: calc(12px + var(--safe-b));
+    font-size: 12px;
+  }
+}
+
+/* ---------- オーバーレイ / モーダル ---------- */
+.overlay,
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(247, 247, 247, 0.85);
+  padding: 16px;
+}
+
+.modal {
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.panel {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  padding: 16px;
+  width: min(400px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel h2 {
+  margin: 0;
+  text-align: center;
+}
+
+.panel h2 small {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.big-score {
+  font-family: var(--pixel);
+  font-size: 34px;
+  text-align: center;
+  margin: 0;
+}
+
+.rank-msg {
+  text-align: center;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.ranking li .score,
+.results li .score {
+  font-family: var(--pixel);
+  font-size: 12px;
+}
+
+.ranking li .pos,
+.results li .pos {
+  width: 2.2em;
+  font-family: var(--pixel);
+  font-size: 12px;
+}
+
+.ranking li.you {
+  background: #fff6d6;
+}
+
+.results li.win {
+  background: #fff6d6;
+  font-weight: bold;
+}
+
+.howto h3 {
+  margin: 8px 0 0;
+}
+
+.howto p,
+.howto ul {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.howto ul {
+  padding-left: 1.2em;
+}
+
+/* ---------- トースト ---------- */
+#toasts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50px + var(--safe-t));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--ink);
+  color: #fff;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 14px;
+  animation: toast-in 0.2s ease-out;
+  max-width: 90%;
+}
+
+.toast.danger {
+  background: var(--accent);
+}
+
+.toast.good {
+  background: var(--good);
+}
+
+.toast.fade {
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+@keyframes toast-in {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}

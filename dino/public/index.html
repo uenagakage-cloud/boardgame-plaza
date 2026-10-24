@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f7f7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Dino Rush</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- タイトル -->
+      <section id="screen-title" class="screen">
+        <div class="title-box">
+          <a href="/" class="back-home" style="align-self:flex-start;font-size:13px;color:inherit;opacity:.75;text-decoration:none">← ゲームいっぱいに戻る</a>
+          <canvas id="title-dino" width="88" height="88"></canvas>
+          <h1 class="logo">DINO RUSH</h1>
+          <p class="sub">オンライン</p>
+          <div class="field">
+            <label for="name-input">なまえ</label>
+            <input id="name-input" maxlength="12" autocomplete="off" placeholder="ななし" />
+          </div>
+          <div id="color-picker" class="colors" aria-label="恐竜の色"></div>
+          <button class="btn primary big" data-act="solo">ソロレース</button>
+          <button class="btn primary big" data-act="multi">マルチプレイ</button>
+          <div class="row">
+            <button class="btn" data-act="ranking">ランキング</button>
+            <button class="btn" data-act="howto">あそびかた</button>
+          </div>
+          <div class="row center">
+            <button class="btn icon" data-act="mute" id="btn-mute" aria-label="サウンド">🔊</button>
+            <button class="btn icon" data-act="fullscreen" aria-label="全画面">⛶</button>
+          </div>
+          <p class="best">ベストスコア <span id="best-score">0</span></p>
+        </div>
+      </section>
+
+      <!-- マルチ メニュー -->
+      <section id="screen-multi" class="screen">
+        <header class="bar">
+          <button class="btn icon" data-act="back" aria-label="戻る">◀</button>
+          <h2>マルチプレイ</h2>
+          <span class="net-status" id="net-status"></span>
+        </header>
+        <div class="scroll">
+          <div class="card">
+            <h3>ルームをつくる</h3>
+            <div class="seg" id="create-mode">
+              <button data-mode="race" class="on">🏃 レース</button>
+              <button data-mode="battle">⚔️ バトル</button>
+            </div>
+            <label class="check"><input type="checkbox" id="create-public" checked /> 公開ルームにする</label>
+            <button class="btn primary" data-act="create">ルーム作成</button>
+          </div>
+          <div class="card">
+            <h3>ルームコードで参加</h3>
+            <div class="row">
+              <input id="join-code" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" />
+              <button class="btn primary" data-act="join">参加</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>公開ルーム <button class="btn tiny" data-act="refresh">更新</button></h3>
+            <ul id="room-list" class="list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ルーム -->
+      <section id="screen-room" class="screen">
+        <header class="bar">
+          <button class="btn icon" data-act="leave" aria-label="退出">◀</button>
+          <h2>ルーム <span id="room-code" class="code"></span></h2>
+          <button class="btn tiny" data-act="share">招待</button>
+        </header>
+        <div class="scroll">
+          <div class="card">
+            <div class="seg" id="room-mode">
+              <button data-mode="race">🏃 レース</button>
+              <button data-mode="battle">⚔️ バトル</button>
+            </div>
+            <p class="mode-desc" id="mode-desc"></p>
+            <div id="room-settings" class="settings"></div>
+          </div>
+          <div class="card">
+            <h3>プレイヤー <span id="room-count"></span></h3>
+            <ul id="room-players" class="list players"></ul>
+            <button class="btn" data-act="addbot" id="btn-addbot">＋ CPU を追加</button>
+          </div>
+          <div class="card">
+            <h3>チャット</h3>
+            <ul id="chat-log" class="chat-log"><li class="empty">スタンプを送ってみよう</li></ul>
+            <div class="stamps" data-stamps></div>
+          </div>
+        </div>
+        <div class="room-actions">
+          <button class="btn big" id="btn-ready" data-act="ready">準備OK</button>
+          <button class="btn big primary" id="btn-start" data-act="start">スタート</button>
+        </div>
+      </section>
+
+      <!-- ゲーム -->
+      <section id="screen-game" class="screen">
+        <div class="game-bar">
+          <div id="game-hud"></div>
+          <span id="ping" class="ping"></span>
+          <button class="btn tiny" data-act="chat" id="btn-chat" aria-label="チャット">💬</button>
+          <button class="btn tiny" data-act="quit" aria-label="やめる">✕</button>
+        </div>
+        <!-- 通知はプレイ画面に重ならないよう専用の行に出す -->
+        <div id="game-feed">
+          <div id="feed-box" aria-live="polite"></div>
+          <div id="stamp-bar" class="stamps stamp-bar hidden" data-stamps></div>
+        </div>
+        <div id="stage"><canvas id="game-canvas"></canvas></div>
+        <div id="controls"></div>
+
+        <div id="solo-over" class="overlay hidden">
+          <div class="panel">
+            <h2>GAME OVER</h2>
+            <p class="big-score" id="solo-score">0</p>
+            <p id="solo-rank" class="rank-msg"></p>
+            <div class="row">
+              <button class="btn primary" data-act="retry">もう一度</button>
+              <button class="btn" data-act="ranking">ランキング</button>
+            </div>
+            <button class="btn" data-act="quit">タイトルへ</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 結果 -->
+      <div id="result-modal" class="modal hidden">
+        <div class="panel">
+          <h2 id="result-title">結果</h2>
+          <ol id="result-list" class="list results"></ol>
+          <p id="result-rank" class="rank-msg"></p>
+          <button class="btn primary" data-act="result-close">ルームに戻る</button>
+        </div>
+      </div>
+
+      <!-- ランキング -->
+      <div id="ranking-modal" class="modal hidden">
+        <div class="panel">
+          <h2>ランキング <small>（レース：ソロ・マルチ共通）</small></h2>
+          <div class="seg" id="ranking-period">
+            <button data-period="day">24時間</button>
+            <button data-period="week">7日間</button>
+            <button data-period="all" class="on">全期間</button>
+          </div>
+          <ol id="ranking-list" class="list ranking"></ol>
+          <button class="btn" data-act="close-modal">とじる</button>
+        </div>
+      </div>
+
+      <!-- あそびかた -->
+      <div id="howto-modal" class="modal hidden">
+        <div class="panel howto">
+          <h2>あそびかた</h2>
+          <h3>🏃 レース</h3>
+          <p>障害物を<b>ジャンプ</b>（画面右側）と<b>しゃがみ</b>（画面左側）でよけながら走り続けよう。だんだん速くなる！</p>
+          <ul>
+            <li><b>ソロ</b>：スコアを競ってランキング入りを目指す</li>
+            <li><b>マルチ</b>：最後まで生き残った人の勝ち。脱落後は生き残っている人を観戦できる（ジャンプ / しゃがむで切り替え）。空中の <b>?</b> ボックスを取るとおじゃまアイテムが使える。マルチのスコアもランキングに載る</li>
+            <li>🌵サボテン送り / 🦅プテラ送り / 🌑まっくら：相手を妨害　🛡️バリア：1回だけ無敵</li>
+          </ul>
+          <h3>⚔️ バトル</h3>
+          <p>操作は<b>◀ ▶ 移動</b>・<b>ジャンプ</b>（長押しで高く、すぐ離すと低く）・<b>かむ</b>・<b>しゃがむ</b>。</p>
+          <ul>
+            <li><b>しゃがむ</b>ボタンで細い台から下に降りられる</li>
+            <li>攻撃は2つだけ：落ちながら相手の頭に乗る<b>ふみつけ</b>（踏まれた恐竜は約1秒気絶）と、<b>かむ</b>ボタンで口の前の相手にかみつく</li>
+            <li>体がぶつかっただけではダメージにならず、お互いはじかれる</li>
+            <li>HP が 0 になるか、床の真ん中の穴に落ちると脱落</li>
+            <li>HP が減るほど遠くに吹っ飛ぶ</li>
+            <li>画面の右端から出ると左端から出てくる</li>
+            <li>台の上に出る <b>?</b> ボックスに触れるとアイテム：🛡️バリア（1回防ぐ）/ 🌵サボテン（足元に罠）/ 🦅プテラ（相手の頭の高さを横切る・しゃがむとよけられる）/ 🍖おにく（HP回復）</li>
+            <li>時間切れでサドンデス（全員HP1）</li>
+            <li><b>チーム戦</b>（ルーム設定）：赤と青の2チームで対戦。味方には攻撃が当たらず、相手チームを全滅させたら勝ち。ルーム画面のチームを押すと切り替え</li>
+          </ul>
+          <h3>⌨️ キーボード</h3>
+          <p>レース：Space/↑ ジャンプ、↓ しゃがむ、X アイテム<br />バトル：←→ 移動、↑/Space ジャンプ、↓ しゃがむ（台から降りる）、J/Z かむ、X アイテム</p>
+          <button class="btn" data-act="close-modal">とじる</button>
+        </div>
+      </div>
+
+      <div id="toasts"></div>
+    </div>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

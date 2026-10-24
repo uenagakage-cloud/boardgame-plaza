@@ -181,8 +181,30 @@ function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
     // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
-    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')]];
+    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')]];
     for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
+    // ディノラッシュは別のしくみのリアルタイムゲームなので、/dino/ のページを開く
+    {
+      const card = h('div', 'card game-dino');
+      const head = h('div', 'card-head');
+      head.append(h('span', 'card-icon', '🦖'), h('h3', null, 'ディノラッシュ'), h('span', 'card-players', '1人〜'));
+      const more = h('div', 'card-more');
+      more.hidden = true;
+      more.append(h('p', 'muted', 'Chrome の恐竜ゲーム風アクション。ソロのランキング・おじゃまありのマルチレース・ふみつけとかみつきのバトル（チーム戦・CPUあり）。スマホは横画面がおすすめ。'));
+      const row = h('div', 'card-actions');
+      const play = h('button', 'btn primary');
+      play.append(h('span', 'long-label', '遊ぶ'), h('span', 'short-label', '遊ぶ'));
+      play.onclick = () => { location.href = '/dino/'; };
+      const info = h('button', 'btn card-info', '詳細');
+      info.onclick = () => {
+        more.hidden = !more.hidden;
+        card.classList.toggle('open', !more.hidden);
+        info.textContent = more.hidden ? '詳細' : '閉じる';
+      };
+      row.append(play, info);
+      card.append(head, more, row);
+      groups[2][1].append(card);
+    }
     for (const [key, g] of Object.entries(GAMES)) {
       const multi = (g.maxPlayers || 2) > 2;
       const card = h('div', 'card game-' + key);

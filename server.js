@@ -32,6 +32,7 @@ import * as wordwolf from './public/games/wordwolf.js';
 import * as hagetaka from './public/games/hagetaka.js';
 import * as itchi from './public/games/itchi.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
+import { mountDino } from './dino/server/mount.js';
 
 const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
 const PORT = Number(process.env.PORT) || 3000;
@@ -131,7 +132,11 @@ async function loadStatic(file) {
   return entry;
 }
 
+// ディノラッシュ（リアルタイムのアクションゲーム）は別のしくみなので、/dino/ の下でまるごと動かす
+const dino = await mountDino('/dino');
+
 const server = http.createServer(async (req, res) => {
+  if (dino.handle(req, res)) return;
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { pathname = '/'; }
   if (pathname === '/api/paint-gallery') { sendGallery(req, res); return; }
@@ -715,7 +720,12 @@ function handle(ws, msg) {
   }
 }
 
-const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+// WebSocket: /dino/ws はディノラッシュ、それ以外はこのアプリ
+server.on('upgrade', (req, socket, head) => {
+  if (dino.upgrade(req, socket, head)) return;
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+});
 
 wss.on('connection', (ws) => {
   clients.add(ws);
@@ -758,5 +768,5 @@ setInterval(() => {
 }, 30 * 1000);
 
 server.listen(PORT, () => {
-  console.log(`ボードゲームサーバー起動: http://localhost:${PORT}`);
+  console.log(`ゲームいっぱい サーバー起動: http://localhost:${PORT}（ディノラッシュは /dino/）`);
 });

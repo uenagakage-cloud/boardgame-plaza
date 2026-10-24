@@ -1,15 +1,17 @@
 {
   "name": "boardgame-online",
   "version": "1.0.0",
-  "description": "オンラインでボードゲーム・カードゲーム・パーティーゲームを遊べるアプリ",
+  "description": "ゲームいっぱい: オンラインでボードゲーム・カードゲーム・パーティーゲーム・アクションゲームを遊べるアプリ",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/rules.test.js"
+    "test": "node test/rules.test.js",
+    "test:dino": "cd dino && node --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {
     "matter-js": "^0.20.0",
+    "pg": "^8.23.1",
     "ws": "^8.18.0"
   },
   "engines": {
