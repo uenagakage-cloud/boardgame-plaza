@@ -100,7 +100,8 @@ export function viewFor(s, seat) {
     themeDeck: null,
     cards: s.cards.map((c, i) => ({
       id: c.id, owner: c.owner, hint: c.hint,
-      value: c.owner === seat || i < s.revealed ? c.value : null,
+      // 観戦者・終わったあとは、全員の数字が見える
+      value: c.owner === seat || i < s.revealed || seat < 0 || s.result ? c.value : null,
       ok: i < s.revealed ? isInOrder(s.cards, i) : null,
     })),
   };

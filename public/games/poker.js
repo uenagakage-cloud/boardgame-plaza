@@ -251,7 +251,9 @@ export const canActOutOfTurn = () => false;
 export function viewFor(s, seat) {
   return {
     ...s, deck: null,
-    holes: s.holes.map((h, i) => (h && (i === seat || (s.showdown && s.showdown.hands[i])) ? h : h ? 'hidden' : null)),
+    // 観戦者・降りた人・抜けた人・終わったあとは、全員の手札が見える
+    seesAll: seat < 0 || !!s.result || !!s.out[seat] || !!s.folded[seat],
+    holes: s.holes.map((h, i) => (h && (i === seat || (s.showdown && s.showdown.hands[i]) || seat < 0 || s.result || s.out[seat] || s.folded[seat]) ? h : h ? 'hidden' : null)),
   };
 }
 

@@ -66,7 +66,7 @@ export function nightOptions(s, seat) {
 
 // 他の人の役職・中央・夜の行動・投票先は隠す（終局後はすべて公開）
 export function viewFor(s, seat) {
-  if (s.result) return s;
+  if (s.result || seat < 0) return s; // 終わったあと・観戦者は全部見える
   const me = seat >= 0 ? s.roles[seat] : null;
   return {
     ...s,

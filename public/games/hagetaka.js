@@ -106,7 +106,9 @@ export const canActOutOfTurn = () => true;
 export function viewFor(s, seat) {
   return {
     ...s, deck: null, deckCount: s.deck.length,
-    hands: s.hands.map((h, i) => (i === seat || s.result ? h : null)),
+    // 観戦者・抜けた人・終わったあとは、全員の手札が見える
+    seesAll: seat < 0 || !!s.result || !!s.out[seat],
+    hands: s.hands.map((h, i) => (i === seat || s.result || seat < 0 || s.out[seat] ? h : null)),
     handCounts: s.hands.map((h) => h.length),
     played: s.played.map((x, i) => (i === seat || s.phase !== 'choose' ? x : x != null ? 0 : null)),
   };

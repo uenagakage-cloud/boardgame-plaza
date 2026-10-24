@@ -1056,9 +1056,10 @@ function renderWordBasket(el, v, act) {
     b.onclick = () => { wbSelCard = wbSelCard === card.id ? null : card.id; renderWordBasket(el, view, act); wb.input.focus(); };
     return b;
   }));
-  // 終局後は全員の手札を公開
-  if (s.result) {
+  // 終局後・観戦者・投了した人は全員の手札が見える
+  if (s.result || s.seesAll) {
     const reveal = h('div', 'wb-reveal');
+    if (!s.result) reveal.append(h('div', 'reveal-title', me < 0 ? 'みんなの手札（観戦中）' : 'みんなの手札（抜けたので見えています）'));
     v.seats.forEach((p, i) => {
       if (i === me || !s.hands[i]) return;
       const row = h('div', 'wb-reveal-row');
@@ -1218,8 +1219,11 @@ function renderCatChoco(el, v) {
     return b;
   }));
 
-  // これまでの結果（新しい順）
+  // これまでの結果（新しい順）。見えるときは、ほかの人のアイテムを上に
   cc.log.replaceChildren();
+  const ccOthers = [...Array(s.players).keys()].filter((i) => i !== me && s.hands[i]);
+  const ccPanel = revealPanel(v, ccOthers.map((i) => [i, s.hands[i].map((c) => ccItem(c, 'small'))]), 'みんなのアイテム');
+  if (ccPanel) cc.log.append(ccPanel);
   if (s.log.length) cc.log.append(h('h3', null, 'これまでのピンチ'));
   for (const e of s.log.slice().reverse()) {
     const item = h('div', 'cc-log-item ' + (e.success ? 'success' : 'fail'));
@@ -1349,9 +1353,10 @@ function renderUno(el, v) {
     root.append(hand);
   }
 
-  // 終局後は全員の手札を公開
-  if (s.result) {
+  // 終局後・観戦者・投了した人は全員の手札が見える
+  if (s.result || s.seesAll) {
     const reveal = h('div', 'wb-reveal');
+    if (!s.result) reveal.append(h('div', 'reveal-title', me < 0 ? 'みんなの手札（観戦中）' : 'みんなの手札（抜けたので見えています）'));
     s.hands.forEach((cards, i) => {
       if (i === me || !cards || !cards.length) return;
       const row = h('div', 'wb-reveal-row');
@@ -2031,6 +2036,10 @@ function renderDaifugo(el, v) {
     }
     root.append(h('div', 'cc-hand-title', `あなたの手札（${myHand.length}枚）・カードを選んで「出す」`), hand);
   }
+  // 上がった人・観戦者・ラウンドが終わったあとは、ほかの人の手札も見える
+  const others = [...Array(s.players).keys()].filter((i) => i !== me && s.hands[i] && s.hands[i].length);
+  const panel = revealPanel(v, others.map((i) => [i, daifugo.sortHand(s.hands[i]).map((c) => playingCard(c, 'small'))]));
+  if (panel) root.append(panel);
   el.replaceChildren(root);
   dfSchedule();
 }
@@ -2250,6 +2259,7 @@ function renderBlokus(el, v) {
     root.append(tools);
     for (const color of blokus.colorsOf(s.players, me)) {
       const tray = h('div', 'bk-tray' + (myTurn && color === s.color ? ' active' : ''));
+      tray.dataset.mine = '1';
       tray.append(h('div', 'cc-hand-title', `${blokus.COLOR_NAMES[color]}のピース（残り${s.remaining[color].filter(Boolean).length}個）`));
       const list = h('div', 'bk-tray-list');
       blokus.PIECES.forEach((cells, i) => {
@@ -2265,6 +2275,23 @@ function renderBlokus(el, v) {
       tray.append(list);
       root.append(tray);
     }
+  }
+  // ほかの色の残りのピース（小さく）
+  const mine = me >= 0 ? blokus.colorsOf(s.players, me) : [];
+  const others = [0, 1, 2, 3].filter((c) => !mine.includes(c) && blokus.ownerOf(s.players, c) >= 0);
+  if (others.length) {
+    const box = h('div', 'bk-others');
+    box.append(h('div', 'reveal-title', me < 0 ? '各色の残りのピース' : 'ほかの色の残りのピース'));
+    for (const color of others) {
+      const row = h('div', 'bk-other-row');
+      const owner = blokus.ownerOf(s.players, color);
+      row.append(h('span', 'small', `${blokus.COLOR_NAMES[color]}（${v.seats[owner]?.name || '?'}）残り${s.remaining[color].filter(Boolean).length}個${s.done[color] ? '・終了' : ''}`));
+      const list = h('div', 'bk-other-list');
+      blokus.PIECES.forEach((cells, i) => { if (s.remaining[color][i]) list.append(bkPieceEl(cells, color)); });
+      row.append(list);
+      box.append(row);
+    }
+    root.append(box);
   }
   el.replaceChildren(root);
 }
@@ -3386,6 +3413,9 @@ function renderHagetaka(el, v) {
     }
     root.append(h('div', 'cc-hand-title', 'あなたの手札（タップで出す・全員出すまで出し直せます）'), hand);
   }
+  const others = [...Array(s.players).keys()].filter((i) => i !== me && s.hands[i]);
+  const panel = revealPanel(v, others.map((i) => [i, s.hands[i].map((n) => h('span', 'hg-mini', String(n)))]), 'みんなの残りのカード');
+  if (panel) root.append(panel);
   el.replaceChildren(root);
 }
 
@@ -3527,7 +3557,8 @@ function renderSkull(el, v) {
     // 上の方を先頭に並べる
     st.slice().reverse().forEach((d, k) => {
       const shown = k < s.revealed[i];
-      const disc = h('span', 'sk-disc' + (shown ? ' open ' + d : i === me ? ' mine ' + d : ' back'), shown || i === me ? SK_FACE[d] : '');
+      const peek = !shown && i !== me && d !== 'hidden'; // 観戦者・脱落した人には中身も見える
+      const disc = h('span', 'sk-disc' + (shown ? ' open ' + d : i === me ? ' mine ' + d : peek ? ' mine peek ' + d : ' back'), shown || i === me || peek ? SK_FACE[d] : '');
       stack.append(disc);
     });
     if (!st.length) stack.append(h('span', 'muted small', '—'));
@@ -3984,6 +4015,21 @@ $('#lounge-form').addEventListener('submit', (e) => {
   input.value = '';
 });
 $('#lounge-invite').onclick = () => { send({ type: 'loungeInvite' }); toast('ラウンジにお誘いを出しました'); };
+
+// ---------- みんなの手札（終わったあと・観戦者・先に上がった人） ----------
+// rows: [[席, 要素の配列], ...]。v.state.seesAll のときは「なぜ見えるか」も添える
+function revealPanel(v, rows, title = 'みんなの手札') {
+  const s = v.state, me = v.you;
+  const box = h('div', 'wb-reveal reveal-panel');
+  const why = s.result || s.phase === 'result' ? '' : me < 0 ? '（観戦中なので全員分が見えています）' : '（上がった・抜けたので全員分が見えています）';
+  box.append(h('div', 'reveal-title', title + why));
+  for (const [i, items] of rows) {
+    const row = h('div', 'wb-reveal-row');
+    row.append(h('span', 'pname', v.seats[i]?.name || '?'), ...(items.length ? items : [h('span', 'muted small', 'なし')]));
+    box.append(row);
+  }
+  return rows.length ? box : null;
+}
 
 // ---------- ホストが名前をタップして追い出す ----------
 $('#room').addEventListener('click', async (e) => {

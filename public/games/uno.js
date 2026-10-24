@@ -93,7 +93,9 @@ export function playableIds(s, seat) {
 export function viewFor(s, seat) {
   return {
     ...s,
-    hands: s.hands.map((h, i) => (i === seat || s.result ? h : null)),
+    // 観戦者・投了した人・終わったあとは、全員の手札が見える
+    seesAll: seat < 0 || !!s.result || !!s.out[seat],
+    hands: s.hands.map((h, i) => (i === seat || s.result || seat < 0 || s.out[seat] ? h : null)),
     handCounts: s.hands.map((h) => h.length),
     deck: null, deckCount: s.deck.length,
     discard: s.discard.slice(-1), discardCount: s.discard.length,

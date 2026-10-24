@@ -61,6 +61,8 @@ export const canActOutOfTurn = (s) => s.phase === 'place';
 
 // ほかの人の山の中身・手持ちの内訳は隠す（めくられた分だけ見せる）
 export function viewFor(s, seat) {
+  // 観戦者・脱落した人・終わったあとは、全員のコースターが見える
+  if (seat < 0 || s.result || s.out[seat]) return { ...s, seesAll: true };
   return {
     ...s,
     stacks: s.stacks.map((st, i) => (i === seat ? st : st.map((d, k) => (k >= st.length - s.revealed[i] ? d : 'hidden')))),

@@ -847,6 +847,15 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .wb-reveal { flex-basis: 100%; display: grid; gap: 6px; margin-top: 6px; }
 .wb-reveal-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .wb-reveal-row .pname { min-width: 6em; font-size: .85rem; }
+.reveal-panel { background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 8px; }
+.reveal-title { font-weight: 800; font-size: .85rem; }
+.hg-mini { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 800; font-size: .85rem; }
+.sk-disc.peek { opacity: .6; outline: 2px dashed rgba(0, 0, 0, .3); }
+.bk-others { display: grid; gap: 6px; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 8px; }
+.bk-other-row { display: grid; gap: 3px; }
+.bk-other-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.bk-other-list .bk-sq { width: 6px; height: 6px; border-radius: 1px; }
+.bk-other-list { gap: 6px; }
 .wb-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* ---------- キャット＆チョコレート ---------- */

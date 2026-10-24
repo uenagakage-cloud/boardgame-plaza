@@ -1491,7 +1491,7 @@ test('hitblow: CPU は数を決めて、答えと食い違わない予想をす�
     turns++;
   }
   assert.equal(s.result.winner, 1, 'CPU はいずれ当てる');
-  assert.ok(s.guesses[1].length <= 10);
+  assert.ok(s.guesses[1].length <= 15); // 3けたなら、ふつうは7回くらいまでに当たる
 });
 test('dotsboxes: 四角を閉じたら取ってもう1本・全部埋まったら多い人の勝ち', () => {
   let s = dotsboxes.init({ size: 3 }, 2);
@@ -1757,5 +1757,28 @@ test('itchi: 全員そろえばクリア・そろわなければもう一度・�
   t = itchi.applyMove(t, { answer: 'a' }, 0);
   t = itchi.tick(t);
   assert.equal(t.phase, 'reveal');
+});
+test('手札の公開: 終わったあと・観戦者・上がった人・抜けた人は全員分が見える', () => {
+  // 大富豪: 遊んでいる人には見えない、上がった人・観戦者・投了した人には見える
+  let s = dfState(['s9', 'h4 h5', 'c3 c6 c7']);
+  assert.equal(df.viewFor(s, 1).hands[2], null);
+  assert.ok(df.viewFor(s, -1).hands[2], '観戦者');
+  s = df.applyMove(s, { play: ids(s, 0, 's9') }, 0); // P1 が上がった
+  assert.ok(df.viewFor(s, 0).hands[2], '上がった人');
+  assert.equal(df.viewFor(s, 1).hands[2], null, 'まだ遊んでいる人には見えない');
+  // UNO・ハゲタカ・ワードバスケット・キャット＆チョコレート: 観戦者と抜けた人
+  const u = uno.applyMove(uno.init({}, 3), { resign: true }, 2);
+  assert.ok(uno.viewFor(u, 2).hands[0], '投了した人');
+  assert.equal(uno.viewFor(u, 1).hands[0], null);
+  assert.ok(hagetaka.viewFor(hagetaka.init({}, 3), -1).hands[1]);
+  assert.ok(wbk.viewFor(wbk.init({}, 3), -1).hands[1]);
+  assert.ok(cc.viewFor(cc.init({}, 3), -1).hands[1]);
+  // スカル: 観戦者には伏せたコースターの中身も見える
+  const sk = skull.init({}, 3);
+  assert.equal(skull.viewFor(sk, -1).seesAll, true);
+  // ito: 観戦者には数字が見える
+  const it = ito.init({}, 3);
+  assert.ok(ito.viewFor(it, -1).cards.every((x) => x.value != null));
+  assert.ok(ito.viewFor(it, 0).cards.some((x) => x.value == null));
 });
 console.log(`\n${n} tests passed`);

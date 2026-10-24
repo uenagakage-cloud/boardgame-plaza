@@ -109,11 +109,13 @@ export function teamScores(s) {
 
 // 他の人の手札・チーム・投票内容は隠す（終局後はチームを公開）
 export function viewFor(s, seat) {
+  // 観戦者・投了した人・終わったあとは、全員の手札とチームが見える
+  const all = seat < 0 || !!s.result || !!s.out[seat];
   return {
-    ...s,
-    hands: s.hands.map((h, i) => (i === seat ? h : null)),
+    ...s, seesAll: all,
+    hands: s.hands.map((h, i) => (i === seat || all ? h : null)),
     handCounts: s.hands.map((h) => h.length),
-    teams: s.teams.map((t, i) => (i === seat || s.result ? t : null)),
+    teams: s.teams.map((t, i) => (i === seat || all ? t : null)),
     votes: s.votes.map((v, i) => (v === null ? null : i === seat ? v : 'voted')),
     itemDeck: null, itemDiscard: null, events: null, eventsLeft: s.events.length,
   };

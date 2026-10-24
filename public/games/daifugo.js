@@ -231,10 +231,13 @@ function deal(s, rng) {
 
 export const canActOutOfTurn = (s) => s.phase !== 'play';
 
+// 観戦者・上がった人・投了した人・ラウンドが終わったあとは、全員の手札が見える
+const seesAll = (s, seat) => seat < 0 || !!s.result || s.phase === 'result' || s.out[seat] || s.finished.includes(seat) || (s.penalty || []).includes(seat);
 export function viewFor(s, seat) {
+  const all = seesAll(s, seat);
   return {
-    ...s,
-    hands: s.hands.map((h, i) => (i === seat || s.phase === 'result' ? h : null)),
+    ...s, seesAll: all,
+    hands: s.hands.map((h, i) => (i === seat || all ? h : null)),
     handCounts: s.hands.map((h) => h.length),
   };
 }
