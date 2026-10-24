@@ -33,6 +33,9 @@ import * as hagetaka from './public/games/hagetaka.js';
 import * as itchi from './public/games/itchi.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 import { mountDino } from './dino/server/mount.js';
+import { createRequire } from 'node:module';
+// ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
+const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
 
 const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
 const PORT = Number(process.env.PORT) || 3000;
@@ -137,6 +140,12 @@ const dino = await mountDino('/dino');
 
 const server = http.createServer(async (req, res) => {
   if (dino.handle(req, res)) return;
+  if (req.url === '/soul' || req.url.startsWith('/soul/') || req.url.startsWith('/soul?')) {
+    if (req.url === '/soul' || req.url.startsWith('/soul?')) { res.writeHead(301, { Location: '/soul/' + req.url.slice(5) }).end(); return; }
+    req.url = req.url.slice('/soul'.length);
+    soulApp(req, res);
+    return;
+  }
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { pathname = '/'; }
   if (pathname === '/api/paint-gallery') { sendGallery(req, res); return; }
@@ -155,6 +164,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
   }
 });
+const soulApp = mountSoul(server, '/soul');
 
 // ---------- 部屋 ----------
 const rooms = new Map();
@@ -724,6 +734,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 // WebSocket: /dino/ws はディノラッシュ、それ以外はこのアプリ
 server.on('upgrade', (req, socket, head) => {
   if (dino.upgrade(req, socket, head)) return;
+  if (req.url.startsWith('/soul/')) return; // ソウルバレッジの socket.io が受け持つ
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });
 
@@ -768,5 +779,5 @@ setInterval(() => {
 }, 30 * 1000);
 
 server.listen(PORT, () => {
-  console.log(`ゲームいっぱい サーバー起動: http://localhost:${PORT}（ディノラッシュは /dino/）`);
+  console.log(`ゲームいっぱい サーバー起動: http://localhost:${PORT}（ディノラッシュは /dino/、ソウルバレッジは /soul/）`);
 });

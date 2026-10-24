@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>SOUL BARRAGE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: #fff;
+    font-family: "DotGothic16", "Hiragino Kaku Gothic ProN", "Meiryo", monospace;
+    overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+  button, input { font-family: inherit; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+
+  /* ===== タイトル ===== */
+  #title {
+    position: fixed; inset: 0; overflow-y: auto; touch-action: pan-y;
+    display: flex; flex-direction: column; align-items: center;
+    padding: max(24px, env(safe-area-inset-top)) 16px 32px;
+    background: radial-gradient(circle at 50% 30%, #1a0008 0%, #000 65%);
+    z-index: 20;
+  }
+  .logo { font-size: clamp(34px, 10vw, 60px); letter-spacing: 4px; margin: 12px 0 0; text-align: center; line-height: 1.1; }
+  .logo .heart { color: #ff2d55; display: inline-block; animation: beat 1.2s infinite; }
+  @keyframes beat { 0%,100% { transform: scale(1); } 15% { transform: scale(1.25); } 30% { transform: scale(1); } }
+  .sub { color: #aaa; margin: 6px 0 20px; font-size: 14px; text-align: center; }
+  .card { width: 100%; max-width: 420px; border: 3px solid #fff; padding: 16px; margin-bottom: 14px; background: #000; }
+  .card h3 { margin: 0 0 10px; font-size: 16px; color: #ffd60a; }
+  label { font-size: 13px; color: #ccc; display: block; margin-bottom: 6px; }
+  input[type=text] {
+    width: 100%; font-size: 18px; padding: 10px; background: #000; color: #fff;
+    border: 2px solid #888; outline: none; border-radius: 0; touch-action: auto;
+  }
+  input[type=text]:focus { border-color: #ffd60a; }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .sw { width: 36px; height: 36px; border: 2px solid transparent; background: none; padding: 0; cursor: pointer; display: grid; place-items: center; }
+  .sw svg { width: 26px; height: 26px; }
+  .sw.sel { border-color: #fff; }
+  .btn {
+    display: block; width: 100%; font-size: 18px; padding: 14px; margin-top: 10px;
+    background: #000; color: #ff9f0a; border: 3px solid #ff9f0a; cursor: pointer; letter-spacing: 1px;
+  }
+  .btn:active, .btn.hl { color: #ffd60a; border-color: #ffd60a; }
+  .btn.primary { color: #ffd60a; border-color: #ffd60a; }
+  .btn:disabled { opacity: .4; }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .row input { flex: 1; text-transform: uppercase; letter-spacing: 4px; text-align: center; }
+  .row .btn { width: auto; margin-top: 0; padding: 10px 16px; }
+  .howto { font-size: 13px; color: #ccc; line-height: 1.7; margin: 0; padding-left: 18px; }
+  .howto b { color: #fff; }
+  .blue { color: #2aa7ff; } .orange { color: #ff9a1f; }
+  #status { font-size: 13px; color: #888; margin-top: 8px; min-height: 18px; text-align: center; }
+  #status.err { color: #ff453a; }
+  #topScores { font-size: 13px; color: #ccc; margin: 0; padding-left: 22px; }
+
+  /* ===== ゲーム中HUD ===== */
+  #hud { position: fixed; left: 0; right: 0; top: 0; z-index: 10; pointer-events: none;
+    padding: max(6px, env(safe-area-inset-top)) 10px 0; display: flex; align-items: center; gap: 8px; height: 48px; }
+  #hud > * { pointer-events: auto; }
+  .chip { border: 2px solid #fff; padding: 4px 8px; font-size: 14px; background: #000; white-space: nowrap; }
+  .hbtn { border: 2px solid #fff; background: #000; color: #fff; font-size: 14px; padding: 5px 9px; cursor: pointer; }
+  .hbtn:active { background: #333; }
+  #hud .sp { flex: 1; }
+  #ping { font-size: 11px; color: #777; }
+  #plist { position: fixed; z-index: 9; pointer-events: none; font-size: 12px; line-height: 1.5; }
+  #plist .pr { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  #plist .ph { width: 14px; display: inline-block; }
+  #plist .dead { opacity: .35; }
+  #plist .bar { width: 40px; height: 6px; background: #400; display: inline-block; }
+  #plist .bar i { display: block; height: 100%; background: #ffd60a; }
+  #plist .bar.low i { background: #ff453a; }
+  /* 縦画面：フィールドの上に横一列で */
+  #plist.row { display: flex; justify-content: center; align-items: center; gap: 8px; }
+  #plist.row .pr { gap: 3px; padding: 1px 3px; border: 1px solid transparent; }
+  #plist.row .pr.me { border-color: #fff; }
+  /* ボスのHP（フィールドの外） */
+  #bossBar { position: fixed; z-index: 9; pointer-events: none; font-size: 12px; }
+  #bossBar .bbTop { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 6px; line-height: 15px; } /* 狭いときは2行に折り返す */
+  #bossBar #bbDiff { color: #aaa; }
+  #bossBar .bbBar { position: relative; height: 9px; background: #400; border: 1px solid #fff; margin-top: 2px; }
+  #bossBar .bbBar i { position: absolute; left: 0; top: 0; bottom: 0; background: #32d74b; transition: width .12s; }
+  #bossBar .bbBar b { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.6); }
+  #bossBar.flash .bbBar { border-color: #ff453a; }
+  #emotes { position: fixed; z-index: 9; display: flex; gap: 6px; }
+  #emotes button { width: 34px; height: 30px; font-size: 14px; }
+
+  .overlay { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; padding: 16px; pointer-events: none; }
+  .panel { pointer-events: auto; background: #000; border: 4px solid #fff; padding: 16px 18px; width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto; touch-action: pan-y; }
+  .panel h2 { margin: 0 0 10px; font-size: 22px; text-align: center; }
+  .panel .note { font-size: 13px; color: #aaa; text-align: center; margin: 8px 0 0; }
+  .plrow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 16px; border-bottom: 1px dashed #333; }
+  .plrow .r { margin-left: auto; font-size: 13px; color: #aaa; }
+  .win { color: #ffd60a; }
+  .btn.story { color: #bf5af2; border-color: #bf5af2; }
+  #lobbyCfg { margin-bottom: 10px; }
+  .cfgRow { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 6px 0; font-size: 14px; }
+  .cfgRow > span { width: 52px; color: #aaa; font-size: 13px; }
+  .opt { background: #000; color: #aaa; border: 2px solid #555; font-size: 13px; padding: 5px 8px; cursor: pointer; }
+  .opt.on { color: #000; background: #ffd60a; border-color: #ffd60a; }
+  .opt.d0.on { background: #32d74b; border-color: #32d74b; } .d0 { color: #32d74b; }
+  .opt.d2.on { background: #ff9f0a; border-color: #ff9f0a; } .d2 { color: #ff9f0a; }
+  .opt.d3.on { background: #ff453a; border-color: #ff453a; } .d3 { color: #ff453a; }
+  .opt.d4.on { background: #bf5af2; border-color: #bf5af2; color: #fff; } .d4 { color: #bf5af2; }
+  .sens { margin-top: 14px; }
+  .sens label b { color: #ffd60a; font-size: 16px; }
+  .sensIn, .bgmIn { width: 100%; height: 32px; accent-color: #ffd60a; touch-action: pan-x; }
+  .bgmSel { flex: 1; font-family: inherit; font-size: 14px; background: #000; color: #fff; border: 2px solid #888; padding: 6px; min-width: 0; }
+  .sensHint { font-size: 12px; color: #888; margin: 2px 0 0; }
+  .sensWrap { margin-top: 14px; }
+  .sensWrap summary { cursor: pointer; color: #ffd60a; font-size: 14px; }
+  .sensReset { font-size: 14px; padding: 8px; }
+  .tag { font-size: 11px; border: 1px solid; padding: 0 4px; }
+  .tag.ok { color: #32d74b; } .tag.wait { color: #777; } .tag.host { color: #ffd60a; } .tag.spec { color: #64d2ff; }
+  #lobbyCode { font-size: 15px; color: #fff; margin: 0 0 8px; }
+  #lobbyCode b { font-size: 22px; letter-spacing: 4px; color: #ffd60a; }
+  #feed { position: fixed; z-index: 9; pointer-events: none; font-size: 12.5px; line-height: 17px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  #feedList { display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; }
+  /* 長い文は「…」で切らずに折り返す */
+  #feed .fi, #feedSticky { white-space: normal; overflow-wrap: anywhere; line-break: strict; transition: opacity .3s; flex-shrink: 0; }
+  #feed .fi.talk { color: #fff; }
+  #feed .fi.small { font-size: 11px; line-height: 14px; }
+  #feed .fi.out { opacity: 0; }
+  #feedSticky { color: #64d2ff; }
+  #ctrlEdit { position: fixed; left: 0; right: 0; top: 54px; z-index: 26; display: flex; justify-content: center; pointer-events: none; padding: 0 10px; }
+  #ctrlEdit .cePanel { pointer-events: auto; background: #000; border: 3px solid #ffd60a; padding: 8px 12px; width: 100%; max-width: 360px; }
+  #ctrlEdit .ceHelp { font-size: 12px; color: #ccc; margin: 0 0 6px; }
+  #ctrlEdit .ceRow { display: flex; justify-content: space-between; font-size: 14px; }
+  #ctrlEdit .ceRow b { color: #ffd60a; }
+  #ctrlEdit input { width: 100%; height: 30px; accent-color: #ffd60a; touch-action: pan-x; }
+  #ctrlEdit .btn { font-size: 15px; padding: 8px; margin-top: 4px; }
+  #ctrlEdit .row .btn { flex: 1; }
+  #toast { position: fixed; left: 50%; top: 60px; transform: translateX(-50%); z-index: 30; background: #000; border: 2px solid #fff; padding: 8px 14px; font-size: 14px; pointer-events: none; transition: opacity .3s; opacity: 0; }
+  #toast.show { opacity: 1; }
+  #conn { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; font-size: 18px; text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+<style>body:has(#title.hidden) #back-home { display: none; }</style>
+<a href="/" id="back-home" style="position:fixed;left:8px;bottom:8px;z-index:50;font-size:12px;color:#fff;opacity:.6;text-decoration:none;background:rgba(0,0,0,.4);padding:3px 8px;border-radius:8px">← ゲームいっぱい</a>
+<canvas id="cv"></canvas>
+
+<!-- タイトル画面 -->
+<div id="title">
+  <h1 class="logo"><span class="heart">♥</span> SOUL<br>BARRAGE</h1>
+  <p class="sub">みんなで避ける、撃ち合う、オンライン弾幕サバイバル</p>
+
+  <div class="card">
+    <label for="nameIn">なまえ（10文字まで）</label>
+    <input id="nameIn" type="text" maxlength="10" placeholder="なまえを入力" autocomplete="off">
+    <div class="swatches" id="swatches"></div>
+    <details class="sensWrap"><summary>スティック感度の設定</summary><div class="sensBox"></div></details>
+  </div>
+
+  <div class="card">
+    <h3>あそぶ</h3>
+    <button class="btn primary" id="btnQuick">▶ すぐにあそぶ（だれとでも）</button>
+    <button class="btn" id="btnCreate">▶ へやをつくる（友達とバトル）</button>
+    <button class="btn story" id="btnStory">▶ ストーリー（ボス討伐・ひとりでも協力でも）</button>
+    <label style="margin-top:14px" for="codeIn">へやコードで参加</label>
+    <div class="row">
+      <input id="codeIn" type="text" maxlength="5" placeholder="ABCD" autocomplete="off">
+      <button class="btn" id="btnCode">参加</button>
+    </div>
+    <div id="status">サーバーに接続中…</div>
+  </div>
+
+  <div class="card">
+    <h3>あそびかた</h3>
+    <ul class="howto">
+      <li><b>左側をドラッグ</b>＝スティックでハートを動かす（PCは WASD / 矢印）</li>
+      <li><b>右下のSHOTボタン</b>＝<b>スライドした方向</b>の正面に<b>ショットガン（扇状に3発）を3連射</b>。<b>タップ</b>だと一番近い相手を自動で狙う。スライドして中央に戻すとキャンセル。クールタイム2秒（PCは Space / Z でマウスの方向へ）</li>
+      <li><b style="color:#bf5af2">必殺技ゲージ</b>は時間経過・弾を当てる・ダメージを受ける・グレイズで溜まる。MAXで<b style="color:#bf5af2">SPボタン</b>を押すと「ソウルバースト」！全方位に大きな弾を2連発＋周りの敵弾を消去＋1.5秒無敵（PCは X）</li>
+      <li>弾に当たるとダメージ。HPが0になると脱落、最後の1人が勝ち！</li>
+      <li>弾の<b>すれすれ</b>を通ると「GRAZE」でクールタイム短縮</li>
+      <li><span class="blue">青い弾</span>は<b>止まって</b>やり過ごす／<span class="orange">オレンジの弾</span>は<b>動いて</b>やり過ごす</li>
+      <li>フィールドの <b style="color:#32d74b">＋</b> で回復、<b style="color:#ffd60a">★</b> でSHOT即チャージ</li>
+      <li>時間がたつほど弾幕が激しくなる。1人ならソロで生存記録に挑戦！</li>
+      <li>対戦（2人以上）は<b>バトロワ</b>。40秒たつと<b>エリアが縮小</b>していく！</li>
+      <li>試合中の部屋に参加すると<b>観戦</b>し、次の試合から参戦できます</li>
+      <li><b style="color:#bf5af2">ストーリー</b>＝5ステージのボスを順番に倒す協力モード。各ステージのボスは5体の中からランダムで登場！ボスに弾を当ててHPを削ろう。1人でも、友達と一緒でもOK。やられても次のボスで復活、全滅したらそのボスから再挑戦。<b>ステージ4・5は攻撃が重なって激しい。最終ステージ5はHPが残り1/4になると「最後のあがき」でさらに激しくなる</b></li>
+      <li>ロビーでホストが<b>難易度</b>を選べます：<span style="color:#32d74b">簡単</span>／普通／<span style="color:#ff9f0a">難しい</span>／<span style="color:#ff453a">鬼</span>／<span style="color:#bf5af2">神</span>（神ではボスがフィールド中を動き回る！）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>ソロ生存ランキング</h3>
+    <ol id="topScores"><li>—</li></ol>
+  </div>
+</div>
+
+<!-- ゲーム中HUD -->
+<div id="hud" class="hidden">
+  <span class="chip" id="roomChip">ROOM ----</span>
+  <button class="hbtn" id="btnShare">招待</button>
+  <span class="sp"></span>
+  <span id="ping"></span>
+  <button class="hbtn" id="btnSettings" aria-label="設定">⚙</button>
+  <button class="hbtn" id="btnSound">♪</button>
+  <button class="hbtn" id="btnLeave">退出</button>
+</div>
+<div id="plist" class="hidden"></div>
+<div id="bossBar" class="hidden"><div class="bbTop"><span id="bbName"></span><span id="bbDiff"></span></div><div class="bbBar"><i id="bbFill"></i><b></b></div></div>
+<div id="emotes" class="hidden">
+  <button class="hbtn" data-e="!">!</button>
+  <button class="hbtn" data-e="♥">♥</button>
+  <button class="hbtn" data-e="GG">GG</button>
+  <button class="hbtn" data-e="w">w</button>
+</div>
+
+<!-- ロビー -->
+<div class="overlay hidden" id="lobby">
+  <div class="panel">
+    <h2>ロビー</h2>
+    <p class="note" id="lobbyCode"></p>
+    <div id="lobbyCfg"></div>
+    <div id="lobbyList"></div>
+    <button class="btn primary" id="btnStart">▶ スタート</button>
+    <button class="btn" id="btnReady">準備OK</button>
+    <p class="note" id="lobbyNote"></p>
+  </div>
+</div>
+
+<!-- 結果 -->
+<div class="overlay hidden" id="result">
+  <div class="panel">
+    <h2 id="resTitle">RESULT</h2>
+    <div id="resList"></div>
+    <p class="note" id="resNote"></p>
+  </div>
+</div>
+
+<!-- 設定 -->
+<div class="overlay hidden" id="settings" style="z-index:25">
+  <div class="panel">
+    <h2>設定</h2>
+    <div class="sens">
+      <label>BGMの音量 <b id="bgmVal">5</b></label>
+      <input type="range" id="bgmIn" class="bgmIn" min="0" max="10" step="1">
+      <p class="sensHint">ストーリーのボス戦で流れます（♪ボタンで効果音ごとミュート）</p>
+    </div>
+    <div class="sens">
+      <label>サウンドテスト（ボスのBGMを聴く）</label>
+      <div class="row"><select id="bgmSel" class="bgmSel"></select><button class="btn" id="bgmPlay" type="button">▶</button></div>
+      <label style="margin-top:6px"><input type="checkbox" id="bgmP2"> 第2形態のアレンジ</label>
+    </div>
+    <div class="sensBox"></div>
+    <p class="sensHint">どの設定でも最高速は同じです。スティックの点線の楕円が「最高速になる位置」です</p>
+    <button class="btn" id="btnCtrlEdit">ボタンの位置・サイズを変更</button>
+    <button class="btn primary" id="btnSettingsClose">とじる</button>
+  </div>
+</div>
+
+<!-- ゲーム中の通知エリア（ステージの外） -->
+<div id="feed" class="hidden"><div id="feedSticky" class="hidden"></div><div id="feedList"></div></div>
+<!-- ボタン配置の編集 -->
+<div id="ctrlEdit" class="hidden">
+  <div class="cePanel">
+    <p class="ceHelp">ボタンをドラッグして移動。選んだボタンのサイズを変えられます（縦画面・横画面で別々に保存）</p>
+    <div class="ceRow"><b id="ceName">SHOT</b><span>サイズ <b id="ceVal">100%</b></span></div>
+    <input type="range" id="ceSize" min="60" max="160" step="5" value="100">
+    <div class="row"><button class="btn" id="ceReset">標準に戻す</button><button class="btn primary" id="ceDone">完了</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="conn" class="hidden">接続が切れました<br>再接続中…</div>
+
+<script src="socket.io/socket.io.js"></script>
+<script src="music.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

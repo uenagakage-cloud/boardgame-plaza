@@ -177,24 +177,32 @@ function sendMove(move) {
 }
 
 // ---------- ロビー ----------
+// アクションゲーム（別のしくみで動く。それぞれのページを開く）
+const ACTION_GAMES = [
+  { key: 'dino', icon: '🦖', title: 'ディノラッシュ', players: '1人〜', href: '/dino/',
+    desc: 'Chrome の恐竜ゲーム風アクション。ソロのランキング・おじゃまありのマルチレース・ふみつけとかみつきのバトル（チーム戦・CPUあり）。スマホは横画面がおすすめ。' },
+  { key: 'soul', icon: '♥', title: 'ソウルバレッジ', players: '1人〜', href: '/soul/',
+    desc: 'Undertale 風の弾幕サバイバル。ソロ・バトルロイヤル・5ステージのボスを協力して倒すストーリー。難易度は5段階（かんたん〜神）。スマホ対応。' },
+];
+
 function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
     // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
     const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')]];
     for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
-    // ディノラッシュは別のしくみのリアルタイムゲームなので、/dino/ のページを開く
-    {
-      const card = h('div', 'card game-dino');
+    // アクションゲームは別のしくみのリアルタイムゲームなので、それぞれのページを開く
+    for (const a of ACTION_GAMES) {
+      const card = h('div', 'card game-' + a.key);
       const head = h('div', 'card-head');
-      head.append(h('span', 'card-icon', '🦖'), h('h3', null, 'ディノラッシュ'), h('span', 'card-players', '1人〜'));
+      head.append(h('span', 'card-icon', a.icon), h('h3', null, a.title), h('span', 'card-players', a.players));
       const more = h('div', 'card-more');
       more.hidden = true;
-      more.append(h('p', 'muted', 'Chrome の恐竜ゲーム風アクション。ソロのランキング・おじゃまありのマルチレース・ふみつけとかみつきのバトル（チーム戦・CPUあり）。スマホは横画面がおすすめ。'));
+      more.append(h('p', 'muted', a.desc));
       const row = h('div', 'card-actions');
       const play = h('button', 'btn primary');
       play.append(h('span', 'long-label', '遊ぶ'), h('span', 'short-label', '遊ぶ'));
-      play.onclick = () => { location.href = '/dino/'; };
+      play.onclick = () => { location.href = a.href; };
       const info = h('button', 'btn card-info', '詳細');
       info.onclick = () => {
         more.hidden = !more.hidden;
