@@ -8,7 +8,6 @@ import { WebSocketServer } from 'ws';
 import * as chess from './public/games/chess.js';
 import * as shogi from './public/games/shogi.js';
 import * as gobblet from './public/games/gobblet.js';
-import * as gomoku from './public/games/gomoku.js';
 import * as othello from './public/games/othello.js';
 import * as wordbasket from './public/games/wordbasket.js';
 import * as catchoco from './public/games/catchoco.js';
@@ -37,11 +36,11 @@ import { createRequire } from 'node:module';
 // ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
 const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
-const ROOM_TTL_MS = 30 * 60 * 1000; // 誰もいない部屋を消すまでの時間
+const EMPTY_ROOM_MS = 20 * 1000; // 遊んでいる人（CPU以外）がだれもつながっていない部屋を消すまでの時間（読み込み直しや一瞬の切断は待つ）
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -187,6 +186,8 @@ const send = (ws, msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)
 const seatOf = (room, ws) => room.seats.findIndex((s) => s && s.clientId === ws.clientId);
 // CPU の席はいつも接続中として扱う
 const isOnline = (room, clientId) => String(clientId).startsWith('cpu:') || [...room.sockets].some((ws) => ws.clientId === clientId);
+// CPU以外で、つながっている参加者がいるか
+const playersOnline = (room) => room.seats.some((s) => s && !s.bot && !s.kicked && isOnline(room, s.clientId));
 
 const variantOf = (room) => GAMES[room.game].variantName?.(room.options) || '';
 // 3人以上で遊ぶゲームは「ゲーム開始」を押すまで state が null
@@ -295,6 +296,7 @@ function roomView(room, ws) {
 
 function lobbyList() {
   return [...rooms.values()]
+    .filter((r) => playersOnline(r))
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 50)
     .map((r) => ({
@@ -770,13 +772,22 @@ setInterval(() => {
     ws.isAlive = false;
     ws.ping();
   }
+}, 30 * 1000);
+// 遊んでいる人がいなくなった部屋はすぐ消す（観戦者だけ・CPUだけが残っていても消す）
+setInterval(() => {
   const now = Date.now();
   let changed = false;
   for (const room of rooms.values()) {
-    if (room.sockets.size === 0 && now - room.lastActive > ROOM_TTL_MS) { deleteRoom(room); changed = true; }
+    if (playersOnline(room)) { room.emptySince = null; continue; }
+    room.emptySince = room.emptySince || now;
+    if (now - room.emptySince >= EMPTY_ROOM_MS) {
+      for (const ws of [...room.sockets]) { ws.room = null; send(ws, { type: 'left' }); send(ws, lobbyMsg(ws)); }
+      deleteRoom(room);
+      changed = true;
+    }
   }
   if (changed) broadcastLobby();
-}, 30 * 1000);
+}, 5 * 1000);
 
 server.listen(PORT, () => {
   console.log(`ゲームいっぱい サーバー起動: http://localhost:${PORT}（ディノラッシュは /dino/、ソウルバレッジは /soul/）`);

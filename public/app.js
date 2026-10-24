@@ -1,7 +1,6 @@
 import * as chess from './games/chess.js';
 import * as shogi from './games/shogi.js';
 import * as gobblet from './games/gobblet.js';
-import * as gomoku from './games/gomoku.js';
 import * as othello from './games/othello.js';
 import * as wordbasket from './games/wordbasket.js';
 import * as catchoco from './games/catchoco.js';
@@ -25,12 +24,11 @@ import * as wordwolf from './games/wordwolf.js';
 import * as hagetaka from './games/hagetaka.js';
 import * as itchi from './games/itchi.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
   gobblet: { icon: '◉', desc: '大きいコマで小さいコマをかぶせる三目並べ。' },
-  gomoku: { icon: '⚫', desc: '15×15の盤で縦・横・斜めに5つ並べたら勝ち。' },
   othello: { icon: '◐', desc: '相手の石をはさんで裏返す。最後に多い方が勝ち。' },
   wordbasket: { icon: '🧺', desc: '場の文字で始まり手札の文字で終わる言葉を早い者勝ちで。2〜6人。' },
   catchoco: { icon: '🐈‍⬛', desc: '手持ちのアイテムでピンチを切り抜ける大喜利。チーム戦・2〜6人。' },
@@ -224,17 +222,6 @@ function renderLobby() {
       card.append(head, h('p', 'muted', GAME_INFO[key].desc));
       groups[multi ? 1 : 0][1].append(card);
       let getOptions = () => ({});
-      if (key === 'gomoku') {
-        const toggle = h('label', 'option-toggle');
-        const cb = h('input');
-        cb.type = 'checkbox';
-        cb.checked = store.get('gomokuRenju', '0') === '1';
-        cb.onchange = () => store.set('gomokuRenju', cb.checked ? '1' : '0');
-        toggle.append(cb, h('span', null, '禁じ手あり'));
-        toggle.title = '黒の三三・四四・長連を禁止';
-        card.append(toggle);
-        getOptions = () => ({ renju: cb.checked });
-      }
       if (key === 'gungi') {
         const label = h('label', 'option-toggle');
         const select = h('select', 'size-select');
@@ -886,52 +873,6 @@ function renderGobblet(el, v, act) {
   el.replaceChildren(wrap);
 }
 
-// ---------- 五目並べ ----------
-const GOMOKU_STARS = ['3,3', '3,11', '7,7', '11,3', '11,11'];
-
-function renderGomoku(el, v, act) {
-  const s = v.state, N = gomoku.SIZE;
-  const forbidden = gomoku.forbiddenPoints(s);
-  const board = h('div', 'board gomoku-board' + (act ? ` active turn${v.you}` : ''));
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    const here = [r, c], stone = s.board[r][c];
-    const cell = h('div', 'sq');
-    if (GOMOKU_STARS.includes(`${r},${c}`)) cell.append(h('span', 'star'));
-    if (stone !== null) {
-      const st = h('span', 'stone s' + stone);
-      if (s.lastMove && eq(s.lastMove.to, here)) st.classList.add('last');
-      if (s.winLine && s.winLine.some((p) => eq(p, here))) st.classList.add('win');
-      cell.append(st);
-    } else if (forbidden.some((p) => eq(p, here))) {
-      cell.append(h('span', 'forbid', '×'));
-      cell.title = '禁じ手';
-      if (act) cell.onclick = () => toast('禁じ手です（三三・四四・長連）');
-    } else if (act) {
-      cell.classList.add('empty');
-      cell.onclick = () => sendMove({ to: here });
-    }
-    if (c === 0) cell.append(h('span', 'coord rank', String(N - r)));
-    if (r === N - 1) cell.append(h('span', 'coord file', 'ABCDEFGHIJKLMNO'[c]));
-    board.append(cell);
-  }
-  board.append(gomokuLines(N));
-  el.replaceChildren(board);
-}
-
-function gomokuLines(n) {
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'gomoku-lines');
-  svg.setAttribute('viewBox', `0 0 ${n} ${n}`);
-  for (let i = 0; i < n; i++) {
-    for (const [x1, y1, x2, y2] of [[0.5, i + 0.5, n - 0.5, i + 0.5], [i + 0.5, 0.5, i + 0.5, n - 0.5]]) {
-      const l = document.createElementNS(NS, 'line');
-      l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2);
-      svg.append(l);
-    }
-  }
-  return svg;
-}
 
 // ---------- オセロ ----------
 let othelloAnimKey = '';
@@ -3236,9 +3177,9 @@ function renderMancala(el, v, act) {
     return e;
   };
   const top = h('div', 'mc-row');
-  for (let k = 5; k >= 0; k--) top.append(pit(opp, k));
+  for (let k = mancala.PITS - 1; k >= 0; k--) top.append(pit(opp, k));
   const bottom = h('div', 'mc-row');
-  for (let k = 0; k < 6; k++) bottom.append(pit(me, k));
+  for (let k = 0; k < mancala.PITS; k++) bottom.append(pit(me, k));
   const mid = h('div', 'mc-mid');
   mid.append(top, bottom);
   board.append(store(opp), mid, store(me));
@@ -3251,13 +3192,19 @@ function renderMancala(el, v, act) {
 // 石を小さな丸で見せる（多いときは数字だけ）
 function mcSeeds(n) {
   const box = h('span', 'mc-seeds');
-  for (let i = 0; i < Math.min(n, 12); i++) box.append(h('span', 'mc-seed'));
+  if (n >= 10) return box; // 10個以上は数字だけ（穴の大きさを変えない）
+  for (let i = 0; i < n; i++) box.append(h('span', 'mc-seed'));
   return box;
 }
 
 // ---------- 四目並べ ----------
+// 落ちるアニメーションは、新しくコマが入ったときに1回だけ（チャットなどで描き直しても繰り返さない）
+let c4Animated = '';
 function renderConnect4(el, v, act) {
   const s = v.state;
+  const moveKey = `${v.code}:${v.gameNo}:${s.moves}`;
+  const animate = s.lastMove && moveKey !== c4Animated;
+  c4Animated = moveKey;
   const legal = act ? connect4.legalMoves(s) : [];
   const root = h('div', 'c4');
   const board = h('div', 'c4-board' + (act ? ' active' : ''));
@@ -3271,7 +3218,7 @@ function renderConnect4(el, v, act) {
       const cell = h('span', 'c4-cell');
       if (x != null) {
         const last = s.lastMove && s.lastMove.r === r && s.lastMove.c === c;
-        const disc = h('span', `c4-disc p${x}` + (last ? ' drop' : '') + (win.has(`${r},${c}`) ? ' win' : ''));
+        const disc = h('span', `c4-disc p${x}` + (last && animate ? ' drop' : '') + (last ? ' last' : '') + (win.has(`${r},${c}`) ? ' win' : ''));
         if (last) disc.style.setProperty('--fall', `${r + 1}`);
         cell.append(disc);
       }
@@ -3869,7 +3816,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka, itchi: renderItchi };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka, itchi: renderItchi };
 
 // ---------- イベント ----------
 const nameInput = $('#name');

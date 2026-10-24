@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import * as chess from '../public/games/chess.js';
 import * as shogi from '../public/games/shogi.js';
 import * as gobblet from '../public/games/gobblet.js';
-import * as gomoku from '../public/games/gomoku.js';
 import * as othello from '../public/games/othello.js';
 import * as wbk from '../public/games/wordbasket.js';
 import * as cc from '../public/games/catchoco.js';
@@ -125,68 +124,6 @@ test('gobblet: 持ち上げて相手の列が現れたら相手の勝ち', () =>
   assert.equal(s.result, null);
   s = gm(s, { from: 0, to: 8 }); // B 大を持ち上げる → オレンジの列が出現
   assert.equal(s.result.winner, 0);
-});
-
-const go = (s, r, c) => gomoku.applyMove(s, { to: [r, c] });
-test('gomoku: 斜め5つで勝ち', () => {
-  let s = gomoku.init();
-  for (let i = 0; i < 4; i++) { s = go(s, i, i); s = go(s, i, 10); }
-  assert.equal(s.result, null);
-  s = go(s, 4, 4);
-  assert.deepEqual(s.result, { winner: 0, reason: '五目並び' });
-  assert.equal(s.winLine.length, 5);
-});
-test('gomoku: 4つでは勝たない・置いた場所には置けない', () => {
-  let s = gomoku.init();
-  s = go(s, 7, 7);
-  assert.throws(() => go(s, 7, 7));
-  assert.throws(() => go(s, 15, 0));
-  for (let c = 8; c < 11; c++) { s = go(s, 0, c); s = go(s, 7, c); }
-  assert.equal(s.result, null); // 黒は7段目に4つ
-  s = go(s, 1, 0);
-  s = go(s, 7, 11);
-  assert.equal(s.result.winner, 0); // 5つ目で黒の勝ち
-});
-
-
-// 黒石・白石を直接並べた局面を作る（黒番）
-const renju = (blacks, whites = [], renjuOn = true) => {
-  const s = gomoku.init({ renju: renjuOn });
-  for (const [r, c] of blacks) s.board[r][c] = 0;
-  for (const [r, c] of whites) s.board[r][c] = 1;
-  return s;
-};
-test('renju: 三三は禁じ手', () => {
-  const s = renju([[7, 5], [7, 6], [5, 7], [6, 7]]);
-  assert.ok(gomoku.isForbidden(s.board, 7, 7));
-  assert.throws(() => go(s, 7, 7), /禁じ手/);
-  assert.ok(gomoku.forbiddenPoints(s).some(([r, c]) => r === 7 && c === 7));
-});
-test('renju: 片方が止められた三なら三三ではない', () => {
-  const s = renju([[7, 5], [7, 6], [5, 7], [6, 7]], [[4, 7], [9, 7]]);
-  assert.ok(!gomoku.isForbidden(s.board, 7, 7));
-});
-test('renju: 四四は禁じ手、四三は打てる', () => {
-  assert.ok(gomoku.isForbidden(renju([[7, 4], [7, 5], [7, 6], [4, 7], [5, 7], [6, 7]]).board, 7, 7));
-  assert.ok(!gomoku.isForbidden(renju([[7, 4], [7, 5], [7, 6], [5, 7], [6, 7]]).board, 7, 7));
-});
-test('renju: 一直線の四四も禁じ手', () => {
-  // ●・●□●・● の □ に打つと同じ列に四が2つ
-  assert.ok(gomoku.isForbidden(renju([[7, 3], [7, 5], [7, 7], [7, 9]]).board, 7, 6));
-});
-test('renju: 長連は禁じ手、ルールなしなら勝ち', () => {
-  const blacks = [[7, 2], [7, 3], [7, 4], [7, 6], [7, 7]];
-  assert.throws(() => go(renju(blacks), 7, 5), /禁じ手/);
-  assert.equal(go(renju(blacks, [], false), 7, 5).result.winner, 0);
-});
-test('renju: 五と同時の禁じ手形は五が優先', () => {
-  const s = go(renju([[7, 3], [7, 4], [7, 5], [7, 6], [5, 7], [6, 7], [4, 7]]), 7, 7);
-  assert.equal(s.result.winner, 0);
-});
-test('renju: 白は長連でも勝ち', () => {
-  const s = renju([[0, 0]], [[7, 2], [7, 3], [7, 4], [7, 6], [7, 7]]);
-  s.turn = 1;
-  assert.equal(go(s, 7, 5).result.winner, 1);
 });
 
 
@@ -1592,24 +1529,31 @@ test('geister: 並べる・相手の色は見えない・取る・脱出・赤�
   b = geister.applyMove(b, { from: [2, 2], to: [1, 2] }, 0);
   assert.equal(b.result.winner, 1);
 });
-test('mancala: まく・ゴールでもう1回・横取り・終わりに集める', () => {
+test('mancala: 1人5つの穴・まく・ゴールでもう1回・横取り・終わりに集める', () => {
   let s = mancala.init({ seeds: 4 });
-  assert.equal(s.pits.reduce((a, b) => a + b), 48);
-  s = mancala.applyMove(s, { pit: 2 }, 0); // 2番目から4個 → 3,4,5,ゴール
-  assert.equal(s.pits[6], 1);
+  assert.equal(mancala.PITS, 5);
+  assert.equal(s.pits.length, 12);
+  assert.equal(s.pits.reduce((a, b) => a + b), 40);
+  assert.equal(mancala.storeOf(0), 5);
+  assert.equal(mancala.storeOf(1), 11);
+  s = mancala.applyMove(s, { pit: 1 }, 0); // 2番目から4個 → 2,3,4,ゴール
+  assert.equal(s.pits[5], 1);
   assert.equal(s.turn, 0, 'ゴールに入ったらもう1回');
+  assert.throws(() => mancala.applyMove(s, { pit: 5 }, 0), /石のある/, '6つ目の穴はない');
   s = mancala.applyMove(s, { pit: 0 }, 0); // 4個 → 1,2,3,4
   assert.equal(s.turn, 1);
-  // 横取り: 空の穴に最後の石が入って、向かいに石がある
-  let c = { ...mancala.init({}), pits: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0] };
-  c = mancala.applyMove(c, { pit: 0 }, 0); // 0 → 1（空）。向かいは 11
-  assert.equal(c.pits[11], 0);
-  // 向かい(11)が空なので横取りなし。次: 向かいに石があるとき
-  let d = { ...mancala.init({}), pits: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0] };
-  d = mancala.applyMove(d, { pit: 1 }, 0); // 1 → 2（空）。向かいは 10（5個）
-  assert.equal(d.pits[6], 6, '5個+自分の1個を横取り');
+  // 横取り: 空の穴に最後の石が入って、向かいに石がある（穴1の向かいは穴9）
+  let d = { ...mancala.init({}), pits: [1, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0] };
+  d = mancala.applyMove(d, { pit: 0 }, 0); // 0 → 1（空）。向かいは 9（5個）
+  assert.equal(d.pits[5], 6, '5個+自分の1個を横取り');
   assert.ok(d.result, '先手の側が空になったので終わり');
   assert.equal(d.result.winner, 0);
+  // 後手は相手のゴールを飛ばす
+  let e = { ...mancala.init({}), turn: 1, pits: [1, 1, 1, 1, 1, 0, 3, 0, 0, 0, 7, 0] };
+  e = mancala.applyMove(e, { pit: 4 }, 1); // 10 から7個: 11(ゴール),0,1,2,3,4,(5は飛ばす),6
+  assert.equal(e.pits[5], 0, '相手のゴールには入れない');
+  assert.equal(e.pits[11], 1);
+  assert.equal(e.pits[6], 4);
   assert.throws(() => mancala.applyMove(mancala.init({}), { pit: 0 }, 1), /相手の番/);
 });
 test('connect4: 下に落ちる・4つ並んだら勝ち・いっぱいの列には入れない', () => {
@@ -1704,6 +1648,8 @@ test('hagetaka: 同じ数は打ち消し・プラスは大きい数・マイナ�
     g = hagetaka.tick(g);
   }
   assert.equal(g.round, 15);
+  assert.ok(hagetaka.viewFor(g, 0).history.length > 0, '終わったらログが見える');
+  assert.deepEqual(hagetaka.viewFor(hagetaka.tick(hagetaka.applyMove(hagetaka.applyMove(hagetaka.init({}, 2), { play: 3 }, 0), { play: 5 }, 1)), 0).history, [], '途中はログを見せない');
 });
 test('asasore: 3人が被って1人だけ別の答えでも、被った答えが勝てる', () => {
   let s = asasore.init({ rounds: 3 }, 4);

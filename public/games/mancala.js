@@ -1,14 +1,17 @@
 // マンカラ（カラハ）（サーバーとブラウザで共通）
-// 2人。自分の側に穴が6つ、右はしに自分の「ゴール」。最初は各穴に石が4つ（3〜6個にできる）。
+// 2人。自分の側に穴が5つ（PITS）、右はしに自分の「ゴール」。最初は各穴に石が4つ（3〜6個にできる）。
 // 自分の穴を1つ選んで石を全部取り、反時計回りに1つずつまく（相手のゴールは飛ばす）。
 // 最後の石が自分のゴールに入ったら、もう1回。最後の石が自分の空の穴に入り、向かいの相手の穴に石があれば、両方とも自分のゴールへ（横取り）。
 // どちらかの側の穴が全部空になったら終わり。残りの石はそれぞれの側のゴールへ。ゴールの石が多い人の勝ち。
-// 穴: pits[0〜5] 先手の穴、pits[6] 先手のゴール、pits[7〜12] 後手の穴、pits[13] 後手のゴール。
-// 手: { pit: 0〜5 }（自分から見て左から） / { resign: true }
+// 穴: pits[0〜4] 先手の穴、pits[5] 先手のゴール、pits[6〜10] 後手の穴、pits[11] 後手のゴール。
+// 手: { pit: 0〜4 }（自分から見て左から） / { resign: true }
 export const id = 'mancala';
 export const title = 'マンカラ';
 export const sideNames = ['先手', '後手'];
 export const SEED_OPTIONS = [3, 4, 5, 6];
+export const PITS = 5;                 // 1人あたりの穴の数
+const SIZE = (PITS + 1) * 2;          // 穴とゴールを合わせた数
+const KS = [...Array(PITS).keys()];   // 0〜PITS-1
 export const logTitle = 'ログ';
 
 export function normalizeOptions(o) {
@@ -19,17 +22,18 @@ export const variantName = (o) => {
   return `石${x.seeds}個${x.cpu ? '・CPU対戦' : ''}`;
 };
 
-export const storeOf = (p) => (p === 0 ? 6 : 13);
-export const pitIndex = (p, k) => p * 7 + k;
+export const storeOf = (p) => p * (PITS + 1) + PITS;
+export const pitIndex = (p, k) => p * (PITS + 1) + k;
+const opposite = (i) => 2 * PITS - i; // 向かいの穴
 
 export function init(options) {
   const opts = normalizeOptions(options);
-  const pits = Array(14).fill(opts.seeds);
-  pits[6] = pits[13] = 0;
+  const pits = Array(SIZE).fill(opts.seeds);
+  pits[storeOf(0)] = pits[storeOf(1)] = 0;
   return { options: opts, pits, turn: 0, last: null, result: null, history: [] };
 }
 
-export const legalMoves = (s) => (s.result ? [] : [0, 1, 2, 3, 4, 5].filter((k) => s.pits[pitIndex(s.turn, k)] > 0));
+export const legalMoves = (s) => (s.result ? [] : KS.filter((k) => s.pits[pitIndex(s.turn, k)] > 0));
 
 // まく（pits を書きかえる）。{ last: 最後に入れた穴, path: まいた穴, extra: もう1回, captured: 横取りした数 } を返す
 function sow(pits, p, k) {
@@ -38,29 +42,29 @@ function sow(pits, p, k) {
   pits[i] = 0;
   const path = [];
   while (seeds > 0) {
-    i = (i + 1) % 14;
+    i = (i + 1) % SIZE;
     if (i === storeOf(1 - p)) continue;
     pits[i] += 1;
     path.push(i);
     seeds -= 1;
   }
   let captured = 0;
-  const mine = p === 0 ? i <= 5 : i >= 7 && i <= 12;
-  if (mine && pits[i] === 1 && pits[12 - i] > 0) {
-    captured = pits[12 - i] + 1;
+  const mine = i !== storeOf(0) && i !== storeOf(1) && Math.floor(i / (PITS + 1)) === p;
+  if (mine && pits[i] === 1 && pits[opposite(i)] > 0) {
+    captured = pits[opposite(i)] + 1;
     pits[storeOf(p)] += captured;
     pits[i] = 0;
-    pits[12 - i] = 0;
+    pits[opposite(i)] = 0;
   }
   return { last: i, path, extra: i === storeOf(p), captured };
 }
 
-const sideEmpty = (pits, p) => [0, 1, 2, 3, 4, 5].every((k) => pits[pitIndex(p, k)] === 0);
+const sideEmpty = (pits, p) => KS.every((k) => pits[pitIndex(p, k)] === 0);
 
 // どちらかの側が空なら、残りをゴールへ集めて true
 function sweepIfOver(pits) {
   if (!sideEmpty(pits, 0) && !sideEmpty(pits, 1)) return false;
-  for (const p of [0, 1]) for (let k = 0; k < 6; k++) {
+  for (const p of [0, 1]) for (let k = 0; k < PITS; k++) {
     const i = pitIndex(p, k);
     pits[storeOf(p)] += pits[i];
     pits[i] = 0;
@@ -89,7 +93,7 @@ export function applyMove(s, mv, seat) {
   if (r.captured) note += ` 横取り${r.captured}個`;
   ns.history.push(note);
   if (sweepIfOver(pits)) {
-    const a = pits[6], b = pits[13];
+    const a = pits[storeOf(0)], b = pits[storeOf(1)];
     ns.result = a === b ? { winner: null, reason: `${a}対${b}` } : { winner: a > b ? 0 : 1, reason: `${Math.max(a, b)}対${Math.min(a, b)}` };
     return ns;
   }
@@ -105,7 +109,7 @@ function search(pits, p, me, depth, alpha, beta) {
     sweepIfOver(t);
     return t[storeOf(me)] - t[storeOf(1 - me)];
   }
-  const moves = [0, 1, 2, 3, 4, 5].filter((k) => pits[pitIndex(p, k)] > 0);
+  const moves = KS.filter((k) => pits[pitIndex(p, k)] > 0);
   let best = p === me ? -Infinity : Infinity;
   for (const k of moves) {
     const t = pits.slice();

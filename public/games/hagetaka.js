@@ -11,7 +11,7 @@ export const sideNames = Array.from({ length: 6 }, (_, i) => `プレイヤー${i
 export const minPlayers = 2;
 export const maxPlayers = 6;
 export const lobbyReturn = true;
-export const logTitle = 'ログ';
+export const logTitle = 'ログ（記憶力のゲームなので、終わってから見られます）';
 export const REVEAL_MS = 4000;
 export const HAND = Array.from({ length: 15 }, (_, i) => i + 1);
 export const POINTS = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -106,6 +106,8 @@ export const canActOutOfTurn = () => true;
 export function viewFor(s, seat) {
   return {
     ...s, deck: null, deckCount: s.deck.length,
+    // 記憶力のゲームなので、だれが何を出したかのログは終わるまで見せない
+    history: s.result ? s.history : [],
     // 観戦者・抜けた人・終わったあとは、全員の手札が見える
     seesAll: seat < 0 || !!s.result || !!s.out[seat],
     hands: s.hands.map((h, i) => (i === seat || s.result || seat < 0 || s.out[seat] ? h : null)),
