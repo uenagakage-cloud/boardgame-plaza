@@ -660,6 +660,12 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .hg-card.used { opacity: .25; }
 .hg-card:disabled { cursor: default; }
 
+/* ---------- 一致するまで終われまテン ---------- */
+.it-card { background: linear-gradient(135deg, #8fd3f4, #84fab0); color: #12324a; }
+.it.it-clear .it-card { background: linear-gradient(135deg, #ffe27a, #ff9a6b); }
+.it-banner { font-size: 1.8rem; font-weight: 900; color: #fff; background: #2a9d5c; border-radius: 99px; padding: 4px 26px; animation: df-pop 1.2s ease-out; }
+.it-cleared:empty { display: none; }
+
 /* ---------- ニコニコ風に流れるチャット ---------- */
 .nico { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 15; }
 .nico-msg {

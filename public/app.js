@@ -23,8 +23,9 @@ import * as mancala from './games/mancala.js';
 import * as connect4 from './games/connect4.js';
 import * as wordwolf from './games/wordwolf.js';
 import * as hagetaka from './games/hagetaka.js';
+import * as itchi from './games/itchi.js';
 
-const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka };
+const GAMES = { chess, shogi, gobblet, gomoku, othello, wordbasket, catchoco, uno, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi };
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -39,6 +40,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  itchi: { icon: '🤝', desc: 'みんなの答えがそろうまで終われない！ 協力して以心伝心を目指す。2〜8人。' },
   wordwolf: { icon: '🐺', desc: '1人だけ違うお題の「ウルフ」を、話し合いで見つけ出す。3〜8人。' },
   hagetaka: { icon: '🦅', desc: '1〜15のカードを同時に出して得点を取り合う。同じ数は打ち消し！ 2〜6人。' },
   geister: { icon: '👻', desc: '良いおばけと悪いおばけの正体を隠して戦う、かけひきのゲーム。CPU対戦あり。' },
@@ -281,6 +283,21 @@ function renderLobby() {
         card.append(label);
         getOptions = () => ({ size: Number(select.value) });
       }
+      if (key === 'itchi') {
+        const mk = (labelText, storeKey, values, fmt, def) => {
+          const label = h('label', 'option-toggle');
+          const select = h('select', 'size-select');
+          for (const n of values) { const o = h('option', null, fmt(n)); o.value = String(n); select.append(o); }
+          select.value = store.get(storeKey, String(def));
+          select.onchange = () => store.set(storeKey, select.value);
+          label.append(h('span', null, labelText), select);
+          card.append(label);
+          return select;
+        };
+        const goal = mk('クリアするお題', 'itGoal', [1, 3, 5, 10], (n) => `${n}問`, 3);
+        const secs = mk('考える時間', 'itSeconds', [30, 60, 90, 0], (n) => (n ? `${n}秒` : 'なし'), 60);
+        getOptions = () => ({ goal: Number(goal.value), seconds: Number(secs.value) });
+      }
       if (key === 'wordwolf') {
         const mk = (labelText, storeKey, values, fmt, def) => {
           const label = h('label', 'option-toggle');
@@ -429,6 +446,7 @@ function statusText(v) {
     return ['mine', `感想戦：${where}${next}`];
   }
   if (s.result) {
+    if (g.resultText) return ['end', g.resultText(s, v.you)]; // 協力ゲームなど、ゲームが決める終わりの言葉
     if (s.result.winners) {
       // チーム戦
       if (!s.result.winners.length) return ['end', s.result.allLose ? named(s.result.reason) : `引き分け（${named(s.result.reason)}）`];
@@ -3351,6 +3369,94 @@ function renderHagetaka(el, v) {
   el.replaceChildren(root);
 }
 
+// ---------- 一致するまで終われまテン ----------
+// 入力欄を消さないよう骨組みは作り直さず、中身だけ更新する
+let it = null;
+
+function buildItchi(el) {
+  const root = h('div', 'as it');
+  root.innerHTML = `
+    <div class="as-head"><div class="as-round"></div><div class="as-timer it-timer"></div></div>
+    <div class="as-theme-card it-card"><div class="as-parent"></div><div class="as-theme"></div></div>
+    <form class="as-form row"><input maxlength="30" autocomplete="off" placeholder="みんなと同じになりそうな答え（30文字まで）" enterkeyhint="send"><button class="btn primary">書く</button></form>
+    <div class="as-mine muted"></div>
+    <div class="as-answers"></div>
+    <div class="as-tools"></div>
+    <div class="uno-players as-players"></div>
+    <div class="it-cleared muted small"></div>`;
+  const q = (sel) => root.querySelector(sel);
+  const x = { el, root, round: q('.as-round'), timer: q('.it-timer'), sub: q('.as-parent'), theme: q('.as-theme'), form: q('.as-form'),
+    input: q('.as-form input'), mine: q('.as-mine'), answers: q('.as-answers'), tools: q('.as-tools'), players: q('.as-players'), cleared: q('.it-cleared') };
+  x.form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = x.input.value.trim();
+    if (t) send({ type: 'move', move: { answer: t } });
+    x.input.value = '';
+    x.input.blur();
+  });
+  el.replaceChildren(root);
+  return x;
+}
+
+function itUpdateTimer() {
+  if (!it || !view || view.game !== 'itchi' || !view.state || !view.state.endsAt) { if (it) it.timer.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
+  it.timer.textContent = view.state.phase === 'write' ? `${left}秒` : '';
+  it.timer.classList.toggle('hurry', left <= 10);
+}
+setInterval(itUpdateTimer, 250);
+
+function renderItchi(el, v) {
+  const s = v.state, me = v.you;
+  if (!it || it.el !== el || !el.contains(it.root)) it = buildItchi(el);
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const playing = me >= 0 && !s.out[me];
+  const host = me >= 0 && me === v.hostSeat;
+  it.round.textContent = s.phase === 'end' ? '結果' : `お題 ${Math.min(s.phase === 'clear' ? s.cleared : s.cleared + 1, s.options.goal)}/${s.options.goal}・${s.tries}回目の挑戦（合計${s.attempts}回）`;
+  it.sub.textContent = s.phase === 'end' ? '' : '全員の答えをそろえよう！';
+  it.theme.textContent = s.phase === 'end' ? `${s.attempts}回の挑戦で${s.cleared}問クリア！` : s.themeText;
+  it.root.classList.toggle('it-clear', s.phase === 'clear');
+  itUpdateTimer();
+
+  const writing = s.phase === 'write' && playing;
+  it.form.hidden = !writing;
+  it.mine.textContent = writing && s.answers[me] ? `あなたの答え：「${s.answers[me]}」（書き直すときはもう一度書いて送ってください）` : '';
+
+  // 答え（そろった／そろわなかった）
+  it.answers.replaceChildren();
+  if (s.phase === 'reveal' || s.phase === 'clear') {
+    for (let i = 0; i < s.players; i++) {
+      if (s.out[i]) continue;
+      const card = h('div', 'as-answer' + (s.phase === 'clear' ? ' ok' : ''));
+      card.append(h('div', 'as-who', name(i)), h('div', 'as-text', s.answers[i] || '（書かなかった）'));
+      if (s.phase === 'reveal' && s.choice[i]) card.append(h('span', s.choice[i] === 'agree' ? 'as-badge' : 'as-votes', s.choice[i] === 'agree' ? '一致でいいね' : 'もう一度'));
+      it.answers.append(card);
+    }
+  }
+  it.tools.replaceChildren();
+  if (s.phase === 'clear') it.tools.append(h('div', 'it-banner', '全員一致！'));
+  if (s.phase === 'reveal' && playing) {
+    const agree = h('button', 'btn' + (s.choice[me] === 'agree' ? ' primary' : ''), '同じ意味だから一致でいいね');
+    agree.onclick = () => send({ type: 'move', move: { agree: true } });
+    const retry = h('button', 'btn' + (s.choice[me] === 'retry' ? ' primary' : ''), 'もう一度挑戦');
+    retry.onclick = () => send({ type: 'move', move: { retry: true } });
+    it.tools.append(h('span', 'muted small', 'みんなの答えを見て、次はそろえよう。全員が「一致でいいね」なら一致になります。'), agree, retry);
+  }
+  if ((s.phase === 'reveal' || s.phase === 'write') && host && s.tries >= 2) {
+    const skip = h('button', 'btn small ghost', 'このお題を変える');
+    skip.onclick = () => send({ type: 'move', move: { skip: true } });
+    it.tools.append(skip);
+  }
+
+  it.players.replaceChildren(...v.seats.map((p, i) => {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : ''));
+    chip.append(h('span', 'pname', p ? p.name : '?'));
+    if (s.phase === 'write' && s.answers[i]) chip.append(h('span', 'pt-ok', '書いた'));
+    return chip;
+  }));
+  it.cleared.textContent = s.clearedThemes.length ? `クリアしたお題：${s.clearedThemes.map((c) => `${c.theme}（${c.tries}回）`).join('、')}` : '';
+}
+
 // ---------- スカル ----------
 let skBid = null;
 let skKey = '';
@@ -3681,7 +3787,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, gomoku: renderGomoku, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, uno: renderUno, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka, itchi: renderItchi };
 
 // ---------- イベント ----------
 const nameInput = $('#name');
