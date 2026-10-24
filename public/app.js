@@ -3477,7 +3477,12 @@ const FX_RULES = {
   chess: (e) => (e.endsWith('#') ? ['チェックメイト！', 'big'] : e.endsWith('+') ? ['チェック！', 'bad']
     : /=[QRBN]/.test(e) ? ['プロモーション！', 'good'] : /^O-O/.test(e) ? ['キャスリング', 'info'] : null),
   shogi: (e, last, s) => (last && s.check && !s.result ? ['王手！', 'bad'] : /[^不]成$/.test(e) ? ['成り！', 'good'] : null),
-  gungi: (e) => (/王手/.test(e) ? ['王手！', 'bad'] : /寝返り/.test(e) ? ['寝返り！', 'good'] : /ツケ/.test(e) ? ['ツケ！', 'info'] : null),
+  gungi: (e) => {
+    if (/王手/.test(e)) return ['王手！', 'bad'];
+    if (/寝返り/.test(e)) return ['寝返り！', 'good'];
+    const m = e.match(/（取 (.+)）/);
+    return m ? [`${m[1]}を取った！`, 'good'] : /ツケ/.test(e) ? ['ツケ！', 'info'] : null;
+  },
   othello: (e) => (/パス/.test(e) ? ['パス', 'info'] : /[ah][18]$/.test(e) ? ['角を取った！', 'good'] : null),
   gobblet: (e, last, s, prev) => (last && prev && covered(s) > covered(prev) ? ['かぶせた！', 'good'] : null),
   mancala: (e) => {
@@ -3496,33 +3501,118 @@ const FX_RULES = {
   hitblow: (e) => { const m = e.match(/(\d)ヒット (\d)ブロー/); return m ? [`${m[1]}ヒット ${m[2]}ブロー`, m[1] > 0 ? 'good' : 'info'] : null; },
   wordbasket: (e) => (/ダメ出し/.test(e) ? ['ダメ！', 'bad'] : /場を流しました/.test(e) ? ['場を流した', 'info'] : /手札リセット/.test(e) ? ['手札リセット', 'info'] : null),
   blokus: (e) => (/全部置きました/.test(e) ? ['全部置いた！ +15点', 'big'] : /置ける場所がなくなりました/.test(e) ? [e, 'info'] : null),
-  paint: (e) => (/正解！/.test(e) ? [e.replace(/（.*$/, ''), 'good'] : null),
+  paint: (e) => (/^全員正解/.test(e) ? ['全員正解！', 'big'] : /誰も正解できなかった/.test(e) ? ['だれも正解できず…', 'bad']
+    : /正解！/.test(e) ? [e.replace(/（.*$/, ''), 'good'] : null),
   itchi: (e) => (/そろわず/.test(e) ? ['そろわず… もう一度！', 'bad'] : /クリア/.test(e) ? ['一致！', 'big'] : null),
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
   catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),
 };
+// 前の状態と比べて分かる出来事（ログに出ないもの）
+const countIf = (board, f) => board.flat().filter(f).length;
+const SHOGI_BIG = { R: '飛車', '+R': '飛車', B: '角', '+B': '角' };
+function c4Threats(board, p) {
+  // 次に置けば4つ並ぶ列の数
+  let n = 0;
+  for (let c = 0; c < connect4.COLS; c++) {
+    const r = connect4.dropRow(board, c);
+    if (r < 0) continue;
+    const b = board.map((row) => row.slice());
+    b[r][c] = p;
+    if ([[0, 1], [1, 0], [1, 1], [1, -1]].some(([dr, dc]) => {
+      let k = 1;
+      for (const sg of [1, -1]) for (let i = 1; i < 4; i++) { const rr = r + dr * i * sg, cc = c + dc * i * sg; if (b[rr]?.[cc] !== p) break; k++; }
+      return k >= 4;
+    })) n++;
+  }
+  return n;
+}
+const FX_STATE = {
+  chess: (ps, s) => {
+    const opp = ps.turn === 0 ? 'b' : 'w';
+    return countIf(s.board, (x) => x === opp + 'Q') < countIf(ps.board, (x) => x === opp + 'Q') ? ['クイーンを取った！', 'good'] : null;
+  },
+  shogi: (ps, s) => {
+    const opp = 1 - ps.turn;
+    for (const name of ['飛車', '角']) {
+      const n = (b) => countIf(b, (x) => x && x.o === opp && SHOGI_BIG[x.t] === name);
+      if (n(s.board) < n(ps.board)) return [`${name}を取った！`, 'good'];
+    }
+    return null;
+  },
+  othello: (ps, s) => {
+    const gained = countIf(s.board, (x) => x === ps.turn) - countIf(ps.board, (x) => x === ps.turn) - 1;
+    return gained >= 5 ? [`${gained}枚ひっくり返した！`, 'good'] : null;
+  },
+  connect4: (ps, s) => {
+    if (s.result || s.moves === ps.moves) return null;
+    return c4Threats(s.board, ps.turn) > c4Threats(ps.board, ps.turn) ? ['リーチ！ あと1つで4つ並ぶ', 'info'] : null;
+  },
+  hagetaka: (ps, s) => {
+    if (s.phase !== 'reveal' || ps.phase === 'reveal' || !s.last) return null;
+    const L = s.last, pts = L.points.reduce((a, b) => a + b, 0);
+    const nums = L.played.filter((x) => typeof x === 'number');
+    const clash = nums.length !== new Set(nums).size;
+    if (L.winner == null) return ['全員打ち消し！ 次に持ち越し', 'bad'];
+    return [`${clash ? '打ち消し！ ' : ''}P${L.winner + 1} が ${hagetaka.fmt(pts)} ゲット`, pts < 0 ? 'bad' : clash || L.points.length > 1 ? 'big' : 'good'];
+  },
+  wordbasket: (ps, s) => {
+    const a = ps.handCounts || [], b = s.handCounts || [];
+    const p = b.findIndex((n, i) => n === 1 && a[i] > 1);
+    return p >= 0 ? [`P${p + 1} あと1枚！`, 'big'] : null;
+  },
+};
+// 試合の終わり（勝ち・負け・引き分け）
+function resultFx(v) {
+  const text = statusText(v)[1].replace(/（.*$/, '');
+  if (/あなたの(チーム）の)?勝ち|あなたのチーム）の勝ち|クリア|大成功/.test(text)) return ['🎉 ' + text, 'big'];
+  if (/負け/.test(text)) return [text, 'bad'];
+  return [text, 'info'];
+}
 const fxSeen = {};
 function fxCheck(v) {
-  const rule = FX_RULES[v.game], s = v.state;
-  if (!rule || !s || v.review) return;
+  const s = v.state;
+  if (!s || v.review) return;
   const key = `${v.code}:${v.gameNo}`, prev = fxSeen[v.code];
   fxSeen[v.code] = { key, len: s.history.length, state: s };
   if (!prev) return; // 部屋に入ったばかり（前の出来事は出さない）
-  const from = prev.key !== key || s.history.length < prev.len ? 0 : prev.len; // 新しい試合ならログは最初から
-  const lines = s.history.slice(from);
-  const hits = lines.map((e, i) => rule(e, i === lines.length - 1, s, prev.key === key ? prev.state : null)).filter(Boolean);
-  if (!hits.length) return;
-  const named = (m) => m.replace(/(?:P|プレイヤー)(\d+)/g, (all, n) => v.seats[n - 1]?.name || all);
-  showFx(named(hits.map((x) => x[0]).join('　')), hits[hits.length - 1][1]);
+  const ps = prev.key === key ? prev.state : null;
+  const named = (m) => m.replace(/(?:P|プレイヤー)(d+)/g, (all, n) => v.seats[n - 1]?.name || all);
+  const out = [];
+  const rule = FX_RULES[v.game];
+  if (rule) {
+    const from = !ps || s.history.length < prev.len ? 0 : prev.len; // 新しい試合ならログは最初から
+    const lines = s.history.slice(from);
+    const hits = lines.map((e, i) => rule(e, i === lines.length - 1, s, ps)).filter(Boolean);
+    if (hits.length) out.push([hits.map((x) => x[0]).join('　'), hits[hits.length - 1][1]]);
+  }
+  const st = FX_STATE[v.game];
+  if (st && ps && ps.history !== s.history) { const r = st(ps, s, v); if (r) out.push(r); }
+  if (ps && !ps.result && s.result) out.push(resultFx(v));
+  for (const [text, tone] of out) showFx(named(text), tone);
 }
+// 演出は1つずつ順番に出す
+const fxQueue = [], FX_MS = 1750;
+let fxBusy = false;
 function showFx(text, tone) {
+  fxQueue.push([text, tone]);
+  if (!fxBusy) fxNext();
+}
+function fxNext() {
+  const item = fxQueue.shift();
+  fxBusy = !!item;
+  if (!item) return;
   let b = $('#fx-banner');
-  if (!b) { b = h('div'); b.id = 'fx-banner'; document.body.append(b); }
-  b.className = 'fx-banner ' + tone;
-  b.textContent = text;
+  if (!b) {
+    b = h('div');
+    b.id = 'fx-banner';
+    document.body.append(b);
+  }
+  b.className = 'fx-banner ' + item[1];
+  b.textContent = item[0];
   void b.offsetWidth; // アニメーションを最初から
   b.classList.add('show');
+  setTimeout(fxNext, FX_MS); // 画面が隠れているとアニメーションの終わりが来ないことがあるので、時間で次へ
 }
 
 // ゲームの説明（ルール）を画面の真ん中に出す。options があれば、その部屋の設定も書く
