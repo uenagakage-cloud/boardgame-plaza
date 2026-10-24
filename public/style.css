@@ -554,8 +554,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* ---------- ガイスター ---------- */
 .gs { width: min(100%, 480px); display: grid; gap: 8px; justify-self: center; }
-.gs-board { display: grid; grid-template-columns: repeat(6, 1fr); aspect-ratio: 1; gap: 3px; padding: 6px; background: #5a4a6b; border-radius: 12px; box-shadow: var(--shadow); container-type: inline-size; }
-.gs-sq { background: #efe6f5; border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center; }
+.gs-board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); aspect-ratio: 1; gap: 3px; padding: 6px; background: #5a4a6b; border-radius: 12px; box-shadow: var(--shadow); container-type: inline-size; }
+.gs-sq { background: #efe6f5; border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
 .gs-sq.exit-mine::before, .gs-sq.exit-theirs::before { content: '★'; position: absolute; top: 2px; left: 4px; font-size: 3cqw; }
 .gs-sq.exit-mine::before { color: #2e86ab; }
 .gs-sq.exit-theirs::before { color: #b0a3bd; }
