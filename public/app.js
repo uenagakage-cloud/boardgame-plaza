@@ -588,6 +588,7 @@ function renderRoom() {
   if (v.state && v.review) RENDERERS[v.game]($('#board'), { ...v, state: v.review.state, reviewing: true }, v.you >= 0 && !v.review.state.result);
   else if (v.state) RENDERERS[v.game]($('#board'), v, canAct(v));
   else renderWaiting($('#board'), v);
+  fxCheck(v);
 }
 
 // 感想戦のボタン（⏮ ◀ ▶ ⏭・本譜に戻る・終わる）
@@ -1488,7 +1489,7 @@ let dfPrev = null;
 let dfFx = { ghostField: null, gone: [], fresh: {}, events: [], timer: null };
 const DF_GHOST_MS = 1600, DF_HAND_MS = 3000, DF_EVENT_MS = 1900;
 // 履歴のうち、目立たせて知らせる出来事
-const DF_EVENT_WORDS = ['8切り', '場が流れました', '革命', '11バック', 'しばり', '5飛ばし', '7渡し', '10捨て', '12ボンバー', '都落ち', '反則上がり', '上がり'];
+const DF_EVENT_WORDS = ['8切り', '場が流れました', '革命', '11バック', 'しばり', '5飛ばし', '7渡し', '10捨て', '12ボンバー', '都落ち', '反則上がり', 'スペ3返し', '上がり'];
 
 function dfSchedule() {
   // 一番早く消える効果の時刻に描き直す
@@ -3454,6 +3455,62 @@ $('#copy-link').onclick = async () => {
   try { await navigator.clipboard.writeText(url); toast('招待リンクをコピーしました'); }
   catch { await choose(`このリンクを相手に送ってください:\n${url}`, [['ok', '閉じる']]); }
 };
+
+// ---------- 特別な手の演出（王手・チェック・横取りなど） ----------
+// ログに新しく増えた行を見て、画面の真ん中に大きく出す。[文字, 色] を返す（色: good / bad / big / info）
+// 大富豪は自分の演出（dfTrack）があるので、ここでは扱わない
+const covered = (s) => s.board.reduce((n, st) => n + Math.max(0, st.length - 1), 0); // ゴブレット: かぶさっているコマの数
+const FX_RULES = {
+  chess: (e) => (e.endsWith('#') ? ['チェックメイト！', 'big'] : e.endsWith('+') ? ['チェック！', 'bad']
+    : /=[QRBN]/.test(e) ? ['プロモーション！', 'good'] : /^O-O/.test(e) ? ['キャスリング', 'info'] : null),
+  shogi: (e, last, s) => (last && s.check && !s.result ? ['王手！', 'bad'] : /[^不]成$/.test(e) ? ['成り！', 'good'] : null),
+  gungi: (e) => (/王手/.test(e) ? ['王手！', 'bad'] : /寝返り/.test(e) ? ['寝返り！', 'good'] : /ツケ/.test(e) ? ['ツケ！', 'info'] : null),
+  othello: (e) => (/パス/.test(e) ? ['パス', 'info'] : /[ah][18]$/.test(e) ? ['角を取った！', 'good'] : null),
+  gobblet: (e, last, s, prev) => (last && prev && covered(s) > covered(prev) ? ['かぶせた！', 'good'] : null),
+  mancala: (e) => {
+    const m = e.match(/横取り(\d+)個/);
+    if (m) return [`横取り！ ${m[1]}個ゲット`, 'big'];
+    return /もう1回/.test(e) ? ['ゴールにぴったり！ もう1回', 'good'] : null;
+  },
+  dotsboxes: (e) => { const m = e.match(/四角を(\d+)つ/); return m ? [`四角を${m[1]}つゲット！ もう1本`, 'good'] : null; },
+  geister: (e) => (/脱出/.test(e) ? ['脱出！', 'big'] : /青を取った/.test(e) ? ['青いおばけを取った！', 'good'] : /赤を取った/.test(e) ? ['赤いおばけを取った…', 'bad'] : null),
+  poker: (e) => {
+    if (/オールイン/.test(e)) return ['オールイン！', 'big'];
+    const m = e.match(/獲得（(.+)）/);
+    return m && !/フォールド/.test(m[1]) ? [m[1] + '！', 'good'] : null;
+  },
+  skull: (e) => (/挑戦成功/.test(e) ? ['挑戦成功！', 'good'] : /挑戦失敗/.test(e) ? ['💀 ドクロ！', 'bad'] : /脱落/.test(e) ? ['脱落…', 'bad'] : /枚に挑戦/.test(e) ? ['挑戦！', 'info'] : null),
+  hitblow: (e) => { const m = e.match(/(\d)ヒット (\d)ブロー/); return m ? [`${m[1]}ヒット ${m[2]}ブロー`, m[1] > 0 ? 'good' : 'info'] : null; },
+  wordbasket: (e) => (/ダメ出し/.test(e) ? ['ダメ！', 'bad'] : /場を流しました/.test(e) ? ['場を流した', 'info'] : /手札リセット/.test(e) ? ['手札リセット', 'info'] : null),
+  blokus: (e) => (/全部置きました/.test(e) ? ['全部置いた！ +15点', 'big'] : /置ける場所がなくなりました/.test(e) ? [e, 'info'] : null),
+  paint: (e) => (/正解！/.test(e) ? [e.replace(/（.*$/, ''), 'good'] : null),
+  itchi: (e) => (/そろわず/.test(e) ? ['そろわず… もう一度！', 'bad'] : /クリア/.test(e) ? ['一致！', 'big'] : null),
+  ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
+  catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
+  asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),
+};
+const fxSeen = {};
+function fxCheck(v) {
+  const rule = FX_RULES[v.game], s = v.state;
+  if (!rule || !s || v.review) return;
+  const key = `${v.code}:${v.gameNo}`, prev = fxSeen[v.code];
+  fxSeen[v.code] = { key, len: s.history.length, state: s };
+  if (!prev) return; // 部屋に入ったばかり（前の出来事は出さない）
+  const from = prev.key !== key || s.history.length < prev.len ? 0 : prev.len; // 新しい試合ならログは最初から
+  const lines = s.history.slice(from);
+  const hits = lines.map((e, i) => rule(e, i === lines.length - 1, s, prev.key === key ? prev.state : null)).filter(Boolean);
+  if (!hits.length) return;
+  const named = (m) => m.replace(/(?:P|プレイヤー)(\d+)/g, (all, n) => v.seats[n - 1]?.name || all);
+  showFx(named(hits.map((x) => x[0]).join('　')), hits[hits.length - 1][1]);
+}
+function showFx(text, tone) {
+  let b = $('#fx-banner');
+  if (!b) { b = h('div'); b.id = 'fx-banner'; document.body.append(b); }
+  b.className = 'fx-banner ' + tone;
+  b.textContent = text;
+  void b.offsetWidth; // アニメーションを最初から
+  b.classList.add('show');
+}
 
 // ゲームの説明（ルール）を画面の真ん中に出す。options があれば、その部屋の設定も書く
 function openRules(key, options) {

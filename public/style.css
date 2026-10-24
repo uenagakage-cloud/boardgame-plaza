@@ -1298,3 +1298,23 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .btn.small { min-height: 34px; padding-left: 10px; padding-right: 10px; }
   .hg-card { min-height: 52px; }
 }
+
+/* 特別な手の演出（王手・チェック・横取りなど） */
+.fx-banner {
+  position: fixed; left: 50%; top: 42%; z-index: 60; max-width: calc(100vw - 32px); pointer-events: none;
+  padding: 12px 26px; border-radius: 16px; font-size: clamp(1.4rem, 6vw, 2.4rem); font-weight: 900; text-align: center;
+  color: #fff; text-shadow: 0 2px 4px rgba(0, 0, 0, .35); box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  opacity: 0; transform: translate(-50%, -50%);
+}
+.fx-banner.show { animation: fx-pop 1.7s ease-out forwards; }
+.fx-banner.good { background: linear-gradient(135deg, #2f9e5b, #1d7a43); }
+.fx-banner.bad { background: linear-gradient(135deg, #e0453a, #b0261d); }
+.fx-banner.big { background: linear-gradient(135deg, #f6b416, #e07b0c); }
+.fx-banner.info { background: linear-gradient(135deg, #3b7dd8, #2559a8); }
+@keyframes fx-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.4) rotate(-6deg); }
+  14% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(2deg); }
+  24% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(.96); }
+}

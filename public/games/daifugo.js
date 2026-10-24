@@ -430,6 +430,7 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     ns.hands[seat] = ns.hands[seat].filter((c) => !mv.play.includes(c.id));
     const suits = suitsOf(cards);
     let note = `${label(seat)} ${sortHand(cards).map(cardLabel).join(' ')}`;
+    if (rules.spade3 && s.field && s.field.joker && s.field.n === 1 && cards.length === 1 && cards[0].s === 's' && cards[0].r === 3) note += ' スペ3返し';
     // しばり: 前と同じマークの組が続いたら、場が流れるまでそのマークだけ
     if (rules.shibari && s.field && !s.lock && s.field.suits && suits.length === cards.length
       && s.field.suits.length === suits.length && s.field.suits.join() === suits.join()) {
