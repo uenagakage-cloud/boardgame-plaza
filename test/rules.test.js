@@ -22,6 +22,8 @@ import * as asasore from '../public/games/asasore.js';
 import * as geister from '../public/games/geister.js';
 import * as mancala from '../public/games/mancala.js';
 import * as connect4 from '../public/games/connect4.js';
+import * as wordwolf from '../public/games/wordwolf.js';
+import * as hagetaka from '../public/games/hagetaka.js';
 import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
 
 const sqc = (s) => [8 - Number(s[1]), 'abcdefgh'.indexOf(s[0])];
@@ -1627,5 +1629,81 @@ test('connect4: 下に落ちる・4つ並んだら勝ち・いっぱいの列に
   let w = connect4.init({});
   for (const [c, p] of [[0, 0], [6, 1], [1, 0], [6, 1], [2, 0]]) w = connect4.applyMove(w, { col: c }, p);
   assert.deepEqual(connect4.aiMove(w, 1), { col: 3 }, '相手の4つ目を防ぐ');
+});
+test('wordwolf: お題が配られ、投票で処刑、ウルフの逆転、点数', () => {
+  let s = wordwolf.init({ minutes: 1, rounds: 1 }, 4);
+  assert.equal(s.wolves.length, 1);
+  const wolf = s.wolves[0];
+  const citizens = [0, 1, 2, 3].filter((p) => p !== wolf);
+  assert.ok(citizens.every((p) => s.words[p] === s.major));
+  assert.equal(s.words[wolf], s.minor);
+  const v = wordwolf.viewFor(s, citizens[0]);
+  assert.equal(v.words[wolf], null, 'ほかの人のお題は見えない');
+  assert.deepEqual(v.wolves, [], 'ウルフが誰かは見えない');
+  assert.throws(() => wordwolf.applyMove(s, { endTalk: true }, citizens[0], undefined, { hostSeat: wolf }), /ホスト/);
+  s = wordwolf.applyMove(s, { endTalk: true }, 0, undefined, { hostSeat: 0 });
+  assert.equal(s.phase, 'vote');
+  assert.throws(() => wordwolf.applyMove(s, { vote: 0 }, 0), /自分/);
+  // 全員でウルフに投票（ウルフは市民の1人に）
+  for (const p of citizens) s = wordwolf.applyMove(s, { vote: wolf }, p);
+  s = wordwolf.applyMove(s, { vote: citizens[0] }, wolf);
+  assert.equal(s.executed, wolf);
+  assert.equal(s.phase, 'guess');
+  assert.throws(() => wordwolf.applyMove(s, { guess: 'x' }, citizens[0]), /答えられません/);
+  s = wordwolf.applyMove(s, { guess: 'ぜったいちがう' }, wolf);
+  assert.equal(s.winner, 'citizen');
+  assert.ok(citizens.every((p) => s.scores[p] === 1));
+  s = wordwolf.tick(s);
+  assert.ok(s.result, '1ラウンドで終わり');
+
+  // 逆転: ウルフがみんなのお題を当てる・同数なら処刑なしでウルフの勝ち
+  let r = wordwolf.init({ rounds: 1 }, 3);
+  const w = r.wolves[0];
+  const others = [0, 1, 2].filter((p) => p !== w);
+  r = wordwolf.tick(r); // 話し合いの時間切れ → 投票
+  r = wordwolf.applyMove(r, { vote: w }, others[0]);
+  r = wordwolf.applyMove(r, { vote: w }, others[1]);
+  r = wordwolf.applyMove(r, { vote: others[0] }, w);
+  r = wordwolf.applyMove(r, { guess: r.major }, w);
+  assert.equal(r.winner, 'wolf');
+  assert.equal(r.scores[w], 3);
+  let t = wordwolf.init({ rounds: 1 }, 3);
+  t = wordwolf.tick(t);
+  t = wordwolf.applyMove(t, { vote: 1 }, 0);
+  t = wordwolf.applyMove(t, { vote: 2 }, 1);
+  t = wordwolf.applyMove(t, { vote: 0 }, 2);
+  assert.equal(t.executed, null);
+  assert.equal(t.winner, 'wolf', '同数は処刑なしでウルフの勝ち');
+  // 6人以上でウルフ2人
+  assert.equal(wordwolf.init({ wolves: 2 }, 6).wolves.length, 2);
+  assert.equal(wordwolf.init({ wolves: 2 }, 5).wolves.length, 1);
+});
+test('hagetaka: 同じ数は打ち消し・プラスは大きい数・マイナスは小さい数・持ち越し', () => {
+  assert.equal(hagetaka.resolve(5, [15, 15, 3], [0, 1, 2]), 2, '15どうしは打ち消し、次に大きい3が取る');
+  assert.equal(hagetaka.resolve(-3, [1, 2, 9], [0, 1, 2]), 0, 'マイナスは一番小さい数');
+  assert.equal(hagetaka.resolve(4, [7, 7], [0, 1]), null);
+  let s = hagetaka.init({}, 2);
+  assert.equal(s.hands[0].length, 15);
+  s = { ...s, current: 6 };
+  s = hagetaka.applyMove(s, { play: 10 }, 0);
+  assert.equal(hagetaka.viewFor(s, 1).played[0], 0, '出したカードは見えない（出したことだけ）');
+  s = hagetaka.applyMove(s, { play: 12 }, 0); // 出し直し
+  s = hagetaka.applyMove(s, { play: 12 }, 1);
+  assert.equal(s.phase, 'reveal');
+  assert.deepEqual(s.pot, [6], '打ち消し合って持ち越し');
+  assert.ok(!s.hands[0].includes(12), '出したカードはなくなる');
+  s = hagetaka.tick(s);
+  s = { ...s, current: 3 };
+  s = hagetaka.applyMove(s, { play: 1 }, 0);
+  s = hagetaka.applyMove(s, { play: 2 }, 1);
+  assert.equal(s.scores[1], 9, '持ち越しの6と今回の3');
+  assert.throws(() => hagetaka.applyMove(hagetaka.tick(s), { play: 12 }, 0), /持っていません/);
+  // 15回で終わる
+  let g = hagetaka.init({}, 3);
+  while (!g.result) {
+    for (const p of [0, 1, 2]) if (g.phase === 'choose') g = hagetaka.applyMove(g, { play: g.hands[p][0] }, p);
+    g = hagetaka.tick(g);
+  }
+  assert.equal(g.round, 15);
 });
 console.log(`\n${n} tests passed`);

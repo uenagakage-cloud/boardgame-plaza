@@ -608,6 +608,46 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .my-rooms { display: grid; gap: 6px; margin-bottom: 12px; }
 .my-room-btn { font-size: 1rem; padding: 12px; white-space: normal; }
 
+/* ---------- ワードウルフ ---------- */
+.ww { width: min(100%, 640px); display: grid; gap: 10px; justify-self: center; }
+.ww-head { display: flex; justify-content: space-between; align-items: center; }
+.ww-timer { font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ww-timer.hurry { color: #e0261b; }
+.ww-card { background: linear-gradient(135deg, #3b4a6b, #1f2a44); color: #fff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow); display: grid; gap: 6px; }
+.ww-label { font-size: .8rem; opacity: .8; font-weight: 700; }
+.ww-word { font-size: 2rem; font-weight: 900; }
+.ww-word.wolf { color: #ffb4a8; }
+.ww-tools { display: grid; gap: 8px; justify-items: center; text-align: center; }
+.ww-tools p { margin: 0; }
+.ww-sub { font-weight: 800; }
+.ww-vote-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.ww-guess { width: min(100%, 360px); }
+.ww-guess input { flex: 1; font-size: 1.05rem; }
+.ww-result { font-size: 1.6rem; font-weight: 900; padding: 6px 22px; border-radius: 99px; }
+.ww-result.wolf { background: #e0453a; color: #fff; }
+.ww-result.citizen { background: #2a9d5c; color: #fff; }
+.wb-player.ww-wolf { border-color: #e0453a; }
+
+/* ---------- ハゲタカのえじき ---------- */
+.hg { width: min(100%, 720px); display: grid; gap: 10px; justify-self: center; }
+.hg-table { background: radial-gradient(circle at 50% 40%, #6b8f3a, #3f5a1f); color: #fff; border-radius: 16px; padding: 16px; display: grid; gap: 8px; justify-items: center; box-shadow: var(--shadow); min-height: 160px; align-content: center; }
+.hg-points { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.hg-point { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 88px; border-radius: 10px; font-size: 1.8rem; font-weight: 900; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); }
+.hg-point.plus { background: #fff8dc; color: #1f6e3c; border: 3px solid #f2c230; }
+.hg-point.minus { background: #ffe1dc; color: #b3261e; border: 3px solid #e0453a; }
+.hg-rule { font-weight: 800; font-size: .9rem; text-align: center; }
+.hg-plays { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.hg-play { display: grid; justify-items: center; background: rgba(255, 255, 255, .92); color: #222; border-radius: 10px; padding: 6px 10px; min-width: 64px; animation: hg-flip .4s ease-out; }
+.hg-play .hg-num { font-size: 1.6rem; font-weight: 900; }
+.hg-play.cancel { opacity: .55; text-decoration: line-through; }
+.hg-play.win { box-shadow: 0 0 0 4px #f2c230; }
+@keyframes hg-flip { from { transform: rotateY(90deg); } }
+.hg-hand { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+.hg-card { aspect-ratio: 3 / 4; border-radius: 8px; border: 2px solid var(--border); background: var(--surface); font-size: 1.3rem; font-weight: 900; cursor: pointer; touch-action: manipulation; }
+.hg-card.sel { background: #fff3b0; border-color: #c9a400; transform: translateY(-6px); }
+.hg-card.used { opacity: .25; }
+.hg-card:disabled { cursor: default; }
+
 /* ---------- ニコニコ風に流れるチャット ---------- */
 .nico { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 15; }
 .nico-msg {
