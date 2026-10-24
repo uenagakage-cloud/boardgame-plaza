@@ -54,6 +54,7 @@ function startRound(s) {
   s.challenger = -1;
   s.flowersFound = 0;
   s.tickAt = null;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`新しいラウンド（${label(s.first)} から）`);
 }
 

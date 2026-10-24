@@ -70,6 +70,7 @@ function startRound(s, rng) {
   s.phase = 'arrange';
   s.ready = Array(s.players).fill(false);
   s.tickAfter = null;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   addLog(s, `第${s.round}ラウンド！ お題「${s.theme}」`);
 }
 

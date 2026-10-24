@@ -1327,6 +1327,7 @@ function startRound(s, rng) {
   s.penalty = 0;
   s.endsAt = Date.now() + CHOOSE_MS;
   s.tickAt = s.endsAt;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`第${s.round}/${s.totalRounds}ラウンド：${label(p)} が描きます`);
 }
 

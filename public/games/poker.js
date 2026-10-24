@@ -142,6 +142,7 @@ function startHand(s, rng) {
   s.needs = seats.filter((p) => canBet(s, p));
   s.turn = nextSeat(s, bb, (p) => s.needs.includes(p));
   s.lastAction = null;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`ハンド${s.handNo}（ディーラー ${label(s.button)}）`);
   if (s.turn < 0 || s.needs.length <= 1 && s.needs.every((p) => s.bets[p] >= s.currentBet)) advanceStreet(s);
 }

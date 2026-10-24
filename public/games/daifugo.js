@@ -203,6 +203,7 @@ function deal(s, rng) {
   s.pending = null;
   s.lastPlay = null;
   s.exchange = [];
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`第${s.round}ラウンド`);
 
   const ranks = s.lastRanks;

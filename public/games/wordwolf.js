@@ -278,6 +278,7 @@ function startRound(s, rng) {
   s.phase = 'talk';
   s.endsAt = Date.now() + s.options.minutes * 60000;
   s.tickAt = s.endsAt;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`第${s.round}/${s.options.rounds}ラウンド：話し合いスタート（ウルフ${n}人）`);
 }
 

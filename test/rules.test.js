@@ -1781,4 +1781,24 @@ test('手札の公開: 終わったあと・観戦者・上がった人・抜け
   assert.ok(ito.viewFor(it, -1).cards.every((x) => x.value != null));
   assert.ok(ito.viewFor(it, 0).cards.some((x) => x.value == null));
 });
+test('ログ: 次のラウンド（試合）になったら最初から', () => {
+  let s = dfState(['s9', 'h4 h5', 'c3 c6 c7']);
+  s = df.applyMove(s, { play: ids(s, 0, 's9') }, 0);
+  s = df.applyMove(s, { pass: true }, 1);
+  s = df.applyMove(s, { pass: true }, 2);
+  s = df.applyMove(s, { play: ids(s, 1, 'h4') }, 1);
+  s = df.applyMove(s, { play: ids(s, 2, 'c6') }, 2);
+  s = df.applyMove(s, { pass: true }, 1);
+  s = df.applyMove(s, { play: ids(s, 2, 'c3') }, 2);
+  s = df.applyMove(s, { play: ids(s, 1, 'h5') }, 1);
+  assert.equal(s.phase, 'result');
+  assert.ok(s.history.length > 5);
+  s = df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
+  assert.equal(s.history[0], '第2ラウンド', '前のラウンドのログは消える');
+  let w = wordwolf.init({ rounds: 3 }, 3);
+  w = wordwolf.tick(w); // 投票へ
+  for (const p of [0, 1, 2]) w = wordwolf.applyMove(w, { vote: (p + 1) % 3 }, p); // 同数
+  w = wordwolf.tick(w); // 次のラウンド
+  assert.ok(w.history[0].startsWith("第2/3ラウンド"), w.history[0]);
+});
 console.log(`\n${n} tests passed`);

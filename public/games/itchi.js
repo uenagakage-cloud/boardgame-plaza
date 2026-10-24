@@ -191,6 +191,7 @@ function nextTheme(s, rng) {
   if (!s.deck.length) s.deck = shuffle(THEMES.map((_, i) => i), rng);
   s.theme = s.deck.pop();
   s.tries = 0;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`お題${s.cleared + 1}：${THEMES[s.theme]}`);
   startTry(s);
 }

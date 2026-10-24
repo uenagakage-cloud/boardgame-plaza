@@ -247,6 +247,7 @@ function startRound(s, rng) {
   s.winners = [];
   s.endsAt = s.options.seconds ? Date.now() + s.options.seconds * 1000 : null;
   s.tickAt = s.endsAt;
+  s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   s.history.push(`第${s.round}/${s.options.rounds}ラウンド：${themeText(s)}`);
 }
 
