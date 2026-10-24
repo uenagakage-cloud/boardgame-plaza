@@ -542,11 +542,11 @@ test('werewolf: 怪盗が人狼と交換すると人狼陣営になる', () => {
 });
 
 
-test('catchoco: アイテムは180種類で重複なし', () => {
+test('catchoco: アイテムは222種類で重複なし', () => {
   const s = cc.init({}, 2);
   const all = [...s.itemDeck, ...s.hands.flat()].map((c) => c.name);
-  assert.equal(all.length, 180);
-  assert.equal(new Set(all).size, 180);
+  assert.equal(all.length, 222);
+  assert.equal(new Set(all).size, 222);
 });
 test('wordbasket: 山札から1枚引く', () => {
   const s = wbk.init({}, 2);
@@ -1521,47 +1521,44 @@ test('dotsboxes: 四角を閉じたら取ってもう1本・全部埋まった�
   m = dotsboxes.applyMove(m, { line: ['h', 0, 0] }, 0);
   assert.equal(m.turn, 2);
 });
-test('asasore: 全員書いたら判定・同じ答えは正解・親が確定して点数', () => {
-  let s = asasore.init({ turns: 1, seconds: 60 }, 3);
-  assert.equal(s.parent, 0);
-  assert.ok(asasore.viewFor(s, 1).themeText.length > 0);
-  s = asasore.applyMove(s, { answer: 'パン' }, 0);
+test('asasore: 頭文字＋テーマのお題・一斉公開・投票で今日の正解', () => {
+  let s = asasore.init({ rounds: 3, seconds: 60 }, 3);
+  assert.ok(asasore.KANA.includes(s.kana));
+  assert.match(asasore.viewFor(s, 0).themeText, /^「.」で始まる、.+？$/);
+  assert.equal(asasore.init({ kana: false }, 3).kana, '', '頭文字なしにもできる');
+  s = asasore.applyMove(s, { answer: 'からあげ' }, 0);
   assert.equal(asasore.viewFor(s, 1).answers[0], '✓', '書いている間はほかの人の答えは見えない');
-  s = asasore.applyMove(s, { answer: 'ぱん' }, 1);
-  s = asasore.applyMove(s, { answer: 'ごはん' }, 2);
+  s = asasore.applyMove(s, { answer: 'カラアゲ' }, 1);
+  s = asasore.applyMove(s, { answer: 'かまぼこ' }, 2);
   assert.equal(s.phase, 'judge');
-  assert.deepEqual(s.auto, [false, true, false], 'かなの違いは同じ答え（自動で正解）');
-  assert.throws(() => asasore.applyMove(s, { vote: 2 }, 2), /自分/);
-  assert.throws(() => asasore.applyMove(s, { vote: 0, on: true }, 1), /投票できません/, '親の答えには投票しない');
-  // 「ごはん」に ○: 投票できるのは P1・P2 の2人。P1（親）だけ ○ → 同数なので親の ○ で正解
-  s = asasore.applyMove(s, { vote: 2, on: true }, 0);
-  assert.equal(asasore.isCorrect(s, 2), true);
-  s = asasore.applyMove(s, { voteDone: true }, 0);
-  s = asasore.applyMove(s, { voteDone: true }, 1);
-  assert.equal(s.phase, 'judge', '全員おわるまで待つ');
-  s = asasore.applyMove(s, { voteDone: true }, 2);
-  assert.deepEqual(s.scores, [2, 1, 1]);
+  assert.equal(s.groups.length, 2, '同じ答えはまとめる');
+  assert.deepEqual(s.groups[0].by, [0, 1]);
+  assert.throws(() => asasore.applyMove(s, { vote: 0 }, 0), /自分/);
+  s = asasore.applyMove(s, { vote: 1 }, 0);
+  s = asasore.applyMove(s, { vote: 1 }, 1);
+  s = asasore.applyMove(s, { vote: 0 }, 2);
+  assert.equal(asasore.viewFor(s, 2).votes[0], -1, '投票先は結果まで見えない');
+  for (const p of [0, 1, 2]) s = asasore.applyMove(s, { voteDone: true }, p);
   assert.equal(s.phase, 'reveal');
+  assert.deepEqual(s.winners, [1]);
+  assert.deepEqual(s.scores, [0, 0, 1], '「かまぼこ」が今日の正解');
   s = asasore.tick(s);
-  assert.equal(s.parent, 1, '親は交代');
+  assert.equal(s.round, 2, '次のお題へ');
   assert.equal(s.phase, 'write');
-  // 時間切れでも判定へ
-  s = asasore.applyMove(s, { answer: 'a' }, 1);
-  s = asasore.tick(s);
-  assert.equal(s.phase, 'judge');
-  // P1 の答え（なし）・P3 の答え「x」… 親でない人だけの ○ が同数なら不正解
-  let q = asasore.init({ turns: 1 }, 3);
-  q = asasore.applyMove(q, { answer: 'うどん' }, 0);
-  q = asasore.applyMove(q, { answer: 'そば' }, 1);
-  q = asasore.applyMove(q, { answer: 'ラーメン' }, 2);
-  q = asasore.applyMove(q, { vote: 1, on: true }, 2);
-  assert.equal(asasore.isCorrect(q, 1), false, '親でない1人だけの ○（同数）は不正解');
-  q = asasore.applyMove(q, { vote: 1, on: true }, 0);
-  assert.equal(asasore.isCorrect(q, 1), true, '2人とも ○ なら正解');
-  q = asasore.tick(q); // 投票の時間切れで結果
-  assert.equal(q.phase, 'reveal');
-  assert.deepEqual(q.scores, [1, 1, 0]);
-  assert.ok(asasore.THEMES.length >= 100);
+  // 同数なら両方正解・時間切れでも進む
+  let t = asasore.init({ rounds: 3 }, 4);
+  t = asasore.applyMove(t, { answer: 'a' }, 0);
+  t = asasore.applyMove(t, { answer: 'b' }, 1);
+  t = asasore.tick(t); // 考える時間の終わり（2人は書かなかった）
+  assert.equal(t.groups.length, 2);
+  t = asasore.applyMove(t, { vote: 1 }, 0);
+  t = asasore.applyMove(t, { vote: 0 }, 1);
+  t = asasore.tick(t); // 投票の時間切れ
+  assert.deepEqual(t.winners, [0, 1]);
+  assert.deepEqual(t.scores, [1, 1, 0, 0]);
+  t = asasore.tick(t);
+  assert.equal(t.round, 2);
+  assert.ok(asasore.THEMES.length >= 150);
 });
 test('geister: 並べる・相手の色は見えない・取る・脱出・赤を4つ取らせたら勝ち', () => {
   let s = geister.init({});

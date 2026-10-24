@@ -46,7 +46,7 @@ const GAME_INFO = {
   connect4: { icon: '🔴', desc: '上からコマを落として、縦横ななめに4つ並べたら勝ち。CPU対戦あり。' },
   hitblow: { icon: '🔢', desc: '相手の秘密の数を、ヒットとブローのヒントで当てる推理ゲーム。CPU対戦あり。' },
   dotsboxes: { icon: '▦', desc: '点と点を線でつなぎ、四角を閉じたらもらえる陣取り。2〜4人。' },
-  asasore: { icon: '🌅', desc: '親が書きそうな答えを当てる！ お題に全員で答える心理ゲーム。3〜8人。' },
+  asasore: { icon: '🌅', desc: '「か」で始まる〇〇は？ みんなで答えを出し、熱弁して「今日の正解」を決める。3〜8人。' },
   towerbattle: { icon: '🦒', desc: '順番に動物を島に積み上げる。落とした人は脱落、最後まで残った人の勝ち。2〜8人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
   gungi: { icon: '軍', desc: '駒を最大3段まで積み上げる立体将棋。入門〜上級・CPU対戦あり。' },
@@ -308,9 +308,10 @@ function renderLobby() {
           card.append(label);
           return select;
         };
-        const turns = mk('親の回数', 'asTurns', [1, 2, 3], (n) => `1人${n}回`, 1);
-        const secs = mk('書く時間', 'asSeconds', [60, 90, 120, 0], (n) => (n ? `${n}秒` : 'なし'), 90);
-        getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value) });
+        const rounds = mk('ラウンド', 'asRounds', [3, 5, 7, 10], (n) => `${n}回`, 5);
+        const secs = mk('考える時間', 'asSeconds', [60, 90, 120, 0], (n) => (n ? `${n}秒` : 'なし'), 60);
+        const kana = mk('頭文字', 'asKana', ['1', '0'], (n) => (n === '1' ? 'あり' : 'なし'), '1');
+        getOptions = () => ({ rounds: Number(rounds.value), seconds: Number(secs.value), kana: kana.value === '1' });
       }
       if (key === 'towerbattle') {
         const label = h('label', 'option-toggle');
@@ -2951,63 +2952,57 @@ function renderAsasore(el, v) {
   const s = v.state, me = v.you;
   if (!as || as.el !== el || !el.contains(as.root)) as = buildAsasore(el);
   const name = (seat) => v.seats[seat]?.name || '?';
-  const isParent = me >= 0 && me === s.parent;
-  const voting = me >= 0 && !s.out[me] && s.phase === 'judge';
-  as.round.textContent = s.phase === 'end' ? '結果' : `第${s.round}/${s.totalRounds}ラウンド`;
-  as.parent.textContent = s.phase === 'end' ? '' : `親：${name(s.parent)}${isParent ? '（あなた）' : ''}`;
+  const playing = me >= 0 && !s.out[me];
+  as.round.textContent = s.phase === 'end' ? '結果' : `第${s.round}/${s.options.rounds}ラウンド`;
+  as.parent.textContent = s.phase === 'end' ? '' : s.kana ? `頭文字「${s.kana}」` : 'お題';
   as.theme.textContent = s.phase === 'end' ? 'おつかれさまでした！' : s.themeText;
   asUpdateTimer();
 
   // 書く欄
-  const writing = s.phase === 'write' && me >= 0 && !s.out[me];
+  const writing = s.phase === 'write' && playing;
   as.form.hidden = !writing;
-  as.input.placeholder = isParent ? '自分の答えを書く（30文字まで）' : '親が書きそうな答えを書く（30文字まで）';
+  as.input.placeholder = s.kana ? `「${s.kana}」で始まる答えを書く（30文字まで）` : '答えを書く（30文字まで）';
   as.mine.textContent = writing && s.answers[me] ? `あなたの答え：「${s.answers[me]}」（書き直すときはもう一度書いて送ってください）` : '';
 
-  // 答え
+  // 答え（同じ答えは1つにまとまっている）
   as.answers.replaceChildren();
-  if (s.phase !== 'write' && s.phase !== 'end') {
-    const order = [s.parent, ...[...Array(s.players).keys()].filter((i) => i !== s.parent)];
-    for (const i of order) {
-      if (s.out[i]) continue;
-      const card = h('div', 'as-answer' + (i === s.parent ? ' parent' : '') + (s.marks[i] ? ' ok' : ''));
-      card.append(h('div', 'as-who', i === s.parent ? `親 ${name(i)}` : name(i)), h('div', 'as-text', s.answers[i] || '（書かなかった）'));
-      if (i !== s.parent && s.answers[i]) {
-        if (s.phase === 'judge') {
-          // 投票中: ○ の数と、自分の ○
-          const voters = [...Array(s.players).keys()].filter((p) => !s.out[p] && p !== i).length;
-          const yes = s.votes[i].length;
-          if (s.auto[i]) card.append(h('span', 'as-badge', '親と同じ！'));
-          else {
-            card.append(h('span', 'as-votes', `○ ${yes}/${voters}人`));
-            if (voting && i !== me) {
-              const mineOn = s.votes[i].includes(me);
-              const b = h('button', 'btn small' + (mineOn ? ' primary' : ''), mineOn ? '○ 同じだと思う' : '同じだと思う？');
-              b.onclick = () => send({ type: 'move', move: { vote: i, on: !mineOn } });
-              card.append(b);
-            }
-          }
-        } else if (s.marks[i]) card.append(h('span', 'as-badge', '正解！'));
+  if (s.phase === 'judge' || s.phase === 'reveal') {
+    const open = s.phase === 'reveal';
+    const counts = s.groups.map(() => 0);
+    if (open) s.votes.forEach((g, p) => { if (g != null && g >= 0 && !s.out[p]) counts[g]++; });
+    s.groups.forEach((g, i) => {
+      const win = open && s.winners.includes(i);
+      const card = h('div', 'as-answer' + (s.votes[me] === i ? ' ok' : '') + (win ? ' parent' : ''));
+      card.append(h('div', 'as-who', g.by.map(name).join('・')), h('div', 'as-text', g.text));
+      if (open) {
+        card.append(h('span', 'as-votes', `${counts[i]}票`));
+        if (win) card.append(h('span', 'as-badge', '今日の正解！'));
+      } else if (playing) {
+        if (g.by.includes(me)) card.append(h('span', 'muted small', 'あなたの答え'));
+        else {
+          const on = s.votes[me] === i;
+          const b = h('button', 'btn small' + (on ? ' primary' : ''), on ? '★ これが正解！' : 'これに投票');
+          b.onclick = () => send({ type: 'move', move: { vote: i } });
+          card.append(b);
+        }
       }
       as.answers.append(card);
-    }
+    });
   }
   as.tools.replaceChildren();
-  if (voting) {
+  if (s.phase === 'judge' && playing) {
     const done = s.voted.filter((x, i) => x && !s.out[i]).length;
     const total = [...Array(s.players).keys()].filter((p) => !s.out[p]).length;
     const ok = h('button', 'btn primary', s.voted[me] ? `投票おわり済み（${done}/${total}人）` : `投票おわり（${done}/${total}人）`);
-    ok.disabled = !!s.voted[me];
+    ok.disabled = !!s.voted[me] || s.votes[me] == null;
     ok.onclick = () => send({ type: 'move', move: { voteDone: true } });
-    as.tools.append(h('span', 'muted small', '同じ意味なら書き方がちがっても ○ でOK。半分より多く ○ なら正解（同数なら親の ○ で決まり）。'), ok);
+    as.tools.append(h('span', 'muted small', '1人ずつ「なぜその答えか」を通話やチャットで熱弁してから、一番納得できる答えに投票しよう。'), ok);
   }
 
   // 参加者
   as.players.replaceChildren(...v.seats.map((p, i) => {
-    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.parent && s.phase !== 'end' ? ' turn' : '')
-      + (s.result && s.result.winner === i ? ' winner' : ''));
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.result && s.result.winner === i ? ' winner' : ''));
     chip.append(h('span', 'pname', p ? p.name : '?'));
-    if (i === s.parent && s.phase !== 'end') chip.append(h('span', 'wb-vote', '親'));
     if (s.phase === 'write' && s.answers[i]) chip.append(h('span', 'pt-ok', '書いた'));
     if (s.phase === 'judge' && s.voted[i]) chip.append(h('span', 'pt-ok', '投票済み'));
     chip.append(h('span', 'wb-count', `${s.scores[i]}点`));

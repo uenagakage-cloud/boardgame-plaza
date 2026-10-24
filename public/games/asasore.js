@@ -1,12 +1,10 @@
 // 朝からそれ正解（サーバーとブラウザで共通）
-// 3〜8人。毎ラウンド1人が「親」。お題（例：朝から食べたいもの）に、全員がこっそり答えを1つ書く。
-// 親以外は「親が書きそうな答え」を当てにいく。全員そろったら答えを見せ合い、
-// 全員で「親の答えと同じ」だと思う答えに ○ を投票する（書き方が違っても、同じ意味なら ○ でよい）。
-// ○ が投票できる人の半分より多ければ正解（ちょうど半分なら親の ○ で決まる）。親とまったく同じ答えは自動で正解。
-// 点数: 正解した子は +1点、親は正解した子の人数ぶん +1点。親は順番に交代、全員が決めた回数親をやったら終わり。
-// 手: { answer: '文字' } 書く（書き直しもできる） / { vote: 席, on: true|false } その人の答えに ○ を付ける・外す
-//     { voteDone: true } 投票おわり（全員おわるか、時間切れで結果）
-//     { resign: true }
+// 3〜8人。毎ラウンド「頭文字」と「テーマ」のお題が出る（例：「か」で始まる、お弁当に入っていてうれしいおかずは？）。
+// 全員がこっそり答えを書き（考える時間）、全員そろったら一斉に公開。一人ずつ「なぜその答えか」を通話やチャットで熱弁して、
+// 全員で一番納得できる答えに投票する（自分の答えには投票できない）。一番票を集めた答えが「今日の正解」。
+// 点数: 今日の正解を書いた人に +1（同じ答えを書いた人はまとめて1つの答えとして扱う。同数なら全部が正解）。決めたラウンド数で終わり。
+// 手: { answer: '文字' } 書く（書き直しもできる） / { vote: 答えの番号 } 一番いいと思う答えに投票（変えられる）
+//     { voteDone: true } 投票おわり / { resign: true }
 export const id = 'asasore';
 export const title = '朝からそれ正解';
 export const sideNames = Array.from({ length: 8 }, (_, i) => `プレイヤー${i + 1}`);
@@ -14,153 +12,200 @@ export const minPlayers = 3;
 export const maxPlayers = 8;
 export const lobbyReturn = true;
 export const logTitle = 'ログ';
-export const REVEAL_MS = 6000;
-export const JUDGE_MS = 60000; // 投票の時間
-
-// お題（オリジナル）
-export const THEMES = `
-朝から食べたいもの
-朝から飲みたいもの
-朝から聞きたい音
-朝から聞きたい言葉
-朝から見たいもの
-朝から行きたい場所
-朝からしたいこと
-朝からしたくないこと
-朝から会いたい有名人
-朝から会いたい動物
-朝から食べたくないもの
-朝から言われたらうれしいこと
-朝から言われたらへこむこと
-朝から聞こえたらびっくりする音
-朝からテンションが上がるもの
-朝からテンションが下がるもの
-朝から歌いたい歌
-朝から見たいテレビ番組
-朝からやりがちなこと
-朝から探しがちなもの
-朝から忘れがちなもの
-朝からあると助かるもの
-朝から乗りたい乗り物
-朝からやってみたいスポーツ
-朝から読みたいもの
-朝から着たい服の色
-朝から使いたい言葉
-朝から起きたらうれしい天気
-朝から作りたい料理
-朝からコンビニで買うもの
-朝から鳴ってほしくないもの
-朝から気になるニュース
-朝から嗅ぎたいにおい
-朝から触りたいもの
-朝から見つけたらうれしいもの
-朝から落としがちなもの
-朝からありがちな失敗
-朝からほめられたいこと
-朝から欲しいプレゼント
-朝からもらったらうれしいお菓子
-朝から行列に並んでもいいもの
-朝からかけたい調味料
-朝からパンに塗りたいもの
-朝ごはんのおかず
-朝のお味噌汁の具
-朝に飲む飲み物
-朝のテレビでよく見るもの
-朝の通学・通勤で見かけるもの
-朝の駅にあるもの
-朝の公園にいるもの
-朝の台所の音
-朝の目覚まし代わりになるもの
-朝ドラの主人公の職業
-朝から降ってきたらうれしいもの
-朝から当たったらうれしいもの
-朝から叫びたい言葉
-朝から目に入るもの
-朝からすること・ベスト1
-朝の占いで出たらうれしいラッキーアイテム
-朝から見たい映画
-朝から聞きたいアーティスト
-朝から食べたい果物
-朝から食べたいパン
-朝から食べたい麺類
-朝から食べたいお菓子
-朝から食べたい丼もの
-朝から食べたいお寿司のネタ
-朝から食べたいおにぎりの具
-朝から食べたい卵料理
-朝から飲みたいジュース
-朝から行きたいお店
-朝から行きたい国
-朝から行きたい観光地
-朝から遊びたいゲーム
-朝から遊びたい遊具
-朝から見たい生き物
-朝から触りたい動物
-朝から飼いたいペット
-朝からなりたい職業
-朝からなりたいキャラクター
-朝から使いたい魔法
-朝から欲しい超能力
-朝から呼びたい人
-朝から電話がかかってきたら困る人
-朝から届いたらうれしいもの
-朝から始めたい習いごと
-朝から鍛えたい体の部分
-朝から洗いたいもの
-朝から掃除したい場所
-朝から開けたいもの
-朝から押したいボタン
-朝から鳴らしたい楽器
-朝から見上げたいもの
-朝から乗ってみたい動物
-朝から行きたいイベント
-朝から観たいスポーツ
-朝から応援したいもの
-朝から集めたいもの
-朝から数えたいもの
-朝から描きたい絵
-朝から撮りたい写真
-朝から入りたいお風呂
-朝から寝転びたい場所
-朝から逃げたいもの
-朝から勝ちたい相手
-朝からやめられないこと
-朝から思い出すこと
-朝から考えてしまうこと
-朝からつぶやきたいこと
-朝から送りたいスタンプ
-朝から見たいアプリ
-朝からチェックしたいもの
-朝から聞きたい昔話
-朝から読みたい漫画
-朝から観たいアニメ
-朝から会いたい家族
-朝から食べたい給食のメニュー
-朝から食べたい駄菓子
-朝から食べたいアイス
-朝から食べたい鍋の具
-朝から食べたい焼肉の部位
-朝から食べたい中華料理
-朝から食べたいファストフード
-`.trim().split('\n').map((x) => x.trim()).filter(Boolean);
-
+export const REVEAL_MS = 7000;
+export const JUDGE_MS = 120000; // 熱弁と投票の時間
 export const MAX_ANSWER = 30;
+
+// 頭文字に使うかな（始まる言葉が少ない「ぬ・る・を・ん」などは入れない）
+export const KANA = 'あいうえおかきくけこさしすせそたちつてとなにねのはひふへほまみむめもやよらりろわ'.split('');
+
+// テーマ（オリジナル）。「〇で始まる」の後ろにつながる形
+export const THEMES = `
+朝起きて最初にすることは？
+お弁当に入っていてうれしいおかずは？
+コンビニでつい買ってしまうものは？
+旅行に必ず持っていくものは？
+言われたらうれしいほめ言葉は？
+もらってうれしいプレゼントは？
+もらって困るプレゼントは？
+修学旅行の思い出といえば？
+小学生のころに流行ったものは？
+夏休みにやりたいことは？
+冬になると食べたくなるものは？
+雨の日にしたいことは？
+休みの日の過ごし方は？
+無人島に1つ持っていくものは？
+初デートで行きたい場所は？
+モテる人がやっていることは？
+モテない人がやりがちなことは？
+いい上司の条件は？
+いい後輩の条件は？
+理想の休日に食べたいものは？
+寝る前にすることは？
+お風呂で考えがちなことは？
+宝くじが当たったら買うものは？
+お金持ちの家にありそうなものは？
+おしゃれな人の部屋にあるものは？
+ひとり暮らしで必要なものは？
+実家にありがちなものは？
+おばあちゃんの家にありそうなものは？
+田舎にあるものといえば？
+都会っぽいものといえば？
+学校の七不思議といえば？
+怖いものといえば？
+苦手な食べ物といえば？
+子どもが好きな食べ物は？
+大人になって好きになった食べ物は？
+給食の人気メニューといえば？
+お祭りの屋台で買うものは？
+遊園地の乗り物といえば？
+動物園で見たい動物は？
+飼ってみたいペットは？
+生まれ変わったらなりたいものは？
+子どものころの夢は？
+かっこいい職業といえば？
+大変そうな仕事といえば？
+社会人あるあるといえば？
+学生あるあるといえば？
+ゲーマーあるあるといえば？
+主婦・主夫あるあるといえば？
+運動部あるあるといえば？
+文化部あるあるといえば？
+アニメでよくある展開は？
+ドラマでよくあるセリフは？
+映画館で食べたいものは？
+カラオケで歌いたい曲は？
+テンションが上がる音楽のジャンルは？
+さらりと言えたらかっこいい言葉は？
+言ってみたい決めゼリフは？
+口ぐせにしたい言葉は？
+座右の銘にしたい言葉は？
+落ち込んだときに言われたい言葉は？
+プロポーズの言葉といえば？
+謝るときの言葉といえば？
+朝ドラのタイトルにありそうな言葉は？
+新しくできたお店の名前にありそうな言葉は？
+芸人のコンビ名にありそうな言葉は？
+ゆるキャラの名前にありそうな言葉は？
+ペットにつけたい名前は？
+ヒーローの必殺技にありそうな名前は？
+魔法の呪文っぽい言葉は？
+怪獣の名前っぽい言葉は？
+お菓子の名前にありそうな言葉は？
+スポーツの技名っぽい言葉は？
+台所にあるものは？
+カバンの中に入っているものは？
+机の引き出しに入っているものは？
+冷蔵庫に入っているものは？
+文房具といえば？
+キャンプに持っていくものは？
+防災グッズといえば？
+100円ショップで買うものは？
+家電量販店で見たくなるものは？
+雑貨屋で見かけるものは？
+海で見かけるものは？
+山で見かけるものは？
+空にあるものは？
+丸いものといえば？
+四角いものといえば？
+赤いものといえば？
+青いものといえば？
+白いものといえば？
+黒いものといえば？
+甘いものといえば？
+しょっぱいものといえば？
+すっぱいものといえば？
+辛いものといえば？
+やわらかいものといえば？
+かたいものといえば？
+重いものといえば？
+軽いものといえば？
+長いものといえば？
+小さいものといえば？
+大きいものといえば？
+うるさいものといえば？
+いいにおいのするものといえば？
+くさいものといえば？
+冷たいものといえば？
+熱いものといえば？
+光るものといえば？
+回るものといえば？
+飛ぶものといえば？
+泳ぐものといえば？
+跳ねるものといえば？
+増えるとうれしいものは？
+減るとうれしいものは？
+なくすと困るものは？
+すぐなくしてしまうものは？
+ついつい集めてしまうものは？
+いくらあっても困らないものは？
+一生食べ続けるならこれ！という食べ物は？
+最後の晩さんに食べたいものは？
+休日の朝ごはんにしたいものは？
+夜中に食べたくなるものは？
+疲れたときに食べたいものは？
+風邪をひいたときに食べたいものは？
+おみやげにもらってうれしいものは？
+有名な観光地といえば？
+行ってみたい国といえば？
+日本の名物料理といえば？
+日本らしいものといえば？
+昔からある遊びといえば？
+運動会の種目といえば？
+冬のスポーツといえば？
+オリンピックで見たい競技は？
+体にいい食べ物は？
+ダイエット中に食べたくなるものは？
+ストレス解消法といえば？
+早起きのコツといえば？
+勉強がはかどるものは？
+仕事中にやりがちなことは？
+会議でよく聞く言葉は？
+メールでよく使う言葉は？
+SNSでよく見る言葉は？
+若者言葉っぽい言葉は？
+昭和っぽいものといえば？
+未来にありそうなものは？
+ロボットにやってほしいことは？
+魔法が使えたらしたいことは？
+透明人間になったらしたいことは？
+一日だけ王様になったらしたいことは？
+異世界に持っていきたいものは？
+宇宙に持っていきたいものは？
+タイムマシンで行きたい時代のものは？
+忍者が持っていそうなものは？
+海賊が持っていそうなものは？
+名探偵が持っていそうなものは？
+勇者が持っていそうなものは？
+魔女が持っていそうなものは？
+サンタさんにお願いしたいものは？
+誕生日にしてもらいたいことは？
+結婚式で見かけるものは？
+新生活で買うものは？
+引っ越しで大変なことは？
+テストの前にやってしまうことは？
+夏の風物詩といえば？
+冬の風物詩といえば？
+春といえば？
+秋といえば？
+`.trim().split('\n').map((x) => x.trim()).filter(Boolean);
 
 // 答えを比べるときは、空白・かな/カナ・全角/半角の違いは無視
 export function normalizeAnswer(text) {
   return String(text || '').normalize('NFKC').toLowerCase()
     .replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
-    .replace(/[\s・。、！？!?.,ー〜~]/g, '');
+    .replace(/[\s・。、！？!?.,〜~]/g, '');
 }
 
 export function normalizeOptions(o) {
-  const turns = [1, 2, 3].includes(Number(o && o.turns)) ? Number(o.turns) : 1;
-  const seconds = [0, 60, 90, 120].includes(Number(o && o.seconds)) ? Number(o.seconds) : 90;
-  return { turns, seconds };
+  const rounds = [3, 5, 7, 10].includes(Number(o && o.rounds)) ? Number(o.rounds) : 5;
+  const seconds = [0, 60, 90, 120].includes(Number(o && o.seconds)) ? Number(o.seconds) : 60;
+  const kana = !(o && o.kana === false); // 頭文字しばり
+  return { rounds, seconds, kana };
 }
 export const variantName = (o) => {
   const x = normalizeOptions(o);
-  return `親${x.turns}周・${x.seconds ? `${x.seconds}秒` : '時間制限なし'}`;
+  return `${x.rounds}ラウンド・${x.seconds ? `${x.seconds}秒` : '時間制限なし'}${x.kana ? '' : '・頭文字なし'}`;
 };
 
 function shuffle(arr, rng) {
@@ -174,15 +219,16 @@ function shuffle(arr, rng) {
 
 const label = (seat) => `P${seat + 1}`;
 const active = (s) => [...Array(s.players).keys()].filter((p) => !s.out[p]);
+// お題の文
+export const themeText = (s) => (s.kana ? `「${s.kana}」で始まる、${THEMES[s.theme]}` : THEMES[s.theme]);
 
 export function init(options, players = 3, rng) {
   const opts = normalizeOptions(options);
   const s = {
     players, options: opts, out: Array(players).fill(false), scores: Array(players).fill(0),
-    deck: shuffle(THEMES.map((_, i) => i), rng), round: 0, totalRounds: players * opts.turns,
-    parent: -1, theme: null, phase: 'write', answers: Array(players).fill(null), marks: Array(players).fill(false),
-    auto: Array(players).fill(false), votes: Array.from({ length: players }, () => []), voted: Array(players).fill(false),
-    endsAt: null, tickAt: null, turn: 0, result: null, history: [],
+    deck: shuffle(THEMES.map((_, i) => i), rng), round: 0, theme: null, kana: '',
+    phase: 'write', answers: Array(players).fill(null), groups: [], votes: Array(players).fill(null), voted: Array(players).fill(false),
+    winners: [], endsAt: null, tickAt: null, turn: 0, result: null, history: [],
   };
   startRound(s, rng);
   return s;
@@ -190,52 +236,55 @@ export function init(options, players = 3, rng) {
 
 function startRound(s, rng) {
   s.round += 1;
-  let p = s.parent;
-  do p = (p + 1) % s.players; while (s.out[p]);
-  s.parent = p;
-  s.turn = p;
   if (!s.deck.length) s.deck = shuffle(THEMES.map((_, i) => i), rng);
   s.theme = s.deck.pop();
+  s.kana = s.options.kana ? KANA[(rng ? rng(KANA.length) : Math.floor(Math.random() * KANA.length) + 1) - 1] : '';
   s.phase = 'write';
   s.answers = Array(s.players).fill(null);
-  s.marks = Array(s.players).fill(false);
-  s.auto = Array(s.players).fill(false);
-  s.votes = Array.from({ length: s.players }, () => []);
+  s.groups = [];
+  s.votes = Array(s.players).fill(null);
   s.voted = Array(s.players).fill(false);
+  s.winners = [];
   s.endsAt = s.options.seconds ? Date.now() + s.options.seconds * 1000 : null;
   s.tickAt = s.endsAt;
-  s.history.push(`第${s.round}/${s.totalRounds}ラウンド：親は ${label(p)}「${THEMES[s.theme]}」`);
+  s.history.push(`第${s.round}/${s.options.rounds}ラウンド：${themeText(s)}`);
 }
 
-// 全員書いた（または時間切れ）: 答えを見せて、全員で投票する。親とまったく同じ答えは最初から正解
+// 全員書いた（または時間切れ）: 一斉に公開。同じ答えは1つにまとめる
 function toJudge(s) {
   s.phase = 'judge';
+  const groups = [];
+  for (const p of active(s)) {
+    const a = s.answers[p];
+    if (!a) continue;
+    const key = normalizeAnswer(a);
+    const g = groups.find((x) => x.key === key);
+    if (g) g.by.push(p);
+    else groups.push({ key, text: a, by: [p] });
+  }
+  s.groups = groups.map(({ text, by }) => ({ text, by }));
+  s.votes = Array(s.players).fill(null);
+  s.voted = Array(s.players).fill(false);
   s.endsAt = Date.now() + JUDGE_MS;
   s.tickAt = s.endsAt;
-  const mine = normalizeAnswer(s.answers[s.parent]);
-  s.auto = s.answers.map((a, i) => i !== s.parent && !s.out[i] && !!a && !!mine && normalizeAnswer(a) === mine);
-  s.marks = s.auto.slice();
-  s.votes = Array.from({ length: s.players }, () => []);
-  s.voted = Array(s.players).fill(false);
+  if (!s.groups.length) { s.history.push('誰も書きませんでした'); finishRound(s); }
 }
 
-// その人の答えに投票できる人（抜けていない、本人以外）
-const votersFor = (s, i) => active(s).filter((p) => p !== i);
-// ○ の数で正解かを決める
-export function isCorrect(s, i) {
-  if (s.auto[i]) return true;
-  if (i === s.parent || s.out[i] || !s.answers[i]) return false;
-  const voters = votersFor(s, i);
-  const yes = s.votes[i].filter((p) => voters.includes(p)).length;
-  return yes * 2 > voters.length || (yes * 2 === voters.length && s.votes[i].includes(s.parent));
+// 票を数える。一番多い答え（同数なら全部）が今日の正解
+export function tally(s) {
+  const counts = s.groups.map(() => 0);
+  for (const p of active(s)) if (s.votes[p] != null && counts[s.votes[p]] != null) counts[s.votes[p]]++;
+  const max = Math.max(0, ...counts);
+  return { counts, best: max > 0 ? counts.map((n, i) => (n === max ? i : -1)).filter((i) => i >= 0) : [] };
 }
 
 function finishRound(s) {
-  s.marks = s.answers.map((_, i) => isCorrect(s, i));
-  const winners = s.marks.map((m, i) => (m && i !== s.parent && !s.out[i] ? i : -1)).filter((i) => i >= 0);
-  for (const i of winners) s.scores[i] += 1;
-  if (!s.out[s.parent]) s.scores[s.parent] += winners.length;
-  s.history.push(`親の答え「${s.answers[s.parent] || '（なし）'}」 正解：${winners.length ? winners.map(label).join('・') : 'なし'}`);
+  const { counts, best } = tally(s);
+  s.winners = best;
+  for (const g of best) for (const p of s.groups[g].by) if (!s.out[p]) s.scores[p] += 1;
+  s.history.push(best.length
+    ? `今日の正解：${best.map((g) => `「${s.groups[g].text}」（${counts[g]}票・${s.groups[g].by.map(label).join('・')}）`).join('、')}`
+    : '投票がなかったので、今日の正解はなし');
   s.phase = 'reveal';
   s.tickAt = Date.now() + REVEAL_MS;
   s.endsAt = s.tickAt;
@@ -253,10 +302,10 @@ function finishGame(s) {
 
 export function tick(s, rng) {
   const ns = clone(s);
-  if (s.phase === 'write') { toJudge(ns); return ns; } // 時間切れ
+  if (s.phase === 'write') { toJudge(ns); return ns; } // 考える時間の終わり
   if (s.phase === 'judge') { finishRound(ns); return ns; } // 投票の時間切れ
   if (s.phase === 'reveal') {
-    if (ns.round >= ns.totalRounds || active(ns).length < 3) finishGame(ns);
+    if (ns.round >= ns.options.rounds || active(ns).length < 3) finishGame(ns);
     else startRound(ns, rng);
     return ns;
   }
@@ -265,28 +314,27 @@ export function tick(s, rng) {
 
 export const canActOutOfTurn = () => true;
 
-// 書いている間は、ほかの人の答えは「書いた／まだ」だけ見せる
+// 書いている間は、ほかの人の答えは「書いた／まだ」だけ。投票先は結果が出るまで見せない
 export function viewFor(s, seat) {
-  const open = s.phase !== 'write';
+  const open = s.phase === 'reveal' || s.phase === 'end';
   return {
-    ...s, deck: null, themeText: THEMES[s.theme],
-    answers: s.answers.map((a, i) => (open || i === seat ? a : a ? '✓' : null)),
+    ...s, deck: null, themeText: s.theme == null ? '' : themeText(s),
+    answers: s.answers.map((a, i) => (s.phase !== 'write' || i === seat ? a : a ? '✓' : null)),
+    votes: s.votes.map((v, i) => (open || i === seat ? v : v != null ? -1 : null)),
   };
 }
 
 export function phaseText(s, you) {
   if (s.result) return null;
-  const parent = you === s.parent;
   if (s.phase === 'write') {
-    if (you < 0) return 'みんなが答えを書いています…';
-    if (s.answers[you]) return 'ほかの人を待っています（書き直しもできます）';
-    return parent ? '親です。お題への自分の答えを書いてください' : '親が書きそうな答えを書いてください';
+    if (you < 0) return 'みんなが答えを考えています…';
+    return s.answers[you] ? 'ほかの人を待っています（書き直しもできます）' : 'これこそ正解！ と思う答えを書いてください';
   }
   if (s.phase === 'judge') {
-    if (you < 0) return 'みんなが投票しています…';
-    return s.voted[you] ? 'ほかの人の投票を待っています…' : '親の答えと同じだと思う答えに ○ を付けて、「投票おわり」を押してください';
+    if (you < 0) return 'みんなが熱弁・投票しています…';
+    return s.voted[you] ? 'ほかの人の投票を待っています…' : 'なぜその答えか熱弁して、一番納得できる答えに投票しよう';
   }
-  if (s.phase === 'reveal') return '結果発表！ まもなく次のラウンド';
+  if (s.phase === 'reveal') return '今日の正解が決まりました！ まもなく次のお題';
   return null;
 }
 
@@ -294,11 +342,11 @@ export const scoreOf = (s, seat) => `${s.scores[seat]}点`;
 
 const clone = (s) => ({
   ...s, out: s.out.slice(), scores: s.scores.slice(), deck: s.deck ? s.deck.slice() : [], answers: s.answers.slice(),
-  marks: s.marks.slice(), auto: (s.auto || []).slice(), votes: (s.votes || []).map((v) => v.slice()), voted: (s.voted || []).slice(),
-  history: s.history.slice(),
+  groups: s.groups.map((g) => ({ ...g, by: g.by.slice() })), votes: s.votes.slice(), voted: s.voted.slice(),
+  winners: s.winners.slice(), history: s.history.slice(),
 });
 
-export function applyMove(s, mv, seat, rng, ctx = {}) {
+export function applyMove(s, mv, seat, rng) {
   if (s.result) throw new Error('ゲームは終了しています');
   mv = mv || {};
   const ns = clone(s);
@@ -307,13 +355,7 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     ns.out[seat] = true;
     ns.history.push(`${label(seat)} が抜けました`);
     if (active(ns).length < 3) { finishGame(ns); return ns; }
-    if (seat === s.parent && (s.phase === 'write' || s.phase === 'judge')) {
-      // 親が抜けたら、このラウンドはなしで次へ
-      ns.history.push('親が抜けたので、このラウンドはなし');
-      ns.phase = 'reveal';
-      ns.tickAt = Date.now() + 1500;
-      ns.endsAt = ns.tickAt;
-    } else if (s.phase === 'write' && active(ns).every((p) => ns.answers[p])) toJudge(ns);
+    if (s.phase === 'write' && active(ns).every((p) => ns.answers[p])) toJudge(ns);
     else if (s.phase === 'judge' && active(ns).every((p) => ns.voted[p])) finishRound(ns);
     return ns;
   }
@@ -329,12 +371,10 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
   }
   if (mv.vote != null) {
     if (s.phase !== 'judge') throw new Error('今は投票できません');
-    const i = Number(mv.vote);
-    if (!(i in s.answers) || i === s.parent || s.out[i] || !s.answers[i]) throw new Error('その答えには投票できません');
-    if (i === seat) throw new Error('自分の答えには投票できません');
-    if (s.auto[i]) return s; // 同じ答えはもう正解
-    ns.votes[i] = ns.votes[i].filter((p) => p !== seat);
-    if (mv.on) ns.votes[i].push(seat);
+    const g = Number(mv.vote);
+    if (!s.groups[g]) throw new Error('その答えには投票できません');
+    if (s.groups[g].by.includes(seat)) throw new Error('自分の答えには投票できません');
+    ns.votes[seat] = g;
     ns.voted[seat] = false; // 変えたら、もう一度「投票おわり」
     return ns;
   }
