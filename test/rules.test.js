@@ -1533,7 +1533,8 @@ test('asasore: 頭文字＋テーマのお題・一斉公開・投票で今日�
   assert.equal(s.phase, 'judge');
   assert.equal(s.groups.length, 2, '同じ答えはまとめる');
   assert.deepEqual(s.groups[0].by, [0, 1]);
-  assert.throws(() => asasore.applyMove(s, { vote: 0 }, 0), /自分/);
+  assert.throws(() => asasore.applyMove(s, { vote: 1 }, 2), /自分だけ/, '自分だけの答えには投票できない');
+  assert.equal(asasore.applyMove(s, { vote: 0 }, 0).votes[0], 0, '被った答えなら自分の答えにも投票できる');
   s = asasore.applyMove(s, { vote: 1 }, 0);
   s = asasore.applyMove(s, { vote: 1 }, 1);
   s = asasore.applyMove(s, { vote: 0 }, 2);
@@ -1702,5 +1703,16 @@ test('hagetaka: 同じ数は打ち消し・プラスは大きい数・マイナ�
     g = hagetaka.tick(g);
   }
   assert.equal(g.round, 15);
+});
+test('asasore: 3人が被って1人だけ別の答えでも、被った答えが勝てる', () => {
+  let s = asasore.init({ rounds: 3 }, 4);
+  for (const p of [0, 1, 2]) s = asasore.applyMove(s, { answer: 'からあげ' }, p);
+  s = asasore.applyMove(s, { answer: 'かまぼこ' }, 3);
+  assert.equal(s.groups.length, 2);
+  for (const p of [0, 1, 2]) s = asasore.applyMove(s, { vote: 0 }, p); // 自分たちの答えに投票
+  s = asasore.applyMove(s, { vote: 0 }, 3);
+  for (const p of [0, 1, 2, 3]) s = asasore.applyMove(s, { voteDone: true }, p);
+  assert.deepEqual(s.winners, [0]);
+  assert.deepEqual(s.scores, [1, 1, 1, 0]);
 });
 console.log(`\n${n} tests passed`);

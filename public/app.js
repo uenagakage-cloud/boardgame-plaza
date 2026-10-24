@@ -2981,7 +2981,7 @@ function renderAsasore(el, v) {
         card.append(h('span', 'as-votes', `${counts[i]}票`));
         if (win) card.append(h('span', 'as-badge', '今日の正解！'));
       } else if (playing) {
-        if (g.by.includes(me)) card.append(h('span', 'muted small', 'あなたの答え'));
+        if (g.by.includes(me) && g.by.length < 2) card.append(h('span', 'muted small', 'あなたの答え'));
         else {
           const on = s.votes[me] === i;
           const b = h('button', 'btn small' + (on ? ' primary' : ''), on ? '★ これが正解！' : 'これに投票');
