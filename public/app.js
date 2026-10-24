@@ -380,7 +380,8 @@ function renderLobby() {
         more.append(pick);
       }
       const row = h('div', 'card-actions');
-      const create = h('button', 'btn primary', '部屋を作る');
+      const create = h('button', 'btn primary');
+      create.append(h('span', 'long-label', '部屋を作る'), h('span', 'short-label', '作る')); // スマホでは短く
       create.title = multi ? `${g.minPlayers}〜${g.maxPlayers}人で遊べます` : '手番はランダムに決まります';
       create.onclick = () => send({ type: 'create', game: key, side: null, options: getOptions() });
       const info = h('button', 'btn card-info', '詳細');

@@ -111,7 +111,6 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .cards-title { font-size: 1rem; margin-top: 6px; }
 /* 小さめのカードを何列かに並べて一覧しやすくする */
 .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
-@media (max-width: 760px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* 小さいカード: 名前と「部屋を作る」「詳細」だけ。詳細を開くとそのカードだけ広がる */
 .card-actions { display: flex; gap: 4px; }
 .card-actions .btn { padding: 6px 4px; font-size: .8rem; }
@@ -120,12 +119,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .card-more { display: grid; gap: 6px; }
 .card.open { grid-column: span 2; border-color: var(--accent, #2e86ab); }
 @media (max-width: 760px) { .card.open { grid-column: 1 / -1; } }
-@media (max-width: 600px) {
-  .card { padding: 8px; gap: 5px; }
-  .card-head h3 { font-size: .84rem; }
-  .card-actions .btn { font-size: .74rem; padding: 6px 2px; }
-  .card-actions .card-info { padding: 6px 7px; }
-}
+.short-label { display: none; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -979,13 +973,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .ww-result td.team1 { color: #b4412f; font-weight: 700; }
 .ww-result td.team0 { color: #2f6f8f; font-weight: 700; }
 .ww-centers { margin: 0; font-weight: 600; }
-/* スマホではカードが細いので「部屋を作る」を1段目、手番の選択を2段目にそろえる */
-@media (max-width: 520px) {
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .side-pick { display: grid; grid-template-columns: 1fr 1fr; }
-  .side-pick .btn.primary { grid-column: 1 / -1; }
-  .card { padding: 9px 10px; }
-}
+
 
 /* ---------- ito（itogame の見た目を引き継ぐ） ---------- */
 .ito, .waiting-room { --ito-accent: #e4572e; --ito-accent2: #2e86ab; --ito-ok: #2a9d5c; --ito-ng: #d1495b; --ito-back1: #2b3a67; --ito-back2: #496a81; }
@@ -1377,3 +1365,20 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
 }
 #board input, #board textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+
+/* スマホでも横に4つ: アイコンを上、名前は小さく2行まで、人数は詳細の中、ボタンは縦に */
+@media (max-width: 760px) { .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; } }
+@media (max-width: 600px) {
+  .card { padding: 5px 4px; gap: 4px; border-radius: 10px; }
+  .card-head { flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+  .card-head h3 { width: 100%; word-break: normal; overflow-wrap: anywhere; font-size: .66rem; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.4em; }
+  .card-icon { font-size: 1.15rem; }
+  .card:not(.open) .card-players { display: none; }
+  .card-actions { flex-direction: column; gap: 3px; }
+  .card-actions .btn { font-size: .68rem; padding: 5px 2px; width: 100%; }
+  .card-actions .card-info { padding: 3px 2px; font-size: .62rem; }
+  .long-label { display: none; }
+  .short-label { display: inline; }
+  .card.open .card-head { flex-direction: row; text-align: left; }
+  .card.open .card-head h3 { -webkit-line-clamp: unset; min-height: 0; font-size: .85rem; }
+}
