@@ -2262,6 +2262,7 @@ async function openPaintGallery() {
 let tb = null;
 let tbAim = { x: 0, angle: 0 };
 let tbAimKey = '';
+let tbFellKey; // 落ちた演出を出した落下（undefined = まだ部屋の様子を見ていない）
 let tbAimSent = 0;
 let tbAimTimer = null;
 const TB_CANVAS = { w: 640, h: 800 };
@@ -2503,6 +2504,18 @@ function renderTower(el, v) {
   tb.banner.hidden = !fell && !s.result;
   if (s.result) tb.banner.textContent = s.result.winner != null ? `${name(s.result.winner)} さんの勝ち！` : '引き分け';
   else if (fell) tb.banner.textContent = `落ちた！ ${name(s.fellBy)} さんは脱落`;
+  // 落ちたときの演出（1回だけ）: 画面をゆらして大きく知らせる
+  const fellKey = fell ? `${v.code}:${v.gameNo}:${s.dropCount}` : null;
+  if (fellKey && fellKey !== tbFellKey) {
+    if (tbFellKey !== undefined) {
+      showFx(`💥 落ちた！ ${name(s.fellBy)} さん脱落`, 'bad');
+      const wrap = tb.canvas.parentElement;
+      wrap.classList.remove('tb-shake');
+      void wrap.offsetWidth;
+      wrap.classList.add('tb-shake');
+    }
+  }
+  tbFellKey = fellKey || (tbFellKey === undefined ? null : tbFellKey);
   tb.players.replaceChildren(...v.seats.map((p, i) => {
     const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (i === s.turn && !s.result ? ' turn' : '') + (s.result && s.result.winner === i ? ' winner' : ''));
     chip.append(h('span', 'pname', p ? p.name : '?'));
