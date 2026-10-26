@@ -375,6 +375,20 @@ let banner = { text: '', t: 0 }, message = { text: '', t: 0 };
 let best = null;
 try { const v = localStorage.getItem('caveJumpBest'); if (v) best = +v; } catch (e) { best = null; }
 const particles = [];
+// ===== 演出 =====
+const popups = [];      // プレイヤーの近くに浮かぶ文字（ワールド座標）
+let flash = null;       // 画面全体が一瞬光る { color, t, max }
+let jumpFromY = null;   // ジャンプした足もとの高さ（ナイスジャンプの判定）
+function popup(text, color = '#fff', size = 20) {
+  popups.push({ text, color, size, x: p.x + p.w / 2, y: p.y - 6, t: 0, max: 70 });
+}
+function burst(x, y, n, colors, speed = 5) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.6);
+    particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, life: 40 + Math.random() * 30, max: 70,
+      color: colors[i % colors.length], size: 2 + Math.random() * 3, grav: 0.08 });
+  }
+}
 const motes = [];
 for (let i = 0; i < 50; i++) motes.push({ x: Math.random() * W, y: Math.random() * WORLD_H, s: Math.random() * 2 + 0.5, p: Math.random() * 6 });
 
@@ -398,6 +412,9 @@ function startGame() {
   maxLayer = 0; curLayer = 0;
   spaceLock = !!keys.Space;
   particles.length = 0;
+  popups.length = 0;
+  flash = null;
+  jumpFromY = null;
   message.t = 0;
   banner = { text: '', t: 0 };
 }
@@ -493,6 +510,7 @@ function tryGrab(up, dn) {
     for (let r = r1; r <= r2; r++) if (tileAt(c, r) === 'H') body = true;
     const below = tileAt(c, Math.floor((p.y + p.h + 2) / T)) === 'H';
     if ((up && body) || (dn && (body || (p.ground && below)))) {
+      if (!p.ground && state === 'play') { popup('キャッチ!', '#9be7ff'); burst(p.x + p.w / 2, p.y, 10, ['#9be7ff', '#fff']); jumpFromY = null; }
       p.climb = true; p.charging = false; p.charge = 0; p.vx = 0; p.vy = 0; p.ground = false;
       p.x = c * T + (T - p.w) / 2;
       if (dn && !body) p.y += 3;
@@ -540,6 +558,8 @@ function doJump() {
   p.vx = p.jdir * (1.6 + c * 3.4);
   p.ground = false; p.charging = false; p.charge = 0;
   jumps++;
+  jumpFromY = c > 0.85 ? p.y + p.h : null; // ほぼ全力のジャンプだけ
+  if (c >= 1) burst(p.x + p.w / 2, p.y + p.h, 12, ['#ffe27a', '#fff6b0'], 3);
   sfx.jump(c);
   dust(p.x + p.w / 2, p.y + p.h, 6 + Math.floor(c * 8), p.gtype === 'ice' ? '#d8f6ff' : '#a08a70', 1.5 + c * 1.5);
 }
@@ -567,7 +587,7 @@ function stepPlayer() {
       if (p.charging) {
         const before = p.charge;
         p.charge = Math.min(1, p.charge + 1 / CHARGE_FRAMES);
-        if (before < 1 && p.charge >= 1) sfx.full();
+        if (before < 1 && p.charge >= 1) { sfx.full(); popup('MAX!', '#ffe27a', 16); burst(p.x + p.w / 2, p.y + p.h / 2, 8, ['#ffe27a', '#fff']); }
         // 方向キーとスペースを同時に離しても方向が消えないよう、数フレームだけ保持する
         if (dir) { p.jdir = dir; p.face = dir; p.neutral = 0; }
         else if (++p.neutral > 6) p.jdir = 0;
@@ -603,6 +623,13 @@ function stepPlayer() {
 
 function onLand(v) {
   if (p.gtype === 'rock') p.vx = 0;
+  if (state === 'play') {
+    const rise = jumpFromY === null ? 0 : (jumpFromY - (p.y + p.h)) / T;
+    if (rise >= 3) { popup(rise >= 5 ? 'スーパージャンプ!' : 'ナイスジャンプ!', '#ffe27a'); burst(p.x + p.w / 2, p.y + p.h, 16, ['#ffe27a', '#ffb36b', '#fff']); }
+    else if (v >= MAXFALL - 0.1) popup('ドスン!', '#ffb36b', 22);
+    else if (p.gtype === 'ice' && v > 3) popup('ツルッ', '#bdf0ff', 16);
+  }
+  jumpFromY = null;
   if (v > 3) {
     sfx.land(v);
     p.squash = Math.min(1, v / 12);
@@ -630,8 +657,18 @@ function update() {
     playFrames++;
     const L = layerOf(p.y + p.h / 2);
     if (L !== curLayer) {
-      if (L < curLayer) { falls++; sfx.fall(); }
-      if (L > maxLayer) { maxLayer = L; banner = { text: LAYERS[L], t: 150 }; sfx.layer(); }
+      if (L < curLayer) {
+        falls++; sfx.fall();
+        banner = { text: `落ちた… ${LAYERS[L]}`, t: 150, color: '#ff9a8a' };
+        flash = { color: '255,60,40', t: 18, max: 18 };
+        shake = Math.max(shake, 6);
+      }
+      if (L > maxLayer) {
+        maxLayer = L; banner = { text: LAYERS[L], t: 150 }; sfx.layer();
+        popup(`第${L + 1}層 到達!`, '#ffe27a', 22);
+        burst(p.x + p.w / 2, p.y + p.h / 2, 30, ['#ffe27a', '#9be7ff', '#fff', '#ffb36b'], 6);
+        flash = { color: '255,236,150', t: 20, max: 20 };
+      }
       curLayer = L;
     }
     if (p.y + p.h < 8) {
@@ -666,6 +703,11 @@ function update() {
     m.y -= 0.15 * m.s; m.x += Math.sin((tick + m.p * 100) * 0.01) * 0.2;
     if (m.y < 0) m.y += WORLD_H;
   }
+  if (state === 'clear' && tick % 24 === 0) {
+    burst(80 + Math.random() * (W - 160), camY + 60 + Math.random() * 200, 40, [['#ffe27a', '#fff'], ['#9be7ff', '#fff'], ['#ffb36b', '#ff6b6b'], ['#b197fc', '#fff']][Math.floor(Math.random() * 4)], 6);
+  }
+  for (let i = popups.length - 1; i >= 0; i--) if (++popups[i].t >= popups[i].max) popups.splice(i, 1);
+  if (flash && --flash.t <= 0) flash = null;
   if (shake > 0) shake *= 0.85;
   if (shake < 0.3) shake = 0;
   if (banner.t > 0) banner.t--;
@@ -819,6 +861,15 @@ function render() {
   ctx.globalAlpha = 1;
 
   if (state !== 'title') drawPlayer();
+  // 浮かぶ文字
+  ctx.textBaseline = 'middle';
+  for (const q of popups) {
+    const k = q.t / q.max, pop = Math.min(1, q.t / 6);
+    ctx.globalAlpha = Math.min(1, (1 - k) * 2.5);
+    ctx.font = `bold ${Math.round(q.size * (0.6 + 0.4 * pop))}px ${FONT}`;
+    textShadow(q.text, q.x, q.y - camY - k * 36, q.color, 'center');
+  }
+  ctx.globalAlpha = 1;
 
   // 闇(深いほど暗い)
   const layerF = 1 - camY / (WORLD_H - H); // 0 = 最上層, 1 = 最下層
@@ -827,6 +878,7 @@ function render() {
   const dg = ctx.createRadialGradient(px, py, 70, px, py, 560);
   dg.addColorStop(0, 'rgba(0,0,8,0)'); dg.addColorStop(1, `rgba(0,0,8,${dark})`);
   ctx.fillStyle = dg; ctx.fillRect(-20, -20, W + 40, H + 40);
+  if (flash) { ctx.fillStyle = `rgba(${flash.color},${(flash.t / flash.max) * 0.35})`; ctx.fillRect(-20, -20, W + 40, H + 40); }
   ctx.restore();
 
   if (state === 'play' || state === 'intro') {
@@ -836,7 +888,7 @@ function render() {
       ctx.globalAlpha = Math.max(0, a);
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 150, W, 56);
       ctx.font = `bold 28px ${FONT}`; ctx.textBaseline = 'middle';
-      textShadow(banner.text, W / 2, 178, '#ffe9a8', 'center');
+      textShadow(banner.text, W / 2, 178, banner.color || '#ffe9a8', 'center');
       ctx.globalAlpha = 1;
     }
     if (message.t > 0) {
