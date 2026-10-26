@@ -80,7 +80,7 @@ export function applyMove(s, mv, seat) {
 
 // ---------- CPU ----------
 // p がつなぐのに、あと何個置けばよいか（自分の石 0・空き 1・相手の石は通れない）
-function distance(board, p) {
+export function distance(board, p) {
   const n = board.length;
   const dist = Array(n * n).fill(Infinity);
   const dq = [];

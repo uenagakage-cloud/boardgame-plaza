@@ -40,7 +40,7 @@ import * as hbball from './games/hbball.js';
 import { asobiRenderers } from './asobi-ui.js';
 
 const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball };
-// アソビ大全から入れたゲーム（ロビーでまとめて出す）
+// アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
 const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball"]);
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
@@ -221,9 +221,8 @@ function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
     // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
-    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')], ['アソビ大全から', h('div', 'cards')]];
-    groups.splice(2, 0, groups.pop()); // アクションの前に置く
-    const ACTION_GROUP = 3;
+    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')]];
+    const ACTION_GROUP = 2;
     for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
     // アクションゲームは別のしくみのリアルタイムゲームなので、それぞれのページを開く
     for (const a of ACTION_GAMES) {
@@ -256,7 +255,7 @@ function renderLobby() {
       head.append(h('span', 'card-icon', GAME_INFO[key].icon), h('h3', null, shortTitle),
         h('span', 'card-players', multi ? (g.minPlayers === 1 ? `1〜${g.maxPlayers}人` : `${g.minPlayers}〜${g.maxPlayers}人`) : '2人'));
       card.append(head, h('p', 'muted', GAME_INFO[key].desc));
-      groups[ASOBI.has(key) ? 2 : multi ? 1 : 0][1].append(card);
+      groups[g.botInTick && multi ? ACTION_GROUP : multi ? 1 : 0][1].append(card); // VSタンク（リアルタイム）はアクションへ
       let getOptions = () => ({});
       if (key === 'gungi') {
         const label = h('label', 'option-toggle');
@@ -3581,28 +3580,34 @@ const FX_RULES = {
   catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),
   // アソビ大全から入れたゲーム
-  morris: (e) => (/ミル！/.test(e) ? ['ミル！ 1つ取る', 'big'] : null),
+  morris: (e) => (/ミル！/.test(e) ? ['ミル！ 1つ取る', 'big'] : /×/.test(e) ? ['コマを取った！', 'good'] : null),
   checkers: (e) => {
     const jumps = (e.match(/x/g) || []).length;
     if (/キング！/.test(e)) return ['キング！', 'big'];
-    return jumps >= 2 ? [`${jumps}連続ジャンプ！`, 'good'] : null;
+    return jumps >= 2 ? [`${jumps}連続ジャンプ！`, 'big'] : jumps === 1 ? ['ジャンプで取った！', 'good'] : null;
   },
-  domino: (e) => (/ゾロ目/.test(e) ? ['ゾロ目！', 'info'] : null),
-  ccheckers: (e) => { const m = e.match(/(\d+)回ジャンプ/); return m && Number(m[1]) >= 3 ? [`${m[1]}連続ジャンプ！`, 'good'] : null; },
-  ludo: (e) => (/家に戻した/.test(e) ? ['つかまえた！ 家に戻す', 'big'] : /ゴール！/.test(e) ? ['ゴール！', 'good'] : /6が3回/.test(e) ? ['6が3回… 番は終わり', 'bad'] : null),
-  sevens: (e) => (/ドボン/.test(e) ? ['ドボン！', 'bad'] : /上がり/.test(e) ? ['上がり！', 'good'] : null),
+  domino: (e) => (/上がり/.test(e) ? null : /ゾロ目/.test(e) ? ['ゾロ目！', 'info'] : /パス/.test(e) ? ['パス…', 'bad'] : null),
+  ccheckers: (e) => { const m = e.match(/(\d+)回ジャンプ/); return m && Number(m[1]) >= 2 ? [`${m[1]}連続ジャンプ！`, Number(m[1]) >= 4 ? 'big' : 'good'] : null; },
+  ludo: (e) => (/家に戻した/.test(e) ? ['つかまえた！ 家に戻す', 'big'] : /ゴール！/.test(e) ? ['ゴール！', 'good'] : /6が3回/.test(e) ? ['6が3回… 番は終わり', 'bad']
+    : /コマを出した/.test(e) ? ['出陣！', 'info'] : /動かせるコマがない/.test(e) ? ['動けない…', 'bad'] : null),
+  sevens: (e) => (/ドボン/.test(e) ? ['ドボン！', 'bad'] : /上がり/.test(e) ? ['上がり！', 'good'] : /パス（\d回目）/.test(e) ? ['パス', 'info'] : null),
   memory: (e) => (/そろった/.test(e) ? ['そろった！', 'good'] : null),
-  blackjack: (e) => (/ブラックジャック！/.test(e) ? ['ブラックジャック！', 'big'] : /バースト/.test(e) ? ['バースト…', 'bad'] : null),
-  lastcard: (e) => (/言い忘れ/.test(e) ? ['言い忘れ！ 2枚引く', 'bad'] : /ラストカード！/.test(e) ? ['ラストカード！', 'info'] : null),
-  pigtail: (e) => { const m = e.match(/(\d+)枚引き取り/); return m ? [`ぶた！ ${m[1]}枚 引き取り`, 'bad'] : null; },
-  yacht: (e) => (/ヨット 50点/.test(e) ? ['ヨット！ 50点', 'big'] : /ボーナス/.test(e) ? ['ボーナス +35！', 'good'] : /B\.ストレート 30点/.test(e) ? ['B.ストレート！', 'good'] : null),
+  blackjack: (e) => (/ブラックジャック！/.test(e) ? ['ブラックジャック！', 'big'] : /ディーラーがバースト/.test(e) ? ['ディーラーがバースト！', 'good'] : /バースト/.test(e) ? ['バースト…', 'bad']
+    : /ダブル！/.test(e) ? ['ダブル！', 'info'] : /^第\d/.test(e) ? [e.replace(/\/\d+/, '').replace('第', '第 '), 'info'] : null),
+  lastcard: (e) => (/言い忘れ/.test(e) ? ['言い忘れ！ 2枚引く', 'bad'] : /ラストカード！/.test(e) ? ['ラストカード！', 'big'] : /ワイルドドロー4/.test(e) ? ['ドロー4！', 'bad']
+    : /ドロー2/.test(e) ? ['ドロー2！', 'bad'] : /リバース/.test(e) ? ['リバース！', 'info'] : /スキップ/.test(e) ? ['スキップ！', 'info'] : /ワイルド/.test(e) ? ['ワイルド！', 'info'] : null),
+  pigtail: (e) => { const m = e.match(/(\d+)枚引き取り/); return m ? [`ぶた！ ${m[1]}枚 引き取り`, Number(m[1]) >= 8 ? 'big' : 'bad'] : null; },
+  yacht: (e) => (/ヨット 50点/.test(e) ? ['ヨット！ 50点', 'big'] : /ボーナス/.test(e) ? ['ボーナス +35！', 'big'] : /B\.ストレート 30点/.test(e) ? ['B.ストレート！', 'good']
+    : /S\.ストレート 15点/.test(e) ? ['S.ストレート！', 'good'] : /フルハウス [1-9]/.test(e) ? ['フルハウス！', 'good'] : /フォーダイス [1-9]/.test(e) ? ['フォーダイス！', 'good'] : / 0点/.test(e) ? ['0点…', 'bad'] : null),
   koikoi: (e) => {
     if (/こいこい！/.test(e)) return ['こいこい！', 'big'];
-    const m = e.match(/(五光|四光|雨四光|三光|猪鹿蝶|花見で一杯|月見で一杯|赤短・青短|赤短|青短|手四|くっつき)/);
-    return m && /点$/.test(e) ? [`${m[1]}！`, 'big'] : null;
+    const m = e.match(/(五光|四光|雨四光|三光|猪鹿蝶|花見で一杯|月見で一杯|赤短・青短|赤短|青短|手四|くっつき|タネ|タン|カス)/);
+    if (m && /点$/.test(e)) return [`${m[1]}！ 勝負`, 'big'];
+    return /引き分け/.test(e) ? ['この月は引き分け', 'info'] : null;
   },
-  tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : null),
-  hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'info'] : null),
+  speed: (e) => (/スタート！/.test(e) ? ['スピード！', 'big'] : null),
+  tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : /ラウンドの勝ち/.test(e) ? ['ラウンドの勝ち！', 'good'] : /相打ち/.test(e) ? ['相打ち！', 'info'] : /^第\d+ラウンド/.test(e) ? [e, 'info'] : null),
+  hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'big'] : /0ヒット 0ブロー/.test(e) ? ['かすりもしない…', 'bad'] : /(\d)ヒット/.test(e) && /[12]ヒット/.test(e) ? [e.match(/\dヒット \dブロー/)[0], 'info'] : null),
 };
 // 前の状態と比べて分かる出来事（ログに出ないもの）
 const countIf = (board, f) => board.flat().filter(f).length;
@@ -3657,6 +3662,41 @@ const FX_STATE = {
     const p = b.findIndex((n, i) => n === 1 && a[i] > 1);
     return p >= 0 ? [`P${p + 1} あと1枚！`, 'big'] : null;
   },
+  // アソビ大全から入れたゲーム
+  hex: (ps, s) => {
+    if (s.result || s.moves === ps.moves) return null;
+    const p = ps.turn;
+    return hex.distance(s.board, p) === 1 && hex.distance(ps.board, p) > 1 ? ['リーチ！ あと1つでつながる', 'info'] : null;
+  },
+  morris: (ps, s) => {
+    for (const p of [0, 1]) if (morris.phaseOf(s, p) === 'fly' && morris.phaseOf(ps, p) !== 'fly' && !s.result) return [`P${p + 1} 残り3個！ 飛べる`, 'info'];
+    return null;
+  },
+  ccheckers: (ps, s) => {
+    const p = ps.turn;
+    if (s.out[p] || s.result) return null;
+    const a = ccheckers.inTarget(ps, p), b = ccheckers.inTarget(s, p);
+    return b > a && (b === 1 || b >= 8) ? [b === 1 ? '陣地に1つ目！' : `あと${10 - b}つ！`, 'good'] : null;
+  },
+  ludo: (ps, s) => (s.rolled && !ps.rolled && s.dice === 6 && s.sixes < 3 ? ['6！ もう1回', 'good'] : null),
+  memory: (ps, s) => (s.last && s.last.match && s.scores[s.last.by] - ps.scores[s.last.by] === 1 && ps.last && ps.last.match && ps.last.by === s.last.by ? ['連続でそろった！', 'big'] : null),
+  speed: (ps, s) => {
+    if ((s.flips || 0) > (ps.flips || 0)) return ['出しなおし！', 'info'];
+    const left = (st, p) => st.deckCounts[p] + st.field[p].filter(Boolean).length;
+    const p = [0, 1].find((q) => left(s, q) <= 3 && left(ps, q) > 3);
+    return p != null && !s.result ? [`P${p + 1} あと${left(s, p)}枚！`, 'big'] : null;
+  },
+  sevens: (ps, s) => {
+    const a = ps.handCounts || [], b = s.handCounts || [];
+    const p = b.findIndex((n, i) => n === 1 && a[i] > 1);
+    return p >= 0 ? [`P${p + 1} あと1枚！`, 'big'] : null;
+  },
+  domino: (ps, s) => {
+    const a = ps.handCounts || [], b = s.handCounts || [];
+    const p = b.findIndex((n, i) => n === 1 && a[i] > 1);
+    return p >= 0 ? [`P${p + 1} あと1枚！`, 'big'] : null;
+  },
+  blackjack: (ps, s) => (s.phase === 'dealer' && ps.phase === 'play' ? ['ディーラーの番', 'info'] : null),
 };
 // 試合の終わり（勝ち・負け・引き分け）
 function resultFx(v) {
@@ -3673,7 +3713,7 @@ function fxCheck(v) {
   fxSeen[v.code] = { key, len: s.history.length, state: s };
   if (!prev) return; // 部屋に入ったばかり（前の出来事は出さない）
   const ps = prev.key === key ? prev.state : null;
-  const named = (m) => m.replace(/(?:P|プレイヤー)(d+)/g, (all, n) => v.seats[n - 1]?.name || all);
+  const named = (m) => m.replace(/(?:P|プレイヤー)(\d+)/g, (all, n) => v.seats[n - 1]?.name || all);
   const out = [];
   const rule = FX_RULES[v.game];
   if (rule) {
