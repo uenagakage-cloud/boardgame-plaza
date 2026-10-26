@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>関節ウォーカー</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0f1720; overflow: hidden;
+    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; color: #fff;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }
+  #hud { position: fixed; top: 12px; left: 12px; right: 12px; display: flex;
+    justify-content: space-between; pointer-events: none; text-shadow: 0 1px 3px #0008; }
+  #hud .big { font-size: 28px; font-weight: 700; }
+  #hud .small { font-size: 14px; opacity: .85; }
+  #tools { position: fixed; top: 84px; right: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  #tools button, #home { font: inherit; font-size: 13px; color: #fff; background: #0009; border: 1px solid #4a5868;
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; touch-action: manipulation; }
+  #home { position: fixed; top: 84px; left: 12px; text-decoration: none; z-index: 2; }
+  #tools { z-index: 2; }
+  #keys { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: grid; grid-template-columns: repeat(2, auto); gap: 6px 28px;
+    background: #0009; padding: 10px 16px; border-radius: 10px; font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .name { width: 64px; }
+  .L .name { color: #6cb6ff; } .R .name { color: #ffa94d; }
+  kbd { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 22px; text-align: center; padding: 2px 6px;
+    border-radius: 5px; background: #2b3542; border: 1px solid #4a5868; font-family: inherit; cursor: pointer; touch-action: none; }
+  kbd b { font-weight: 400; font-size: 11px; opacity: .8; }
+  kbd.on { background: #ffd43b; color: #000; border-color: #ffd43b; }
+  .gauge { width: 70px; height: 6px; background: #2b3542; border-radius: 3px; position: relative; }
+  .gauge i { position: absolute; top: -3px; width: 4px; height: 12px; background: #fff; border-radius: 2px; }
+  #msg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; background: #000a; text-align: center; padding: 16px; box-sizing: border-box; cursor: pointer; }
+  #msg h1 { margin: 0 0 12px; font-size: 44px; }
+  #msg p { margin: 6px; font-size: 18px; line-height: 1.6; }
+  .touch-only { display: none; }
+  .hidden { display: none !important; }
+  @media (max-width: 640px) {
+    #keys { grid-template-columns: 1fr; gap: 4px; font-size: 12px; width: calc(100% - 32px); box-sizing: border-box; }
+    .name { width: 56px; } .gauge { flex: 1; }
+    #hud .big { font-size: 22px; }
+    #msg h1 { font-size: 32px; } #msg p { font-size: 15px; }
+  }
+  /* スマホ・タブレット: 左脚は左下、右脚は右下に大きなボタン（両手の親指で押す） */
+  @media (pointer: coarse) {
+    .touch-only { display: block; }
+    .key-only { display: none; }
+    #keys { left: 0; right: 0; bottom: 0; transform: none; width: auto; background: none; padding: 0 8px calc(8px + env(safe-area-inset-bottom));
+      display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; pointer-events: none; }
+    .leg { display: grid; gap: 6px; background: #000a; border-radius: 12px; padding: 6px; pointer-events: auto; }
+    .row { gap: 6px; }
+    .name { width: 3.2em; font-size: 12px; line-height: 1.2; }
+    #assist { display: none; }
+    kbd { min-width: 0; width: 54px; height: 46px; padding: 0; font-size: 17px; font-weight: 700; border-radius: 10px; }
+    kbd b { display: none; }
+    .gauge { display: none; }
+    #hud .big { font-size: 20px; }
+    #hud .small { font-size: 12px; }
+    #tools, #home { top: 70px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div><div class="big" id="dist">0.0 m</div><div class="small" id="goalInfo"></div></div>
+  <div style="text-align:right"><div class="big" id="time">0.0 秒</div>
+    <div class="small" id="best"></div><div class="small" id="assist"></div></div>
+</div>
+<a id="home" href="/">← ゲームいっぱい</a>
+<div id="tools"><button id="btnRetry" type="button">↺ やり直し</button><button id="btnAssist" type="button">姿勢補助</button></div>
+<div id="keys"></div>
+<div id="msg">
+  <h1>関節ウォーカー</h1>
+  <p>関節を1つずつ動かして、ゴールの旗まで歩こう！<br>頭か胴体が地面に着いたら失敗。</p>
+  <p class="key-only"><b style="color:#6cb6ff">左脚</b>：股関節 Q/W　膝 A/S　足首 Z/X<br>
+     <b style="color:#ffa94d">右脚</b>：股関節 U/I　膝 J/K　足首 M/,</p>
+  <p class="key-only">H：姿勢補助 ON/OFF　R：やり直し</p>
+  <p class="touch-only">画面の下のボタンを押している間、関節が動きます。<br>
+     <b style="color:#6cb6ff">左下＝左脚</b>・<b style="color:#ffa94d">右下＝右脚</b>（両手の親指で）<br>
+     股＝脚を前／後ろへ　膝＝伸ばす／曲げる　足首＝つま先を上／下</p>
+  <p><b class="key-only">スペースキーでスタート</b><b class="touch-only">タップでスタート</b></p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/planck@1.0.0/dist/planck.min.js"></script>
+<script>
+const { World, Vec2, Box, Circle, Edge, RevoluteJoint } = planck;
+
+const GOAL = 50;          // ゴール距離 (m)
+const SCALE = 110;        // px / m
+const DT = 1 / 60;
+
+// 関節定義：キー(+方向, -方向)、可動域、モーター強さ。tap はスマホのボタンの文字
+const JOINTS = [
+  { id: 'lHip',   leg: 'L', name: '左股関節', short: '股', keys: ['KeyQ', 'KeyW'], label: ['Q', 'W'], tap: ['前', '後'], lo: -0.9, hi: 1.7, torque: 260 },
+  { id: 'lKnee',  leg: 'L', name: '左膝',     short: '膝', keys: ['KeyA', 'KeyS'], label: ['A', 'S'], tap: ['伸', '曲'], lo: -2.4, hi: 0.0, torque: 220 },
+  { id: 'lAnkle', leg: 'L', name: '左足首',   short: '足首', keys: ['KeyZ', 'KeyX'], label: ['Z', 'X'], tap: ['上', '下'], lo: -0.7, hi: 0.7, torque: 120 },
+  { id: 'rHip',   leg: 'R', name: '右股関節', short: '股', keys: ['KeyU', 'KeyI'], label: ['U', 'I'], tap: ['前', '後'], lo: -0.9, hi: 1.7, torque: 260 },
+  { id: 'rKnee',  leg: 'R', name: '右膝',     short: '膝', keys: ['KeyJ', 'KeyK'], label: ['J', 'K'], tap: ['伸', '曲'], lo: -2.4, hi: 0.0, torque: 220 },
+  { id: 'rAnkle', leg: 'R', name: '右足首',   short: '足首', keys: ['KeyM', 'Comma'], label: ['M', ','], tap: ['上', '下'], lo: -0.7, hi: 0.7, torque: 120 },
+];
+const TURN_RATE = 3.2;    // キー押下中の目標角度変化 (rad/s)
+const TOUCH = matchMedia('(pointer: coarse)').matches;
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+const pressed = new Set();
+
+let world, parts, joints, state, elapsed, assist = true, acc = 0, lastT = 0;
+let best = null;
+try { best = JSON.parse(localStorage.getItem('jointWalkerBest')); } catch (e) {}
+
+// ---------- HUD ----------
+const keysEl = $('keys');
+if (TOUCH) {
+  // スマホ: 左脚・右脚を左右に分ける
+  for (const leg of ['L', 'R']) {
+    const box = document.createElement('div');
+    box.className = 'leg';
+    for (const j of JOINTS.filter(j => j.leg === leg)) box.appendChild(jointRow(j));
+    keysEl.appendChild(box);
+  }
+} else {
+  // 左列=左脚、右列=右脚 になるよう並べる
+  for (const i of [0, 3, 1, 4, 2, 5]) keysEl.appendChild(jointRow(JOINTS[i]));
+}
+function jointRow(j) {
+  const row = document.createElement('div');
+  row.className = 'row ' + j.leg;
+  const name = TOUCH ? (j.leg === 'L' ? '左' : '右') + j.short : j.name;
+  row.innerHTML = `<span class="name">${name}</span>` +
+    `<kbd id="k_${j.keys[0]}">${TOUCH ? j.tap[0] : j.label[0]}<b>${j.tap[0]}</b></kbd>` +
+    `<kbd id="k_${j.keys[1]}">${TOUCH ? j.tap[1] : j.label[1]}<b>${j.tap[1]}</b></kbd><div class="gauge"><i id="g_${j.id}"></i></div>`;
+  return row;
+}
+
+// ---------- 物理世界の構築 ----------
+function build() {
+  world = new World({ gravity: Vec2(0, -10) });
+  parts = {}; joints = {};
+
+  const ground = world.createBody();
+  ground.createFixture(Edge(Vec2(-20, 0), Vec2(GOAL + 40, 0)), { friction: 1.0, userData: 'ground' });
+
+  const body = (x, y, shape, opts = {}) => {
+    const b = world.createBody({ type: 'dynamic', position: Vec2(x, y),
+      angularDamping: opts.angularDamping ?? 0.5, linearDamping: 0.05 });
+    b.createFixture(shape, { density: opts.density ?? 30, friction: opts.friction ?? 0.8,
+      filterGroupIndex: -1, userData: opts.tag || 'limb' });
+    return b;
+  };
+
+  const X = 0;
+  parts.torso = body(X, 1.45, Box(0.15, 0.35), { tag: 'torso', angularDamping: 2 });
+  parts.head  = body(X + 0.02, 1.96, Circle(0.14), { tag: 'head' });
+  world.createJoint(planck.WeldJoint({}, parts.torso, parts.head, Vec2(X, 1.82)));
+
+  for (const s of ['l', 'r']) {
+    const thigh = body(X, 0.85, Box(0.075, 0.25));
+    const shin  = body(X, 0.35, Box(0.06, 0.25));
+    const foot  = body(X + 0.07, 0.05, Box(0.14, 0.05), { friction: 1.6 });
+    parts[s + 'Thigh'] = thigh; parts[s + 'Shin'] = shin; parts[s + 'Foot'] = foot;
+    const mk = (id, a, b, anchor) => {
+      const def = JOINTS.find(j => j.id === id);
+      const jt = world.createJoint(RevoluteJoint({
+        enableMotor: true, maxMotorTorque: def.torque, motorSpeed: 0,
+        enableLimit: true, lowerAngle: def.lo, upperAngle: def.hi,
+      }, a, b, anchor));
+      joints[id] = { joint: jt, def, target: 0 };
+    };
+    mk(s + 'Hip',   parts.torso, thigh, Vec2(X, 1.1));
+    mk(s + 'Knee',  thigh, shin,        Vec2(X, 0.6));
+    mk(s + 'Ankle', shin, foot,         Vec2(X, 0.1));
+  }
+  // 初期姿勢：少し脚を開いて立たせる
+  joints.lHip.target = 0.25; joints.rHip.target = -0.2;
+  joints.lKnee.target = -0.15; joints.rKnee.target = -0.1;
+
+  world.on('begin-contact', c => {
+    const a = c.getFixtureA().getUserData(), b = c.getFixtureB().getUserData();
+    const other = a === 'ground' ? b : b === 'ground' ? a : null;
+    if ((other === 'head' || other === 'torso') && state === 'play') finish(false);
+  });
+}
+
+function reset(start) {
+  build();
+  elapsed = 0; acc = 0;
+  state = start ? 'play' : 'ready';
+}
+
+function finish(win) {
+  state = win ? 'win' : 'fail';
+  finishedAt = performance.now();
+  const d = Math.max(0, parts.torso.getPosition().x);
+  let html;
+  if (win) {
+    const newBest = !best || elapsed < best;
+    if (newBest) { best = elapsed; try { localStorage.setItem('jointWalkerBest', JSON.stringify(best)); } catch (e) {} }
+    html = `<h1>🏁 ゴール！</h1><p>タイム <b>${elapsed.toFixed(2)} 秒</b>${newBest ? '　<b style="color:#ffd43b">ベスト更新！</b>' : ''}</p>`;
+  } else {
+    html = `<h1>転倒…</h1><p>記録 <b>${d.toFixed(1)} m</b> / ${GOAL} m</p>`;
+  }
+  $('msg').innerHTML = html + `<p><b>${TOUCH ? 'タップでもう一度' : 'スペース または R でもう一度'}</b></p>`;
+  $('msg').classList.remove('hidden');
+}
+let finishedAt = -Infinity;
+
+function start() { reset(true); $('msg').classList.add('hidden'); }
+
+// ---------- 入力 ----------
+const GAME_KEYS = new Set(JOINTS.flatMap(j => j.keys));
+addEventListener('keydown', e => {
+  if (GAME_KEYS.has(e.code) || e.code === 'Space') e.preventDefault();
+  pressed.add(e.code);
+  if (e.code === 'Space' && state !== 'play') start();
+  if (e.code === 'KeyR') start();
+  if (e.code === 'KeyH') assist = !assist;
+});
+addEventListener('keyup', e => pressed.delete(e.code));
+addEventListener('blur', () => pressed.clear());
+
+// 画面のボタン: 押している間だけ動く。指ごとに覚えるので、何本の指でも同時に押せる
+const touchKeys = new Map(); // pointerId → キー
+for (const j of JOINTS) for (const code of j.keys) {
+  const el = $('k_' + code);
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (state !== 'play') return;
+    touchKeys.set(e.pointerId, code);
+    pressed.add(code);
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  const up = e => {
+    if (touchKeys.get(e.pointerId) !== code) return;
+    touchKeys.delete(e.pointerId);
+    if (![...touchKeys.values()].includes(code)) pressed.delete(code);
+  };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+}
+// 終わってすぐの画面タップで、うっかり次が始まらないよう少し待つ
+$('msg').addEventListener('click', () => { if (state !== 'play' && performance.now() - finishedAt > 600) start(); });
+$('btnRetry').addEventListener('click', e => { e.currentTarget.blur(); start(); });
+$('btnAssist').addEventListener('click', e => { e.currentTarget.blur(); assist = !assist; });
+addEventListener('contextmenu', e => e.preventDefault());
+
+// ---------- 更新 ----------
+function step() {
+  for (const k in joints) {
+    const j = joints[k], d = j.def;
+    if (state === 'play') {
+      if (pressed.has(d.keys[0])) j.target += TURN_RATE * DT;
+      if (pressed.has(d.keys[1])) j.target -= TURN_RATE * DT;
+    }
+    j.target = Math.min(d.hi, Math.max(d.lo, j.target));
+    const err = j.target - j.joint.getJointAngle();
+    j.joint.setMotorSpeed(Math.max(-9, Math.min(9, err * 14)));
+  }
+  // 姿勢補助：胴体をゆるく直立方向へ戻す
+  if (assist) {
+    const t = parts.torso;
+    t.applyTorque(-t.getAngle() * 60 - t.getAngularVelocity() * 8, true);
+  }
+  world.step(DT, 10, 4);
+  if (state === 'play') {
+    elapsed += DT;
+    if (parts.torso.getPosition().x >= GOAL) finish(true);
+  }
+}
+
+// ---------- 描画 ----------
+function draw() {
+  const dpr = devicePixelRatio;
+  const W = canvas.width = innerWidth * dpr;
+  const H = canvas.height = innerHeight * dpr;
+  const s = SCALE * dpr * Math.min(1, innerHeight / 700, innerWidth / 480);
+  const tp = parts.torso.getPosition();
+  // 縦長のスマホでは、下のボタンに隠れないよう地面を上げる
+  let groundY = H * 0.72;
+  if (TOUCH) {
+    // 左右のボタンの間がせまい（縦画面）ときだけ。横画面では人がボタンの間に立つ
+    const [a, b] = [...keysEl.children].map(el => el.getBoundingClientRect());
+    if (b.left - a.right < 220) groundY = Math.min(groundY, (Math.min(a.top, b.top) - 30) * dpr);
+  }
+  const camX = tp.x;
+  const toS = (x, y) => [W / 2 + (x - camX) * s, groundY - y * s];
+
+  // 空
+  const g = ctx.createLinearGradient(0, 0, 0, groundY);
+  g.addColorStop(0, '#5aa9e6'); g.addColorStop(1, '#bfe3ff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, groundY);
+  // 遠景の山（視差）
+  ctx.fillStyle = '#8cc4a8';
+  ctx.beginPath(); ctx.moveTo(0, groundY);
+  for (let px = 0; px <= W; px += 20) {
+    const wx = (px - W / 2) / s + camX * 0.6;
+    ctx.lineTo(px, groundY - (60 + 40 * Math.sin(wx * 0.35) + 25 * Math.sin(wx * 0.9)) * dpr);
+  }
+  ctx.lineTo(W, groundY); ctx.fill();
+  // 地面
+  ctx.fillStyle = '#6b8e3a'; ctx.fillRect(0, groundY, W, 14 * dpr);
+  ctx.fillStyle = '#8a6a43'; ctx.fillRect(0, groundY + 14 * dpr, W, H);
+
+  // 距離マーカー
+  ctx.font = `${13 * dpr}px sans-serif`; ctx.textAlign = 'center';
+  const viewHalf = W / 2 / s;
+  for (let m = Math.floor(camX - viewHalf); m <= camX + viewHalf + 1; m++) {
+    if (m < 0 || m > GOAL) continue;
+    const [x, y] = toS(m, 0);
+    ctx.fillStyle = m % 5 === 0 ? '#fff' : '#ffffff66';
+    ctx.fillRect(x - 1, y, 2 * dpr, (m % 5 === 0 ? 14 : 6) * dpr);
+    if (m % 5 === 0) ctx.fillText(m + 'm', x, y + 32 * dpr);
+  }
+  // スタートライン
+  { const [x, y] = toS(0, 0); ctx.fillStyle = '#fff'; ctx.fillRect(x - 2, y - 2, 4, 6 * dpr); }
+  // ゴール旗
+  {
+    const [x, y] = toS(GOAL, 0), poleH = 2.6 * s;
+    ctx.fillStyle = '#ddd'; ctx.fillRect(x - 3, y - poleH, 6, poleH);
+    const fw = 0.9 * s, fh = 0.6 * s, n = 6;
+    for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) {
+      ctx.fillStyle = (i + k) % 2 ? '#111' : '#fff';
+      ctx.fillRect(x + 3 + i * fw / n, y - poleH + k * fh / 4, fw / n + 1, fh / 4 + 1);
+    }
+    ctx.fillStyle = '#ffffffaa'; ctx.fillRect(x - 1, y, 2, 4);
+  }
+
+  // キャラクター
+  const limb = (b, halfLen, w, color) => {
+    const p = b.getPosition(), a = b.getAngle();
+    const dx = -Math.sin(a) * halfLen, dy = Math.cos(a) * halfLen;
+    const [x1, y1] = toS(p.x + dx, p.y + dy), [x2, y2] = toS(p.x - dx, p.y - dy);
+    ctx.strokeStyle = color; ctx.lineWidth = w * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  };
+  const foot = (b, color) => {
+    const p = b.getPosition(), a = b.getAngle();
+    const [x, y] = toS(p.x, p.y);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-a);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.roundRect(-0.14 * s, -0.05 * s, 0.28 * s, 0.1 * s, 0.04 * s); ctx.fill();
+    ctx.restore();
+  };
+  const leg = (sd, c1, c2) => {
+    limb(parts[sd + 'Thigh'], 0.22, 0.15, c1);
+    limb(parts[sd + 'Shin'], 0.22, 0.12, c1);
+    foot(parts[sd + 'Foot'], c2);
+  };
+  leg('l', '#3a7bd5', '#1f4f8f');   // 奥側＝左脚
+  // 胴体
+  {
+    const t = parts.torso, p = t.getPosition(), a = t.getAngle();
+    const [x, y] = toS(p.x, p.y);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-a);
+    ctx.fillStyle = '#e8590c';
+    ctx.beginPath(); ctx.roundRect(-0.16 * s, -0.37 * s, 0.32 * s, 0.74 * s, 0.1 * s); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${0.18 * s}px sans-serif`; ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle'; ctx.fillText('1', 0, -0.05 * s);
+    // 腕（飾り）
+    ctx.strokeStyle = '#f2c9a0'; ctx.lineWidth = 0.09 * s; ctx.lineCap = 'round';
+    const sw = Math.sin(elapsed * 3) * 0.2;
+    ctx.beginPath(); ctx.moveTo(0, -0.28 * s); ctx.lineTo(0.12 * s, 0.0); ctx.lineTo(0.28 * s, -0.12 * s + sw * s); ctx.stroke();
+    ctx.restore();
+  }
+  // 頭
+  {
+    const h = parts.head, p = h.getPosition(), a = h.getAngle();
+    const [x, y] = toS(p.x, p.y);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-a);
+    ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(0, 0, 0.14 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(0.07 * s, -0.03 * s, 0.018 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5c3a1e'; ctx.beginPath(); ctx.arc(0, 0, 0.145 * s, Math.PI * 0.95, Math.PI * 1.95); ctx.fill();
+    ctx.restore();
+  }
+  leg('r', '#ff922b', '#c25e00');   // 手前側＝右脚
+}
+
+function updateHud() {
+  const d = Math.max(0, parts.torso.getPosition().x);
+  $('dist').textContent = d.toFixed(1) + ' m';
+  $('goalInfo').textContent = `ゴールまで ${Math.max(0, GOAL - d).toFixed(1)} m`;
+  $('time').textContent = elapsed.toFixed(1) + ' 秒';
+  $('best').textContent = best ? `ベスト ${best.toFixed(2)} 秒` : 'ベスト ---';
+  $('assist').textContent = `姿勢補助 ${assist ? 'ON' : 'OFF'}${TOUCH ? '' : ' (H)'}`;
+  $('btnAssist').textContent = `姿勢補助 ${assist ? 'ON' : 'OFF'}`;
+  for (const j of JOINTS) {
+    for (const k of j.keys) $('k_' + k).classList.toggle('on', pressed.has(k));
+    const a = joints[j.id].joint.getJointAngle();
+    $('g_' + j.id).style.left = `calc(${((a - j.lo) / (j.hi - j.lo)) * 100}% - 2px)`;
+  }
+}
+
+function loop(t) {
+  const dt = Math.min(0.1, (t - lastT) / 1000 || 0); lastT = t;
+  acc += dt;
+  while (acc >= DT) { step(); acc -= DT; }
+  draw(); updateHud();
+  requestAnimationFrame(loop);
+}
+
+reset(false);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

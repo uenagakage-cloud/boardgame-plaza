@@ -145,7 +145,8 @@ const server = http.createServer(async (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { pathname = '/'; }
   if (pathname === '/api/paint-gallery') { sendGallery(req, res); return; }
-  if (pathname === '/') pathname = '/index.html';
+  if (pathname.endsWith('/')) pathname += 'index.html'; // フォルダは index.html（/walker/ など）
+  else if (pathname === '/walker' || pathname === '/cave') { res.writeHead(301, { Location: pathname + '/' }).end(); return; }
   const file = path.normalize(path.join(PUBLIC, pathname));
   if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403).end(); return; }
   try {
