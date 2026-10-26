@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/rules.test.js",
+    "test": "node test/rules.test.js && node test/asobi.test.js",
     "test:dino": "cd dino && node --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {

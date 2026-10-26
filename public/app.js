@@ -21,8 +21,27 @@ import * as connect4 from './games/connect4.js';
 import * as hagetaka from './games/hagetaka.js';
 import * as itchi from './games/itchi.js';
 import { RULES } from './rules.js';
+import * as morris from './games/morris.js';
+import * as hex from './games/hex.js';
+import * as checkers from './games/checkers.js';
+import * as domino from './games/domino.js';
+import * as ccheckers from './games/ccheckers.js';
+import * as ludo from './games/ludo.js';
+import * as sevens from './games/sevens.js';
+import * as speed from './games/speed.js';
+import * as memory from './games/memory.js';
+import * as blackjack from './games/blackjack.js';
+import * as lastcard from './games/lastcard.js';
+import * as pigtail from './games/pigtail.js';
+import * as yacht from './games/yacht.js';
+import * as koikoi from './games/koikoi.js';
+import * as tanks from './games/tanks.js';
+import * as hbball from './games/hbball.js';
+import { asobiRenderers } from './asobi-ui.js';
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball };
+// アソビ大全から入れたゲーム（ロビーでまとめて出す）
+const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball"]);
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -45,6 +64,22 @@ const GAME_INFO = {
   towerbattle: { icon: '🦒', desc: '順番に動物を島に積み上げる。落とした人は脱落、最後まで残った人の勝ち。2〜8人。' },
   paint: { icon: '🎨', desc: '直線と円しか描けないお絵かき（フリーハンドも可）でお題を当てっこ。2〜8人。' },
   gungi: { icon: '軍', desc: '駒を最大3段まで積み上げる立体将棋。入門〜上級・CPU対戦あり。' },
+  morris: { icon: '⭕', desc: '9個のコマを置いて動かし、3つ並べて相手のコマを取る昔からの陣取り。CPU対戦あり。' },
+  hex: { icon: '⬢', desc: '六角形のマスに石を置き、自分の色の2辺をつなげたら勝ち。引き分けなし。CPU対戦あり。' },
+  checkers: { icon: '🔴', desc: 'ななめに進み、相手のコマを跳び越えて取る。奥まで行くとキング。CPU対戦あり。' },
+  domino: { icon: '🁫', desc: '同じ目の牌をつなげて、先に手札をなくす。2〜4人・CPUも入れられる。' },
+  ccheckers: { icon: '✡', desc: '星の形の盤で、コマを跳び越えながら向かいの陣地へ全部運ぶ。2〜6人。' },
+  ludo: { icon: '🎲', desc: 'サイコロで4つのコマを進めてゴールへ。相手のコマを家に戻せる。2〜4人。' },
+  sevens: { icon: '7️⃣', desc: '7から順に、となりの数のカードを出していく。パスは3回まで。2〜6人。' },
+  speed: { icon: '⚡', desc: '順番なし！ 1つちがいのカードを早い者勝ちで出しまくる。CPU対戦あり。' },
+  memory: { icon: '🃏', desc: '裏向きのカードを2枚ずつめくって、同じ数字をそろえる。1人でも遊べる。' },
+  blackjack: { icon: '🂡', desc: 'ディーラーと勝負。21に近づけてチップを増やそう。1人でも遊べる。' },
+  lastcard: { icon: '🟥', desc: '色か数字を合わせて出す。残り1枚で「ラストカード」と言わないと2枚引く。2〜6人。' },
+  pigtail: { icon: '🐷', desc: '輪からカードをめくり、マークか数字がそろうと山を全部引き取り。手札が少ない人の勝ち。' },
+  yacht: { icon: '🎲', desc: 'サイコロ5個を3回までふって役を作る。12の役を埋めて合計点で勝負。1人でも遊べる。' },
+  koikoi: { icon: '🎴', desc: '花札で役を作る「こいこい」。続けるか勝負するかのかけひき。CPU対戦あり。' },
+  tanks: { icon: '🛡', desc: '迷路で戦車を動かして撃ち合う。弾は壁で1回はね返る。2〜4人・CPUあり。' },
+  hbball: { icon: '🔴', desc: '色のボール4つのかくれた並びを、ヒットとブローのヒントで当てる。1〜4人。' },
   skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
 };
 
@@ -186,7 +221,9 @@ function renderLobby() {
   const cards = $('#game-cards');
   if (!cards.childElementCount) {
     // 2人用と多人数用に分けて、小さめのカードを何列かに並べる
-    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')]];
+    const groups = [['2人で対戦', h('div', 'cards')], ['みんなで遊ぶ', h('div', 'cards')], ['アクション', h('div', 'cards')], ['アソビ大全から', h('div', 'cards')]];
+    groups.splice(2, 0, groups.pop()); // アクションの前に置く
+    const ACTION_GROUP = 3;
     for (const [title, grid] of groups) cards.append(h('h2', 'cards-title', title), grid);
     // アクションゲームは別のしくみのリアルタイムゲームなので、それぞれのページを開く
     for (const a of ACTION_GAMES) {
@@ -208,7 +245,7 @@ function renderLobby() {
       };
       row.append(play, info);
       card.append(head, more, row);
-      groups[2][1].append(card);
+      groups[ACTION_GROUP][1].append(card);
     }
     for (const [key, g] of Object.entries(GAMES)) {
       const multi = (g.maxPlayers || 2) > 2;
@@ -217,9 +254,9 @@ function renderLobby() {
       // 長い名前は語の切れ目で折り返す（​ は改行してよい位置）
       const shortTitle = g.title.replace(/(ゴブレット|ワンナイト|ワード|＆)/, '$1​');
       head.append(h('span', 'card-icon', GAME_INFO[key].icon), h('h3', null, shortTitle),
-        h('span', 'card-players', multi ? `${g.minPlayers}〜${g.maxPlayers}人` : '2人'));
+        h('span', 'card-players', multi ? (g.minPlayers === 1 ? `1〜${g.maxPlayers}人` : `${g.minPlayers}〜${g.maxPlayers}人`) : '2人'));
       card.append(head, h('p', 'muted', GAME_INFO[key].desc));
-      groups[multi ? 1 : 0][1].append(card);
+      groups[ASOBI.has(key) ? 2 : multi ? 1 : 0][1].append(card);
       let getOptions = () => ({});
       if (key === 'gungi') {
         const label = h('label', 'option-toggle');
@@ -362,6 +399,29 @@ function renderLobby() {
         gal.onclick = () => openPaintGallery();
         card.append(gal);
         getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value, painter: painterSel.value });
+      }
+      if (ASOBI.has(key) && (g.OPTIONS || g.CPU)) {
+        const selects = (g.OPTIONS || []).map(({ key: k, label, values, names }) => {
+          const lab = h('label', 'option-toggle');
+          const select = h('select', 'size-select');
+          values.forEach((val, i) => { const o = h('option', null, names ? names[i] : String(val)); o.value = String(val); select.append(o); });
+          select.value = store.get(`opt:${key}:${k}`, String(values[0]));
+          select.onchange = () => store.set(`opt:${key}:${k}`, select.value);
+          lab.append(h('span', null, label), select);
+          card.append(lab);
+          return [k, select, values];
+        });
+        let cpu = null;
+        if (g.CPU) {
+          const cpuLabel = h('label', 'option-toggle');
+          cpu = h('input');
+          cpu.type = 'checkbox';
+          cpu.checked = store.get(key + 'Cpu', '0') === '1';
+          cpu.onchange = () => store.set(key + 'Cpu', cpu.checked ? '1' : '0');
+          cpuLabel.append(cpu, h('span', null, 'CPUと対戦'));
+          card.append(cpuLabel);
+        }
+        getOptions = () => ({ ...Object.fromEntries(selects.map(([k, sel, values]) => [k, values.find((x) => String(x) === sel.value)])), ...(cpu ? { cpu: cpu.checked } : {}) });
       }
       // 説明・設定は「詳細」の中にしまう（ゲームが多いので、ふだんは名前とボタンだけ）
       const more = h('div', 'card-more');
@@ -641,6 +701,7 @@ function renderWaiting(el, v) {
     const li = h('li', null, p.name);
     if (i === v.hostSeat) li.append(' ', h('span', 'host-tag', 'ホスト'));
     if (i === v.you) li.append(' ', h('span', 'you-tag', 'あなた'));
+    if (p.bot) li.append(' ', h('span', 'host-tag', 'CPU'));
     li.append(h('span', 'dot ' + (p.online ? 'on' : 'off')));
     if (host && i !== v.you) {
       const kick = h('button', 'btn small ghost', '外す');
@@ -652,6 +713,12 @@ function renderWaiting(el, v) {
     ul.append(li);
   });
   box.append(ul);
+  const g = GAMES[v.game];
+  if (host && v.multi && (g.aiMove || g.botInTick) && v.seats.some((p) => !p)) {
+    const add = h('button', 'btn', '🤖 CPU を入れる');
+    add.onclick = () => send({ type: 'addBot' });
+    box.append(add);
+  }
   if (v.you < 0 && v.seats.some((p) => !p)) {
     const join = h('button', 'btn primary', 'この部屋に参加する');
     join.onclick = () => send({ type: 'join', code: v.code });
@@ -3449,6 +3516,8 @@ async function gnClick(here, ts, s, v, legal) {
 
 const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, hagetaka: renderHagetaka, itchi: renderItchi };
 
+Object.assign(RENDERERS, asobiRenderers({ h, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset }));
+
 // ---------- イベント ----------
 const nameInput = $('#name');
 nameInput.value = store.get('name', '');
@@ -3511,6 +3580,29 @@ const FX_RULES = {
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
   catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),
+  // アソビ大全から入れたゲーム
+  morris: (e) => (/ミル！/.test(e) ? ['ミル！ 1つ取る', 'big'] : null),
+  checkers: (e) => {
+    const jumps = (e.match(/x/g) || []).length;
+    if (/キング！/.test(e)) return ['キング！', 'big'];
+    return jumps >= 2 ? [`${jumps}連続ジャンプ！`, 'good'] : null;
+  },
+  domino: (e) => (/ゾロ目/.test(e) ? ['ゾロ目！', 'info'] : null),
+  ccheckers: (e) => { const m = e.match(/(\d+)回ジャンプ/); return m && Number(m[1]) >= 3 ? [`${m[1]}連続ジャンプ！`, 'good'] : null; },
+  ludo: (e) => (/家に戻した/.test(e) ? ['つかまえた！ 家に戻す', 'big'] : /ゴール！/.test(e) ? ['ゴール！', 'good'] : /6が3回/.test(e) ? ['6が3回… 番は終わり', 'bad'] : null),
+  sevens: (e) => (/ドボン/.test(e) ? ['ドボン！', 'bad'] : /上がり/.test(e) ? ['上がり！', 'good'] : null),
+  memory: (e) => (/そろった/.test(e) ? ['そろった！', 'good'] : null),
+  blackjack: (e) => (/ブラックジャック！/.test(e) ? ['ブラックジャック！', 'big'] : /バースト/.test(e) ? ['バースト…', 'bad'] : null),
+  lastcard: (e) => (/言い忘れ/.test(e) ? ['言い忘れ！ 2枚引く', 'bad'] : /ラストカード！/.test(e) ? ['ラストカード！', 'info'] : null),
+  pigtail: (e) => { const m = e.match(/(\d+)枚引き取り/); return m ? [`ぶた！ ${m[1]}枚 引き取り`, 'bad'] : null; },
+  yacht: (e) => (/ヨット 50点/.test(e) ? ['ヨット！ 50点', 'big'] : /ボーナス/.test(e) ? ['ボーナス +35！', 'good'] : /B\.ストレート 30点/.test(e) ? ['B.ストレート！', 'good'] : null),
+  koikoi: (e) => {
+    if (/こいこい！/.test(e)) return ['こいこい！', 'big'];
+    const m = e.match(/(五光|四光|雨四光|三光|猪鹿蝶|花見で一杯|月見で一杯|赤短・青短|赤短|青短|手四|くっつき)/);
+    return m && /点$/.test(e) ? [`${m[1]}！`, 'big'] : null;
+  },
+  tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : null),
+  hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'info'] : null),
 };
 // 前の状態と比べて分かる出来事（ログに出ないもの）
 const countIf = (board, f) => board.flat().filter(f).length;

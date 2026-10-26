@@ -27,13 +27,29 @@ import * as mancala from './public/games/mancala.js';
 import * as connect4 from './public/games/connect4.js';
 import * as hagetaka from './public/games/hagetaka.js';
 import * as itchi from './public/games/itchi.js';
+import * as morris from './public/games/morris.js';
+import * as hex from './public/games/hex.js';
+import * as checkers from './public/games/checkers.js';
+import * as domino from './public/games/domino.js';
+import * as ccheckers from './public/games/ccheckers.js';
+import * as ludo from './public/games/ludo.js';
+import * as sevens from './public/games/sevens.js';
+import * as speed from './public/games/speed.js';
+import * as memory from './public/games/memory.js';
+import * as blackjack from './public/games/blackjack.js';
+import * as lastcard from './public/games/lastcard.js';
+import * as pigtail from './public/games/pigtail.js';
+import * as yacht from './public/games/yacht.js';
+import * as koikoi from './public/games/koikoi.js';
+import * as tanks from './public/games/tanks.js';
+import * as hbball from './public/games/hbball.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 import { mountDino } from './dino/server/mount.js';
 import { createRequire } from 'node:module';
 // ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
 const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -212,6 +228,7 @@ function hostSeat(room) {
 const gameContext = (room) => ({
   hostSeat: hostSeat(room),
   online: room.seats.map((s) => !!s && isOnline(room, s.clientId)),
+  bots: room.seats.map((s) => !!(s && s.bot)),
   physics: towerPhysics, // どうぶつタワーバトルの物理（サーバーだけで計算する）
 });
 
@@ -242,13 +259,14 @@ function scheduleBot(room) {
   if (!g.aiMove || !room.state || room.state.result || room.botFor === room.state) return;
   // 手番の CPU か、手番に関係なく動ける場面（ヒット&ブローの数字決めなど）なら CPU が動く
   const outOfTurn = !!g.canActOutOfTurn?.(room.state);
-  const seat = room.seats.findIndex((p, i) => p && p.bot && (i === room.state.turn || outOfTurn));
-  if (seat < 0) return;
+  const seats = room.seats.map((p, i) => (p && p.bot && (i === room.state.turn || outOfTurn) ? i : -1)).filter((i) => i >= 0);
+  if (!seats.length) return;
   room.botFor = room.state;
   setTimeout(() => {
     if (!rooms.has(room.code) || room.botFor !== room.state || room.state.result) return;
     try {
-      const move = g.aiMove(room.state, seat, rng);
+      let seat = -1, move = null;
+      for (const i of seats) { move = g.aiMove(room.state, i, rng); if (move) { seat = i; break; } }
       if (!move) return; // 今は何もすることがない
       room.state = g.applyMove(room.state, move, seat, rng, gameContext(room));
     } catch (e) {
@@ -257,7 +275,7 @@ function scheduleBot(room) {
     }
     broadcastRoom(room);
     if (room.state.result) broadcastLobby();
-  }, 700);
+  }, g.botDelay || 700);
 }
 
 function deleteRoom(room) {
@@ -580,6 +598,7 @@ function handle(ws, msg) {
       if (room.state.result) throw new UserError('対局は終了しています');
       const g = GAMES[room.game];
       if (room.state.turn !== seat && !g.canActOutOfTurn?.(room.state)) throw new UserError('相手の手番です');
+      if (g.quietMove?.(msg.move)) { room.state = g.applyMove(room.state, msg.move, seat, rng, gameContext(room)); return; }
       room.state = g.applyMove(room.state, msg.move, seat, rng, gameContext(room));
       if (g.reviewable) room.moveLog.push(JSON.parse(JSON.stringify(msg.move)));
       room.drawOffer = null;
@@ -658,13 +677,36 @@ function handle(ws, msg) {
       broadcastLobby();
       return;
     }
+    case 'addBot': {
+      const { room, seat } = requirePlayer(ws);
+      const g = GAMES[room.game];
+      if (!isMulti(g) || isReady(room) || !(g.aiMove || g.botInTick)) return;
+      if (seat !== hostSeat(room)) throw new UserError('ホストだけが CPU を入れられます');
+      const free = room.seats.findIndex((s) => !s);
+      if (free < 0) throw new UserError('席がいっぱいです');
+      const n = room.seats.filter((s) => s && s.bot).length + 1;
+      room.seats[free] = { clientId: `cpu:${room.code}:${crypto.randomUUID()}`, name: `CPU${n}`, bot: true };
+      systemChat(room, `CPU${n} が参加しました`);
+      broadcastRoom(room);
+      broadcastLobby();
+      return;
+    }
     case 'kick': {
       const { room, seat } = requirePlayer(ws);
       const g = GAMES[room.game];
       const target = Number(msg.seat);
       if (seat !== hostSeat(room)) throw new UserError('ホストだけが追い出せます');
       const t = room.seats[target];
-      if (target === seat || !t || t.bot || t.kicked) return;
+      if (target === seat || !t || t.kicked) return;
+      if (t.bot) {
+        // CPU は開始前なら外せる
+        if (!isMulti(g) || isReady(room)) return;
+        room.seats[target] = null;
+        systemChat(room, `${t.name} を外しました`);
+        broadcastRoom(room);
+        broadcastLobby();
+        return;
+      }
       (room.banned = room.banned || new Set()).add(t.clientId);
       if (!isMulti(g)) {
         // 2人用: 席を空けて、新しい相手を待つ（対局は最初から）
