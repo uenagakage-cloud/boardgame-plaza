@@ -585,6 +585,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .gs-q { color: #fff; font-weight: 900; font-size: 4.5cqw; margin-top: 30%; }
 .gs-ghost.opp .gs-q { transform: rotate(180deg); margin-top: 0; margin-bottom: 30%; }
 .gs-captured { display: flex; align-items: center; gap: 4px; min-height: 28px; flex-wrap: wrap; }
+.gs-spec { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .gs-tools { display: grid; gap: 6px; justify-items: center; }
 .gs-tools p { margin: 0; text-align: center; }
 

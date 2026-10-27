@@ -1526,6 +1526,14 @@ test('itchi: 全員そろえばクリア・そろわなければもう一度・�
   t = itchi.tick(t);
   assert.equal(t.phase, 'reveal');
 });
+test('geister: 観戦者には全部の色を送り、遊んでいる人には相手の色を隠す', () => {
+  let s = geister.init({});
+  s = geister.applyMove(s, { layout: [true, true, true, true, false, false, false, false] }, 0);
+  s = geister.applyMove(s, { layout: [false, false, false, false, true, true, true, true] }, 1);
+  const all = (v) => v.board.flat().filter(Boolean);
+  assert.ok(all(geister.viewFor(s, -1)).every((x) => x.good != null), '観戦者');
+  assert.ok(all(geister.viewFor(s, 0)).filter((x) => x.o === 1).every((x) => x.good == null), '相手の色は隠す');
+});
 test('手札の公開: 終わったあと・観戦者・上がった人・抜けた人は全員分が見える', () => {
   // 大富豪: 遊んでいる人には見えない、上がった人・観戦者・投了した人には見える
   let s = dfState(['s9', 'h4 h5', 'c3 c6 c7']);

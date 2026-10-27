@@ -283,6 +283,12 @@ function deleteRoom(room) {
   rooms.delete(room.code);
 }
 
+// 手札などを見せるときの席。観戦者でも、遊んでいる人と同じ端末なら、その人の見え方にする（別のタブで観戦してのぞき見しないように）
+function viewSeat(room, ws, you) {
+  if (you >= 0 || !ws.deviceId) return you;
+  return room.seats.findIndex((s) => s && !s.bot && !s.kicked && s.deviceId === ws.deviceId);
+}
+
 function roomView(room, ws) {
   const you = seatOf(room, ws);
   const g = GAMES[room.game];
@@ -302,7 +308,7 @@ function roomView(room, ws) {
     seats: room.seats.map((s) => s && { name: s.name, online: isOnline(room, s.clientId), bot: !!s.bot, kicked: !!s.kicked }),
     spectators: [...room.sockets].filter((w) => seatOf(room, w) < 0).length,
     // 手札など相手に見せない情報はゲームごとに隠す
-    state: room.state && g.viewFor ? g.viewFor(room.state, you) : room.state,
+    state: room.state && g.viewFor ? g.viewFor(room.state, viewSeat(room, ws, you)) : room.state,
     drawOffer: room.drawOffer,
     rematch: room.rematch,
     review: reviewView(room),
@@ -531,7 +537,7 @@ function handle(ws, msg) {
         createdAt: Date.now(), lastActive: Date.now(), host: ws.clientId,
       };
       const seat = multi ? 0 : msg.side === 0 || msg.side === 1 ? msg.side : crypto.randomInt(2);
-      room.seats[seat] = { clientId: ws.clientId, name: ws.name };
+      room.seats[seat] = { clientId: ws.clientId, deviceId: ws.deviceId, name: ws.name };
       // CPU 対戦: もう一方の席に CPU を座らせる
       if (options.cpu && !multi && g.aiMove) room.seats[1 - seat] = { clientId: 'cpu:' + room.code, name: 'CPU', bot: true };
       systemChat(room, `${ws.name} さんが部屋を作りました`);

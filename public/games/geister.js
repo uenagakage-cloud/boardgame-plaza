@@ -61,7 +61,8 @@ export const canActOutOfTurn = (s) => s.phase === 'setup';
 
 // 相手のおばけの色は、終わるまで見せない
 export function viewFor(s, seat) {
-  if (s.result) return s;
+  // 終わったあと・観戦者は全部の色を送る（観戦者は画面で見せ方を選べる）
+  if (s.result || seat < 0) return s;
   return {
     ...s,
     layouts: s.layouts.map((l, i) => (i === seat ? l : l ? 'set' : null)),

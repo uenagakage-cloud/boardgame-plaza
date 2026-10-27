@@ -2929,8 +2929,17 @@ function gsGhost(x, me, extra = '') {
   return e;
 }
 
+// 観戦者の見せ方: none（見せない）・0（先手だけ）・1（後手だけ）・both（両方）
+const GS_SPEC = [['both', '両方'], ['0', '先手だけ'], ['1', '後手だけ'], ['none', '見せない']];
+const gsSpecMode = () => store.get('gsSpectate', 'both');
+
 function renderGeister(el, v, act) {
   const s = v.state, me = v.you === 1 ? 1 : 0, flip = me === 1;
+  const spectator = v.you < 0;
+  // 観戦者: 選んだ側のおばけだけ色を見せる（終わったら全部）
+  const mode = gsSpecMode();
+  const showColor = (o) => !spectator || !!s.result || mode === 'both' || mode === String(o);
+  const seen = (x) => (x && x.good != null && !showColor(x.o) ? { o: x.o, good: null } : x);
   const key = `${v.code}:${v.gameNo}:${s.phase}:${s.moves}`;
   if (key !== gsKey) { gsKey = key; gsSel = null; }
   const root = h('div', 'gs');
@@ -2947,13 +2956,25 @@ function renderGeister(el, v, act) {
   // 取ったおばけ
   const capRow = (seat) => {
     const box = h('div', 'gs-captured');
-    box.append(h('span', 'muted small', `${seat === me ? 'あなた' : '相手'}が取った：`));
+    box.append(h('span', 'muted small', spectator ? `${v.seats[seat]?.name || geister.sideNames[seat]}が取った：` : `${seat === me ? 'あなた' : '相手'}が取った：`));
     const got = s.captured[seat];
     if (!got.length) box.append(h('span', 'muted small', 'なし'));
     for (const t of got) box.append(gsGhost({ o: 1 - seat, good: t === 'good' }, me, 'small'));
     return box;
   };
-  if (v.you >= 0) root.append(capRow(1 - me));
+  if (spectator) {
+    // 観戦者の見せ方を選ぶ
+    const pick = h('div', 'gs-spec');
+    pick.append(h('span', 'small', '観戦中・おばけの色：'));
+    for (const [k, label] of GS_SPEC) {
+      const name = k === '0' || k === '1' ? `${v.seats[Number(k)]?.name || geister.sideNames[Number(k)]}だけ` : label;
+      const b = h('button', 'btn small' + (mode === k ? ' primary' : ''), name);
+      b.onclick = () => { store.set('gsSpectate', k); render(); };
+      pick.append(b);
+    }
+    root.append(pick);
+  }
+  root.append(capRow(1 - me));
 
   const board = h('div', 'board gs-board' + (act ? ' active' : ''));
   const N = geister.N;
@@ -2976,7 +2997,7 @@ function renderGeister(el, v, act) {
         render();
       };
     }
-    if (x) cell.append(gsGhost(x, me));
+    if (x) cell.append(gsGhost(seen(x), me));
     const t = targets.find((m) => eq(m.to, here));
     if (t) cell.append(h('span', t.capture ? 'hint cap' : 'hint dot'));
     if (s.phase === 'play') {
@@ -2990,7 +3011,7 @@ function renderGeister(el, v, act) {
     board.append(cell);
   }
   root.append(board);
-  if (v.you >= 0) root.append(capRow(me));
+  root.append(capRow(me));
 
   const tools = h('div', 'gs-tools');
   if (setup) {
