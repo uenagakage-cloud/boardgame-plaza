@@ -1351,6 +1351,8 @@ function buildIto(el) {
       <div class="ito-scale"><span>← 小さい (1)</span><span>大きい (100) →</span></div>
       <div class="ito-line"></div>
       <div class="ito-arrange-bar">
+        <button class="btn primary ito-written">書き終わった！</button>
+        <button class="btn small ghost ito-open">全員を待たずに言葉を公開</button>
         <button class="btn primary ito-ready">この順番でOK！</button>
         <div class="muted small ito-ready-info"></div>
         <button class="btn small ghost ito-force">全員を待たずに答え合わせ</button>
@@ -1372,7 +1374,7 @@ function buildIto(el) {
   const x = {
     el, root, round: q('.ito-round'), theme: q('.ito-theme'), hostTheme: q('.ito-host-theme'),
     custom: q('.ito-custom'), instruction: q('.ito-instruction'), line: q('.ito-line'),
-    arrangeBar: q('.ito-arrange-bar'), ready: q('.ito-ready'), readyInfo: q('.ito-ready-info'), force: q('.ito-force'),
+    arrangeBar: q('.ito-arrange-bar'), written: q('.ito-written'), open: q('.ito-open'), ready: q('.ito-ready'), readyInfo: q('.ito-ready-info'), force: q('.ito-force'),
     resultBar: q('.ito-result-bar'), resultTitle: q('.ito-result-title'), hostResult: q('.ito-host-result'),
     guestResult: q('.ito-guest-result'), players: q('.ito-players'), sortable: null,
   };
@@ -1381,14 +1383,23 @@ function buildIto(el) {
     send({ type: 'move', move: { customTheme: x.custom.value } });
     x.custom.value = '';
   };
-  x.ready.onclick = async () => {
+  x.written.onclick = () => {
     const s = view.state, me = view.you;
-    if (!s.ready[me]) {
-      const blank = s.cards.some((c) => c.owner === me && !c.hint.trim());
-      if (blank && !(await choose('まだカードに何も書いていません。このままOKにしますか？', [['yes', 'OKにする'], [null, 'キャンセル']]))) return;
+    if (s.written[me]) { send({ type: 'move', move: { written: false } }); return; }
+    // 書きかけで、まだ送っていない言葉を先に送ってから「書き終わった」
+    const boxes = [...x.line.querySelectorAll('textarea')];
+    if (boxes.some((ta) => !ta.value.trim())) { toast('まだ書いていないカードがあります'); return; }
+    for (const ta of boxes) {
+      clearTimeout(itoHintTimers[ta.dataset.card]);
+      delete itoHintTimers[ta.dataset.card];
+      send({ type: 'move', move: { hint: { cardId: ta.dataset.card, text: ta.value } } });
     }
-    send({ type: 'move', move: { ready: !s.ready[me] } });
+    send({ type: 'move', move: { written: true } });
   };
+  x.open.onclick = async () => {
+    if (await choose('まだ書いている人がいます。待たずに言葉を公開しますか？（書いていない人のカードは空のまま）', [['yes', '公開する'], [null, 'キャンセル']])) send({ type: 'move', move: { openHints: true } });
+  };
+  x.ready.onclick = () => send({ type: 'move', move: { ready: !view.state.ready[view.you] } });
   x.force.onclick = async () => {
     if (await choose('全員のOKを待たずに答え合わせしますか？', [['yes', '答え合わせする'], [null, 'キャンセル']])) send({ type: 'move', move: { forceReveal: true } });
   };
@@ -1420,9 +1431,10 @@ function itoUpdateCard(c, i, s, v) {
   const me = v.you;
   const mine = c.owner === me;
   const open = i < s.revealed;
-  const editable = mine && s.phase === 'arrange';
+  const editable = mine && s.phase === 'arrange' && !s.hintsOpen && !s.written[me];
+  const hidden = !mine && s.phase === 'arrange' && !s.hintsOpen; // 全員が書き終わるまで見えない
   const ownerName = v.seats[c.owner]?.name || '(退出)';
-  const sig = JSON.stringify([ownerName, c.value, open, c.ok, editable, editable ? '' : c.hint, s.phase === 'arrange']);
+  const sig = JSON.stringify([ownerName, c.value, open, c.ok, editable, editable ? '' : c.hint, s.phase === 'arrange', hidden, hidden && s.written[c.owner]]);
 
   let entry = itoCardEls.get(c.id);
   if (!entry) {
@@ -1454,8 +1466,11 @@ function itoUpdateCard(c, i, s, v) {
       });
       ta.addEventListener('blur', () => itoSendHint(c.id, ta.value, 0));
       el.append(ta);
+    } else if (hidden) {
+      el.append(h('div', 'words empty', s.written[c.owner] ? '✍ 書き終わり（公開待ち）' : '✍ 記入中…'));
     } else {
       el.append(h('div', 'words' + (c.hint ? '' : ' empty'), c.hint || '（まだ書いていません）'));
+      if (mine && s.phase === 'arrange' && !s.hintsOpen) el.classList.add('locked');
     }
     if (open) el.append(h('div', 'mark', c.ok ? '✔' : '✘'));
   }
@@ -1481,9 +1496,11 @@ function renderIto(el, v) {
 
   // 説明
   const instr = {
-    arrange: '① 自分のカード（オレンジ）に、お題に沿って自分の数字の大きさを表す言葉を書き込もう。<br>'
-      + '② みんなの言葉を見ながら、カードをドラッグして<b>左から小さい順</b>に並べ替えよう（誰のカードでも動かせます）。<br>'
-      + '③ 並びに納得したら「この順番でOK！」。全員OKで答え合わせ！',
+    arrange: s.hintsOpen
+      ? 'みんなの言葉が公開されました（もう書き直せません）。<br>カードをドラッグして<b>左から小さい順</b>に並べ替えよう（誰のカードでも動かせます）。並びに納得したら「この順番でOK！」。全員OKで答え合わせ！'
+      : '① 自分のカード（オレンジ）に、お題に沿って自分の数字の大きさを表す言葉を書き込もう。<br>'
+        + '② 書けたら「書き終わった！」。ほかの人の言葉は、<b>全員が書き終わったら一斉に公開</b>されます（公開後は書き直せません）。<br>'
+        + '③ 公開されたら、カードを<b>左から小さい順</b>に並べて「この順番でOK！」',
     reveal: '答え合わせ中… 左から1枚ずつめくります',
   };
   x.instruction.innerHTML = instr[s.phase] || '';
@@ -1507,15 +1524,20 @@ function renderIto(el, v) {
   // OK ボタン
   const playing = me >= 0 && !s.out[me];
   x.arrangeBar.hidden = s.phase !== 'arrange';
-  x.ready.hidden = !playing;
+  x.written.hidden = !playing || s.hintsOpen;
+  x.ready.hidden = !playing || !s.hintsOpen;
   if (playing) {
+    x.written.textContent = s.written[me] ? '書き終わり済み（押すと書き直す）' : '書き終わった！';
+    x.written.classList.toggle('done', !!s.written[me]);
     x.ready.textContent = s.ready[me] ? 'OK済み（押すと取り消し）' : 'この順番でOK！';
     x.ready.classList.toggle('done', s.ready[me]);
   }
   const activeSeats = v.seats.map((p, i) => i).filter((i) => !s.out[i] && v.seats[i]?.online);
-  const waiting = activeSeats.filter((i) => !s.ready[i]).map((i) => v.seats[i].name);
-  x.readyInfo.textContent = `OK ${activeSeats.length - waiting.length} / ${activeSeats.length}人` + (waiting.length ? `（待ち: ${waiting.join('、')}）` : '');
-  x.force.hidden = !host;
+  const flags = s.hintsOpen ? s.ready : s.written;
+  const waiting = activeSeats.filter((i) => !flags[i]).map((i) => v.seats[i].name);
+  x.readyInfo.textContent = `${s.hintsOpen ? 'OK' : '書き終わり'} ${activeSeats.length - waiting.length} / ${activeSeats.length}人` + (waiting.length ? `（待ち: ${waiting.join('、')}）` : '');
+  x.open.hidden = !host || s.hintsOpen;
+  x.force.hidden = !host || !s.hintsOpen;
 
   // 結果
   x.resultBar.hidden = s.phase !== 'result';
@@ -1534,7 +1556,8 @@ function renderIto(el, v) {
     li.append(h('span', p.online && !s.out[i] ? '' : 'offline', p.name));
     if (i === v.hostSeat) li.append(h('span', 'ito-badge', 'ホスト'));
     if (i === me) li.append(h('span', 'ito-badge me', 'あなた'));
-    if (s.phase === 'arrange' && s.ready[i]) li.append(h('span', 'ito-badge ready', 'OK'));
+    if (s.phase === 'arrange' && s.hintsOpen && s.ready[i]) li.append(h('span', 'ito-badge ready', 'OK'));
+    if (s.phase === 'arrange' && !s.hintsOpen) li.append(h('span', 'ito-badge' + (s.written[i] ? ' ready' : ''), s.written[i] ? '書き終わり' : '記入中'));
     if (s.out[i]) li.append(h('span', 'muted small', '(退出)'));
     else if (!p.online) li.append(h('span', 'muted small', '(切断)'));
     if (host && i !== me && !s.out[i]) {
@@ -1555,7 +1578,7 @@ function renderItoSettings(box, v) {
   const rules = h('ol', 'ito-rules');
   rules.innerHTML = '<li>1〜100 の数字カードが配られます。数字は<b>自分にしか見えません</b>。</li>'
     + '<li>お題に沿って、自分の数字の大きさを表す言葉をカードに<b>書き込みます</b>。<br><span class="muted">例: お題「動物の強さ」で 95 → 「ライオン」、5 → 「アリ」</span></li>'
-    + '<li>他の人には、カードの裏面と書き込んだ言葉だけが見えます。</li>'
+    + '<li>書けたら「書き終わった！」。ほかの人の言葉は<b>全員が書き終わってから一斉に公開</b>されます（公開後は書き直せません）。</li>'
     + '<li>言葉を手がかりに、みんなでカードを<b>ドラッグして小さい順に並べ替え</b>ます。</li>'
     + '<li>全員が「この順番でOK」を押したら答え合わせ！</li>';
   const cardsLabel = h('label', 'ito-setting', '1人あたりのカード枚数 ');

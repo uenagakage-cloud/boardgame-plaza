@@ -1,9 +1,11 @@
 // ito のルール（サーバーとブラウザで共通）。itogame リポジトリの動きをゲームいっぱいの形に移したもの。
 // 2〜10人の協力ゲーム。全員に 1〜100 のカードが配られ（数字は自分にしか見えない）、
 // お題に沿って数字の大きさを表す言葉をカードに書き込み、みんなで左から小さい順に並べる。
+// 書いた言葉は、全員が「書き終わった」を押すまでほかの人には見えない。全員そろったら一斉に公開し、それ以降は書き直せない。
 // 全員が「この順番でOK」を押すと左から1枚ずつめくり、全部小さい順なら成功。ラウンドを重ねて成功回数を数える。
-// 手: { hint: { cardId, text } } 自分のカードに書く / { move: { cardId, to } } 誰のカードでも動かせる
-//     { ready: true|false } / ホストだけ: { reroll: true } { customTheme: text } { forceReveal: true } { next: true }
+// 手: { hint: { cardId, text } } 自分のカードに書く / { written: true|false } 書き終わった（取り消し）
+//     { move: { cardId, to } } 誰のカードでも動かせる / { ready: true|false }
+//     ホストだけ: { reroll: true } { customTheme: text } { openHints: true } 待たずに公開 { forceReveal: true } { next: true }
 // 答え合わせはサーバーが tick() を 1.2 秒ごとに呼んで1枚ずつめくる。
 import { THEMES } from './ito-themes.js';
 
@@ -69,6 +71,8 @@ function startRound(s, rng) {
   s.outcome = null;
   s.phase = 'arrange';
   s.ready = Array(s.players).fill(false);
+  s.written = Array(s.players).fill(false);
+  s.hintsOpen = false;
   s.tickAfter = null;
   s.history = []; // 新しい試合（ラウンド）になったらログは最初から
   addLog(s, `第${s.round}ラウンド！ お題「${s.theme}」`);
@@ -79,7 +83,7 @@ export function init(options, players = 2, rng) {
   const s = {
     players, options: opts, out: Array(players).fill(false),
     round: 0, wins: 0, theme: null, themeDeck: buildDeck(rng),
-    cards: [], revealed: 0, outcome: null, phase: 'arrange', ready: Array(players).fill(false),
+    cards: [], revealed: 0, outcome: null, phase: 'arrange', ready: Array(players).fill(false), written: Array(players).fill(false), hintsOpen: false,
     tickAfter: null, turn: 0, result: null, history: [],
   };
   startRound(s, rng);
@@ -100,7 +104,9 @@ export function viewFor(s, seat) {
     ...s,
     themeDeck: null,
     cards: s.cards.map((c, i) => ({
-      id: c.id, owner: c.owner, hint: c.hint,
+      id: c.id, owner: c.owner,
+      // 書いた言葉は、全員が書き終わって公開されるまで本人にしか見えない
+      hint: c.owner === seat || s.hintsOpen || s.phase !== 'arrange' || s.result ? c.hint : '',
       // 観戦者・終わったあとは、全員の数字が見える
       value: c.owner === seat || i < s.revealed || seat < 0 || s.result ? c.value : null,
       ok: i < s.revealed ? isInOrder(s.cards, i) : null,
@@ -109,17 +115,19 @@ export function viewFor(s, seat) {
 }
 
 export function phaseText(s) {
-  if (s.phase === 'arrange') return 'お題に沿ってカードに書き込み、みんなで左から小さい順に並べよう';
+  if (s.phase === 'arrange' && !s.hintsOpen) return 'お題に沿ってカードに書き込み、「書き終わった！」を押そう。全員そろったら一斉に公開！';
+  if (s.phase === 'arrange') return 'みんなの言葉を見て、左から小さい順に並べよう';
   if (s.phase === 'reveal') return '答え合わせ中… 左から1枚ずつめくります';
   return s.outcome === 'success' ? '大成功！ 全部小さい順に並んでいました 🎉' : '残念… 順番が崩れているところがありました';
 }
 
 const clone = (s) => ({
-  ...s, out: s.out.slice(), cards: s.cards.map((c) => ({ ...c })), ready: s.ready.slice(),
+  ...s, out: s.out.slice(), cards: s.cards.map((c) => ({ ...c })), ready: s.ready.slice(), written: (s.written || []).slice(),
   themeDeck: s.themeDeck.slice(), history: s.history.slice(),
 });
 
 function startReveal(ns) {
+  ns.hintsOpen = true;
   ns.phase = 'reveal';
   ns.revealed = 0;
   ns.tickAfter = REVEAL_INTERVAL_MS;
@@ -144,10 +152,31 @@ export function tick(s) {
   return ns;
 }
 
+const activeSeats = (ns, online) => [...Array(ns.players).keys()].filter((p) => !ns.out[p] && (!online || online[p]));
+
 // 接続中で抜けていない全員がOKなら答え合わせ
 function revealIfAllReady(ns, online) {
-  const active = [...Array(ns.players).keys()].filter((p) => !ns.out[p] && (!online || online[p]));
-  if (active.length && active.every((p) => ns.ready[p])) startReveal(ns);
+  const active = activeSeats(ns, online);
+  if (ns.hintsOpen && active.length && active.every((p) => ns.ready[p])) startReveal(ns);
+}
+
+// 書いた言葉を一斉に公開する（これ以降は書き直せない）
+function openHints(ns, why) {
+  ns.hintsOpen = true;
+  ns.ready = Array(ns.players).fill(false);
+  addLog(ns, why);
+}
+// 接続中で抜けていない全員が書き終わったら公開
+function openIfAllWritten(ns, online) {
+  const active = activeSeats(ns, online);
+  if (!ns.hintsOpen && active.length && active.every((p) => ns.written[p])) openHints(ns, '全員が書き終わった！ 言葉を一斉に公開');
+}
+// お題が変わったら、書いた言葉は消して書き直し
+function resetHints(ns) {
+  for (const c of ns.cards) c.hint = '';
+  ns.written = Array(ns.players).fill(false);
+  ns.hintsOpen = false;
+  ns.ready = Array(ns.players).fill(false);
 }
 
 export function applyMove(s, mv, seat, rng, ctx = {}) {
@@ -161,19 +190,28 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     ns.cards = ns.cards.filter((c) => c.owner !== seat);
     ns.ready[seat] = false;
     addLog(ns, `${label(seat)} が退出しました`);
-    if (ns.phase === 'arrange') revealIfAllReady(ns, ctx.online);
+    if (ns.phase === 'arrange') { openIfAllWritten(ns, ctx.online); revealIfAllReady(ns, ctx.online); }
     return ns;
   }
   if (s.out[seat]) throw new Error('このラウンドには参加していません');
 
   if (mv.hint) {
     if (s.phase !== 'arrange') return s;
+    if (s.hintsOpen) throw new Error('言葉はもう公開されたので、書き直せません');
+    if (s.written[seat]) throw new Error('「書き直す」を押してから書いてください');
     const c = ns.cards.find((x) => x.id === mv.hint.cardId);
     if (!c || c.owner !== seat) throw new Error('自分のカードにだけ書き込めます');
     const text = String(mv.hint.text || '').slice(0, 30);
     if (text === c.hint) return s;
     c.hint = text;
-    ns.ready = Array(ns.players).fill(false);
+    return ns;
+  }
+
+  if (mv.written != null) {
+    if (s.phase !== 'arrange' || s.hintsOpen) return s;
+    if (mv.written && ns.cards.some((c) => c.owner === seat && !c.hint.trim())) throw new Error('まだ書いていないカードがあります');
+    ns.written[seat] = !!mv.written;
+    if (mv.written) openIfAllWritten(ns, ctx.online);
     return ns;
   }
 
@@ -191,6 +229,7 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
 
   if (mv.ready != null) {
     if (s.phase !== 'arrange') return s;
+    if (mv.ready && !s.hintsOpen) throw new Error('全員が書き終わって、言葉が公開されてから OK できます');
     ns.ready[seat] = !!mv.ready;
     revealIfAllReady(ns, ctx.online);
     return ns;
@@ -206,7 +245,13 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
       if (!t) return s;
       ns.theme = t;
     }
-    addLog(ns, `お題を変更: 「${ns.theme}」`);
+    resetHints(ns);
+    addLog(ns, `お題を変更: 「${ns.theme}」（書いた言葉は消えます）`);
+    return ns;
+  }
+  if (mv.openHints) {
+    if (s.phase !== 'arrange' || s.hintsOpen) return s;
+    openHints(ns, 'ホストが言葉を公開しました');
     return ns;
   }
   if (mv.forceReveal) {

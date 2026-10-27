@@ -341,6 +341,15 @@ test('wordbasket: 手札リセットで元の枚数＋1枚に・カードの総�
 // ito
 const itoCtx = (n, host = 0) => ({ hostSeat: host, online: Array(n).fill(true) });
 const itoTickAll = (s) => { while (s.phase === 'reveal') s = ito.tick(s); return s; };
+// 接続中の全員が自分のカードに書いて「書き終わった」を押す（言葉が公開される）
+const itoWriteAll = (s, ctx) => {
+  for (let p = 0; p < s.players; p++) {
+    if (s.out[p] || !ctx.online[p]) continue;
+    for (const card of s.cards.filter((x) => x.owner === p)) s = ito.applyMove(s, { hint: { cardId: card.id, text: `言葉${card.value}` } }, p, null, ctx);
+    s = ito.applyMove(s, { written: true }, p, null, ctx);
+  }
+  return s;
+};
 test('ito: 設定・配り方・お題（ジャンル分けなし）', () => {
   assert.ok(ito.THEME_COUNT > 0);
   assert.deepEqual(ito.normalizeOptions({ cardsPerPlayer: 9, genres: ['food'] }), { cardsPerPlayer: 5 });
@@ -354,24 +363,55 @@ test('ito: 設定・配り方・お題（ジャンル分けなし）', () => {
   assert.ok(v.cards.every((c) => (c.owner === 1 ? c.value !== null : c.value === null)), '数字は自分のだけ見える');
   assert.equal(v.themeDeck, null);
 });
-test('ito: 書き込み・並べ替えでOKが取り消される・他人のカードには書けない', () => {
+test('ito: 言葉は全員が書き終わるまで見えず、一斉に公開されたら書き直せない', () => {
   let s = ito.init({}, 2);
-  const mine = s.cards.find((c) => c.owner === 0), theirs = s.cards.find((c) => c.owner === 1);
-  s = ito.applyMove(s, { ready: true }, 1, null, itoCtx(2));
-  assert.equal(s.ready[1], true);
-  s = ito.applyMove(s, { hint: { cardId: mine.id, text: 'ライオン' } }, 0, null, itoCtx(2));
-  assert.equal(s.cards.find((c) => c.id === mine.id).hint, 'ライオン');
-  assert.equal(s.ready[1], false);
-  assert.throws(() => ito.applyMove(s, { hint: { cardId: theirs.id, text: 'x' } }, 0, null, itoCtx(2)), /自分のカード/);
+  const ctx = itoCtx(2);
+  const mine = s.cards.find((x) => x.owner === 0), theirs = s.cards.find((x) => x.owner === 1);
+  s = ito.applyMove(s, { hint: { cardId: mine.id, text: 'ライオン' } }, 0, null, ctx);
+  assert.equal(ito.viewFor(s, 0).cards.find((x) => x.id === mine.id).hint, 'ライオン', '自分には見える');
+  assert.equal(ito.viewFor(s, 1).cards.find((x) => x.id === mine.id).hint, '', 'ほかの人には見えない');
+  assert.equal(ito.viewFor(s, -1).cards.find((x) => x.id === mine.id).hint, '', '観戦者にも見えない');
+  assert.throws(() => ito.applyMove(s, { hint: { cardId: theirs.id, text: 'x' } }, 0, null, ctx), /自分のカード/);
+  assert.throws(() => ito.applyMove(s, { written: true }, 1, null, ctx), /まだ書いていない/);
+  assert.throws(() => ito.applyMove(s, { ready: true }, 0, null, ctx), /公開されてから/);
+  s = ito.applyMove(s, { written: true }, 0, null, ctx);
+  assert.throws(() => ito.applyMove(s, { hint: { cardId: mine.id, text: 'ネコ' } }, 0, null, ctx), /書き直す/);
+  s = ito.applyMove(s, { written: false }, 0, null, ctx); // 書き直す
+  s = ito.applyMove(s, { hint: { cardId: mine.id, text: 'ネコ' } }, 0, null, ctx);
+  s = ito.applyMove(s, { written: true }, 0, null, ctx);
+  assert.equal(s.hintsOpen, false, 'まだ1人書いていない');
+  s = ito.applyMove(s, { hint: { cardId: theirs.id, text: 'ゾウ' } }, 1, null, ctx);
+  s = ito.applyMove(s, { written: true }, 1, null, ctx);
+  assert.equal(s.hintsOpen, true, '全員そろったら公開');
+  assert.equal(ito.viewFor(s, 1).cards.find((x) => x.id === mine.id).hint, 'ネコ');
+  assert.throws(() => ito.applyMove(s, { hint: { cardId: mine.id, text: 'トラ' } }, 0, null, ctx), /書き直せません/);
+  // 並べ替えると OK は取り消し
+  s = ito.applyMove(s, { ready: true }, 1, null, ctx);
   const first = s.cards[0].id;
-  s = ito.applyMove(s, { move: { cardId: first, to: 1 } }, 1, null, itoCtx(2));
+  s = ito.applyMove(s, { move: { cardId: first, to: 1 } }, 0, null, ctx);
   assert.equal(s.cards[1].id, first);
+  assert.equal(s.ready[1], false);
+  // お題が変わったら書き直し
+  s = ito.applyMove(s, { reroll: true }, 0, null, ctx);
+  assert.equal(s.hintsOpen, false);
+  assert.ok(s.cards.every((x) => x.hint === ''));
+});
+test('ito: 切断中の人は書き終わり待ちに含めない・ホストは待たずに公開できる', () => {
+  let s = ito.init({}, 3);
+  const ctx = { hostSeat: 0, online: [true, true, false] };
+  s = itoWriteAll(s, ctx);
+  assert.equal(s.hintsOpen, true);
+  let t = ito.init({}, 2);
+  assert.throws(() => ito.applyMove(t, { openHints: true }, 1, null, itoCtx(2)), /ホストだけ/);
+  t = ito.applyMove(t, { openHints: true }, 0, null, itoCtx(2));
+  assert.equal(t.hintsOpen, true);
 });
 test('ito: 全員OKで答え合わせ→1枚ずつめくって成功判定', () => {
   let s = ito.init({}, 3);
   // 小さい順に並べてから全員OK
   const sorted = s.cards.slice().sort((a, b) => a.value - b.value);
   sorted.forEach((c, i) => { s = ito.applyMove(s, { move: { cardId: c.id, to: i } }, 0, null, itoCtx(3)); });
+  s = itoWriteAll(s, itoCtx(3));
   for (const p of [0, 1]) s = ito.applyMove(s, { ready: true }, p, null, itoCtx(3));
   assert.equal(s.phase, 'arrange');
   s = ito.applyMove(s, { ready: true }, 2, null, itoCtx(3));
@@ -391,6 +431,7 @@ test('ito: 順番ミスで失敗・切断中の人はOK待ちに含めない', (
   const desc = s.cards.slice().sort((a, b) => b.value - a.value);
   desc.forEach((c, i) => { s = ito.applyMove(s, { move: { cardId: c.id, to: i } }, 0, null, itoCtx(3)); });
   const ctx = { hostSeat: 0, online: [true, true, false] };
+  s = itoWriteAll(s, ctx);
   s = ito.applyMove(s, { ready: true }, 0, null, ctx);
   s = ito.applyMove(s, { ready: true }, 1, null, ctx);
   assert.equal(s.phase, 'reveal');
