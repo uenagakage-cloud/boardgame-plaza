@@ -26,7 +26,7 @@ function svg(tag, attrs = {}) {
 }
 
 export function asobiRenderers(api) {
-  const { h, send, sendMove, choose, render, revealPanel, now } = api;
+  const { h, hk, send, sendMove, choose, render, revealPanel, now } = api;
   const nameOf = (v, i) => v.seats[i]?.name || '?';
   const move = (mv) => send({ type: 'move', move: mv });
   // 操作の途中（選んだコマなど）を覚えておく。盤が変わったら消す
@@ -219,10 +219,12 @@ export function asobiRenderers(api) {
     if (me >= 0 && s.hands[me] && !s.out[me]) {
       const playable = new Set(act ? domino.playable(s, me).map((t) => t.id) : []);
       const hand = h('div', 'dm-hand');
+      let nk = 0;
       for (const t of s.hands[me]) {
         const b = h('button', 'dm-hand-btn' + (playable.has(t.id) ? ' playable' : '') + (L.tile === t.id ? ' sel' : ''));
         b.append(tile(t));
         b.disabled = !playable.has(t.id);
+        if (playable.has(t.id) && nk < 9) hk(b, String(++nk));
         b.onclick = () => {
           const sides = domino.sidesFor(s, t);
           if (sides.length === 1 || (e && e[0] === e[1])) return sendMove({ play: t.id, side: sides[0] });
@@ -235,12 +237,14 @@ export function asobiRenderers(api) {
       const bar = h('div', 'uno-actions');
       if (L.tile != null) {
         const l = h('button', 'btn primary', '◀ 左はしに置く'), r = h('button', 'btn primary', '右はしに置く ▶');
+        hk(l, 'arrowleft');
+        hk(r, 'arrowright');
         l.onclick = () => sendMove({ play: L.tile, side: 'L' });
         r.onclick = () => sendMove({ play: L.tile, side: 'R' });
         bar.append(l, r);
       }
       if (act && !playable.size) {
-        const b = h('button', 'btn primary', s.boneyardCount ? '山から1枚引く' : 'パス');
+        const b = hk(h('button', 'btn primary', s.boneyardCount ? '山から1枚引く' : 'パス'), 'd enter');
         b.onclick = () => sendMove(s.boneyardCount ? { draw: true } : { pass: true });
         bar.append(b);
       }
@@ -360,6 +364,7 @@ export function asobiRenderers(api) {
         e.style.top = `calc(${(kind === 'base' ? r : r + 0.5) * (100 / 15)}% )`;
         if (kind === 'goal') { e.style.left = `${(7.5 + off) * (100 / 15)}%`; e.style.top = `${(7.5 + (t.color - 1.5) * 0.25) * (100 / 15)}%`; }
         e.disabled = !(t.p === me && movable.has(t.k));
+        if (!e.disabled) hk(e, String(t.k + 1));
         e.onclick = () => sendMove({ token: t.k });
         board.append(e);
       });
@@ -371,7 +376,7 @@ export function asobiRenderers(api) {
     const dice = h('div', 'ld-dice' + (s.rolled && rollKey !== ludoRollKey ? ' rolling' : ''), s.dice ? '⚀⚁⚂⚃⚄⚅'[s.dice - 1] : '🎲');
     ludoRollKey = rollKey;
     bar.append(dice);
-    if (act && !s.rolled) { const b = h('button', 'btn primary', 'サイコロをふる'); b.onclick = () => sendMove({ roll: true }); bar.append(b); }
+    if (act && !s.rolled) { const b = hk(h('button', 'btn primary', 'サイコロをふる'), 'space enter'); b.onclick = () => sendMove({ roll: true }); bar.append(b); }
     else if (act && s.rolled) bar.append(h('span', 'small', `${s.dice}が出ました。光っているコマを選んでください`));
     else bar.append(h('span', 'muted small', s.result ? '' : `${nameOf(v, s.turn)} さんの番`));
     root.append(bar);
@@ -397,18 +402,20 @@ export function asobiRenderers(api) {
     if (me >= 0 && s.hands[me] && !s.out[me]) {
       const ok = new Set(act ? sevens.playable(s, me).map((c) => c.id) : []);
       const hand = h('div', 'uno-hand');
+      let nk = 0;
       const sorted = s.hands[me].slice().sort((a, b) => 'shdc'.indexOf(a.s) - 'shdc'.indexOf(b.s) || a.r - b.r);
       for (const c of sorted) {
         const b = h('button', 'uno-hand-card' + (ok.has(c.id) ? ' playable' : ''));
         b.append(card(c));
         b.disabled = !ok.has(c.id);
+        if (ok.has(c.id) && nk < 9) hk(b, String(++nk));
         b.onclick = () => sendMove({ play: c.id });
         hand.append(b);
       }
       root.append(h('div', 'cc-hand-title', `あなたの手札（${s.hands[me].length}枚）`), hand);
       if (act) {
         const left = s.options.passes - s.passes[me];
-        const b = h('button', 'btn' + (left <= 0 ? ' danger' : ''), left > 0 ? `パス（あと${left}回）` : 'パス（ドボンになります）');
+        const b = hk(h('button', 'btn' + (left <= 0 ? ' danger' : ''), left > 0 ? `パス（あと${left}回）` : 'パス（ドボンになります）'), 'p');
         b.onclick = async () => { if (left > 0 || await choose('パスするとドボン（負け）です。いいですか？', [['yes', 'パスする'], [null, 'やめる']])) sendMove({ pass: true }); };
         const bar = h('div', 'uno-actions');
         bar.append(b);
@@ -440,6 +447,7 @@ export function asobiRenderers(api) {
         const b = h('button', 'sp-card' + (ok ? ' playable' : '') + (L.k === k ? ' sel' : ''));
         b.append(c ? card(c, 'big') : h('span', 'pcard empty big'));
         b.disabled = !c;
+        if (c) hk(b, String(k + 1));
         b.onclick = () => {
           if (!c) return;
           const piles = [0, 1].filter((pi) => speed.canPlay(s, c, pi));
@@ -458,6 +466,7 @@ export function asobiRenderers(api) {
       const top = s.piles[pi][s.piles[pi].length - 1];
       const b = h('button', 'sp-pile' + (L.k != null && speed.canPlay(s, s.field[mine][L.k], pi) ? ' target' : '') + (s.last && s.last.pile === pi && s.last.at && now() - s.last.at < 600 ? ' bump' : ''));
       b.append(top ? card(top, 'big') : h('span', 'pcard empty big'));
+      hk(b, pi === 0 ? 'arrowleft' : 'arrowright');
       b.onclick = () => { if (L.k != null && speed.canPlay(s, s.field[mine][L.k], pi)) move({ play: L.k, pile: pi }); };
       center.append(b);
     });
@@ -465,7 +474,7 @@ export function asobiRenderers(api) {
     root.append(side(mine, me >= 0));
     if (s.phase === 'ready') {
       const over = h('div', 'sp-over');
-      if (me >= 0 && !s.ready[me]) { const b = h('button', 'btn primary big', 'スタート'); b.onclick = () => move({ ready: true }); over.append(b); }
+      if (me >= 0 && !s.ready[me]) { const b = hk(h('button', 'btn primary big', 'スタート'), 'space enter'); b.onclick = () => move({ ready: true }); over.append(b); }
       else over.append(h('div', 'sp-count small', me >= 0 ? '相手を待っています…' : '準備中'));
       root.append(over);
     } else if (s.phase === 'count') {
@@ -484,9 +493,9 @@ export function asobiRenderers(api) {
   // ================= 神経衰弱 =================
   function renderMemory(el, v, act) {
     const s = v.state;
-    const root = h('div', 'mm');
+    const root = h('div', 'mm c' + s.cards.length);
     root.append(players(v, (i) => memory.scoreOf(s, i)));
-    const grid = h('div', 'mm-grid' + (s.cards.length > 36 ? ' many' : ''));
+    const grid = h('div', 'mm-grid n' + s.cards.length);
     s.cards.forEach((c, i) => {
       const taken = s.taken[i] != null;
       const open = s.open.includes(i);
@@ -532,17 +541,21 @@ export function asobiRenderers(api) {
       const bar = h('div', 'uno-actions');
       if (s.phase === 'bet' && s.bets[me] == null && s.chips[me] > 0) {
         bar.append(h('span', 'small', '賭けるチップ：'));
+        let nk = 0;
         for (const b of [...blackjack.BETS, s.chips[me]].filter((x, i, a) => x <= s.chips[me] && a.indexOf(x) === i)) {
           const btn = h('button', 'btn primary', b === s.chips[me] && !blackjack.BETS.includes(b) ? `全部（${b}）` : String(b));
+          hk(btn, String(++nk));
           btn.onclick = () => move({ bet: b });
           bar.append(btn);
         }
       } else if (s.phase === 'play' && s.hands[me].length && !s.done[me]) {
         const hit = h('button', 'btn primary', 'ヒット（もう1枚）'), stand = h('button', 'btn', 'スタンド（止める）');
+        hk(hit, 'h');
+        hk(stand, 's');
         hit.onclick = () => move({ hit: true });
         stand.onclick = () => move({ stand: true });
         bar.append(hit, stand);
-        if (s.hands[me].length === 2 && s.chips[me] >= s.bets[me]) { const d = h('button', 'btn', 'ダブル'); d.title = '賭けを2倍にして1枚だけ引く'; d.onclick = () => move({ double: true }); bar.append(d); }
+        if (s.hands[me].length === 2 && s.chips[me] >= s.bets[me]) { const d = hk(h('button', 'btn', 'ダブル'), 'd'); d.title = '賭けを2倍にして1枚だけ引く'; d.onclick = () => move({ double: true }); bar.append(d); }
       }
       if (bar.childElementCount) root.append(bar);
     }
@@ -577,7 +590,7 @@ export function asobiRenderers(api) {
     root.append(players(v, (i) => `${s.handCounts[i]}枚`, null, (chip, i) => {
       if (!s.out[i] && s.handCounts[i] === 1) chip.append(h('span', 'uno-badge', 'ラスト'));
       if (s.unoPending === i && me >= 0 && me !== i && !s.out[me]) {
-        const b = h('button', 'btn danger small', '言ってない！');
+        const b = hk(h('button', 'btn danger small', '言ってない！'), 'c');
         b.onclick = () => move({ catchUno: i });
         chip.append(b);
       }
@@ -587,6 +600,7 @@ export function asobiRenderers(api) {
     pile.append(h('span', 'uno-back', 'LAST'), h('span', 'uno-pile-count', `山札 ${s.deckCount}`));
     pile.disabled = !(myTurn && s.drawn == null);
     pile.onclick = () => sendMove({ draw: true });
+    hk(pile, 'd');
     const discard = h('div', 'uno-discard');
     discard.append(lcCard(lastcard.top(s), 'big'));
     const info = h('div', 'uno-info');
@@ -606,20 +620,23 @@ export function asobiRenderers(api) {
       const bar = h('div', 'uno-actions');
       if (myTurn && myHand.length === 2 && playable.length) {
         const arm = h('button', 'btn uno-call' + (lcArmed ? ' armed' : ''), lcArmed ? 'ラストカード！（出すときに宣言）' : '「ラストカード」と言う');
+        hk(arm, 'u');
         arm.onclick = () => { lcArmed = !lcArmed; render(); };
         bar.append(arm);
       }
-      if (s.unoPending === me) { const late = h('button', 'btn uno-call armed', 'ラストカード！（今すぐ宣言）'); late.onclick = () => move({ uno: true }); bar.append(late); }
-      if (myTurn && s.drawn != null) { const pass = h('button', 'btn', 'パス'); pass.onclick = () => sendMove({ pass: true }); bar.append(pass); }
+      if (s.unoPending === me) { const late = hk(h('button', 'btn uno-call armed', 'ラストカード！（今すぐ宣言）'), 'u'); late.onclick = () => move({ uno: true }); bar.append(late); }
+      if (myTurn && s.drawn != null) { const pass = hk(h('button', 'btn', 'パス'), 'p'); pass.onclick = () => sendMove({ pass: true }); bar.append(pass); }
       if (bar.childElementCount) root.append(bar);
     }
     if (me >= 0 && !s.out[me]) {
       const hand = h('div', 'uno-hand');
+      let nk = 0;
       for (const c of myHand) {
         const ok = playable.includes(c.id);
         const b = h('button', 'uno-hand-card' + (ok ? ' playable' : '') + (s.drawn === c.id ? ' drawn' : ''));
         b.append(lcCard(c));
         b.disabled = !ok;
+        if (ok && nk < 9) hk(b, String(++nk));
         b.onclick = () => playLc(c, lcArmed);
         hand.append(b);
       }
@@ -636,14 +653,14 @@ export function asobiRenderers(api) {
   // ================= ぶたのしっぽ =================
   function renderPigtail(el, v, act) {
     const s = v.state, me = v.you;
-    const root = h('div', 'pt');
+    const root = h('div', 'pg');
     root.append(players(v, (i) => `${s.handCounts[i]}枚`));
-    const ring = h('div', 'pt-ring');
+    const ring = h('div', 'pg-ring');
     const n = s.ring.length;
     s.ring.forEach((c, i) => {
       if (!c) return;
       const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const b = h('button', 'pt-slot' + (act ? ' can' : ''));
+      const b = h('button', 'pg-slot' + (act ? ' can' : ''));
       b.style.left = `${50 + Math.cos(a) * 43}%`;
       b.style.top = `${50 + Math.sin(a) * 43}%`;
       b.style.transform = `translate(-50%, -50%) rotate(${a + Math.PI / 2}rad)`;
@@ -652,20 +669,31 @@ export function asobiRenderers(api) {
       b.onclick = () => sendMove({ flip: i });
       ring.append(b);
     });
-    const mid = h('div', 'pt-mid');
-    const pile = h('div', 'pt-pile');
+    const mid = h('div', 'pg-mid');
+    const pile = h('div', 'pg-pile');
     s.pile.forEach((c, k) => { const e = card(c, 'big'); e.style.transform = `rotate(${(k - s.pile.length + 1) * 9}deg)`; pile.append(e); });
     if (!s.pile.length) pile.append(h('span', 'muted small', 'からっぽ'));
     mid.append(pile, h('div', 'small', `山 ${s.pileCount}枚・輪 ${s.ringLeft}枚`));
-    if (s.last && s.last.took) mid.append(h('div', 'pt-took', `${nameOf(v, s.last.by)} が ${s.last.took}枚 引き取り！`));
+    if (s.last && s.last.took) mid.append(h('div', 'pg-took', `${nameOf(v, s.last.by)} が ${s.last.took}枚 引き取り！`));
     ring.append(mid);
     root.append(ring);
+    if (act) {
+      // キーボード・マウスで、輪のどれか1枚をめくる
+      const flip = hk(h('button', 'btn primary', '輪からどれか1枚めくる'), 'space enter');
+      const left = s.ring.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
+      flip.onclick = () => sendMove({ flip: left[Math.floor(Math.random() * left.length)] });
+      const bar = h('div', 'uno-actions');
+      bar.append(flip);
+      root.append(bar);
+    }
     if (me >= 0 && s.hands[me] && s.hands[me].length) {
       const hand = h('div', 'uno-hand');
+      let nk = 0;
       for (const c of s.hands[me]) {
         const b = h('button', 'uno-hand-card' + (act ? ' playable' : ''));
         b.append(card(c, 'small'));
         b.disabled = !act;
+        if (act && nk < 9) hk(b, String(++nk));
         b.onclick = () => sendMove({ play: c.id });
         hand.append(b);
       }
@@ -687,6 +715,7 @@ export function asobiRenderers(api) {
     s.dice.forEach((d, i) => {
       const b = h('button', 'yt-die' + (hold[i] && s.rolls ? ' held' : '') + (s.last && s.last.type === 'roll' && s.last.rolled[i] ? ' rolled' : ''), s.rolls || s.result ? DIE[d] : '？');
       b.disabled = !(act && s.rolls > 0 && s.rolls < 3);
+      hk(b, String(i + 1));
       b.onclick = () => { hold[i] = !hold[i]; render(); };
       dice.append(b);
     });
@@ -695,6 +724,7 @@ export function asobiRenderers(api) {
       const bar = h('div', 'uno-actions');
       if (s.rolls < 3) {
         const b = h('button', 'btn primary', s.rolls ? `残すサイコロ以外をふり直す（あと${3 - s.rolls}回）` : 'サイコロをふる');
+        hk(b, 'space r');
         b.onclick = () => sendMove({ roll: true, hold: s.rolls ? hold : undefined });
         bar.append(b);
       }
@@ -784,8 +814,10 @@ export function asobiRenderers(api) {
     const matchFor = (id) => (id == null ? [] : s.field.filter((f) => koikoi.monthOf(f) === koikoi.monthOf(id)));
     const pickTargets = new Set(act && s.phase === 'drawPick' ? matchFor(s.drawn) : act && sel != null && matchFor(sel).length === 2 ? matchFor(sel) : []);
     const hilite = new Set(sel != null ? matchFor(sel) : []);
+    let tk2 = 0;
     for (const id of s.field) {
       const b = h('button', 'hf-btn' + (pickTargets.has(id) ? ' target' : hilite.has(id) ? ' match' : ''));
+      if (pickTargets.has(id)) hk(b, String(++tk2));
       b.append(hana(id));
       b.disabled = !pickTargets.has(id);
       b.onclick = () => (s.phase === 'drawPick' ? sendMove({ target: id }) : sendMove({ play: sel, target: id }));
@@ -802,11 +834,13 @@ export function asobiRenderers(api) {
     bottom.append(captured(s.captured[mine]));
     if (s.hands[mine]) {
       const hand = h('div', 'hf-hand');
+      let nk = 0;
       for (const id of s.hands[mine]) {
         const can = act && s.phase === 'play' && me >= 0;
         const b = h('button', 'hf-btn' + (sel === id ? ' sel' : '') + (can && matchFor(id).length ? ' has' : ''));
         b.append(hana(id));
         b.disabled = !can;
+        if (can && !pickTargets.size) hk(b, String(++nk));
         b.onclick = () => {
           const m = matchFor(id);
           if (m.length === 2) { L.card = sel === id ? null : id; return render(); }
@@ -823,6 +857,8 @@ export function asobiRenderers(api) {
       const over = h('div', 'hf-koikoi');
       over.append(h('div', 'hf-koikoi-title', `役ができた！ ${pts}点`), h('div', 'small', koikoi.yaku(s.captured[me]).map(([n, p]) => `${n} ${p}点`).join('・')));
       const a = h('button', 'btn primary', '勝負（ここでやめる）'), b = h('button', 'btn', 'こいこい（続ける）');
+      hk(a, 's');
+      hk(b, 'k');
       a.onclick = () => sendMove({ stop: true });
       b.onclick = () => sendMove({ koikoi: true });
       const bar = h('div', 'uno-actions');
@@ -1033,7 +1069,7 @@ export function asobiRenderers(api) {
 
   // ================= ヒット&ブロー（ボール） =================
   function ball(c, extra = '') {
-    const e = h('span', 'hb-ball ' + extra);
+    const e = h('span', 'hbb-ball ' + extra);
     if (c == null) e.classList.add('empty');
     else e.style.setProperty('--c', hbball.COLORS[c]);
     return e;
@@ -1041,46 +1077,48 @@ export function asobiRenderers(api) {
   function renderHbball(el, v, act) {
     const s = v.state, me = v.you, L = local(v);
     L.pick = L.pick || [];
-    const root = h('div', 'hb');
+    const root = h('div', 'hbb');
     root.append(players(v, (i) => `${s.guesses.filter((g) => g.by === i).length}回`));
-    const secret = h('div', 'hb-secret');
+    const secret = h('div', 'hbb-secret');
     secret.append(h('span', 'small', 'ひみつの並び：'));
-    for (let i = 0; i < hbball.LEN; i++) secret.append(s.secret ? ball(s.secret[i], 'big') : h('span', 'hb-ball big hidden', '?'));
+    for (let i = 0; i < hbball.LEN; i++) secret.append(s.secret ? ball(s.secret[i], 'big') : h('span', 'hbb-ball big hidden', '?'));
     root.append(secret);
-    const list = h('div', 'hb-list');
+    const list = h('div', 'hbb-list');
     s.guesses.forEach((g, k) => {
-      const row = h('div', 'hb-row' + (g.by === me ? ' mine' : '') + (k === s.guesses.length - 1 ? ' last' : ''));
-      row.append(h('span', 'hb-who', nameOf(v, g.by)));
-      const balls = h('span', 'hb-balls');
+      const row = h('div', 'hbb-row' + (g.by === me ? ' mine' : '') + (k === s.guesses.length - 1 ? ' last' : ''));
+      row.append(h('span', 'hbb-who', nameOf(v, g.by)));
+      const balls = h('span', 'hbb-balls');
       g.guess.forEach((c) => balls.append(ball(c)));
-      row.append(balls, h('span', 'hb-res', `${g.hit}ヒット ${g.blow}ブロー`));
-      const pegs = h('span', 'hb-pegs');
-      for (let i = 0; i < g.hit; i++) pegs.append(h('span', 'hb-peg hit'));
-      for (let i = 0; i < g.blow; i++) pegs.append(h('span', 'hb-peg blow'));
+      row.append(balls, h('span', 'hbb-res', `${g.hit}ヒット ${g.blow}ブロー`));
+      const pegs = h('span', 'hbb-pegs');
+      for (let i = 0; i < g.hit; i++) pegs.append(h('span', 'hbb-peg hit'));
+      for (let i = 0; i < g.blow; i++) pegs.append(h('span', 'hbb-peg blow'));
       row.append(pegs);
       list.append(row);
     });
     if (!s.guesses.length) list.append(h('p', 'muted small', 'まだだれも予想していません'));
     root.append(list);
     if (act) {
-      const input = h('div', 'hb-input');
-      const slots = h('div', 'hb-slots');
+      const input = h('div', 'hbb-input');
+      const slots = h('div', 'hbb-slots');
       for (let i = 0; i < hbball.LEN; i++) {
-        const b = h('button', 'hb-slot');
+        const b = h('button', 'hbb-slot');
         b.append(ball(L.pick[i]));
+        if (i === L.pick.length - 1) hk(b, 'backspace');
         b.onclick = () => { L.pick.splice(i, 1); render(); };
         slots.append(b);
       }
-      const palette = h('div', 'hb-palette');
+      const palette = h('div', 'hbb-palette');
       hbball.COLORS.forEach((_, c) => {
-        const b = h('button', 'hb-color');
+        const b = h('button', 'hbb-color');
         b.append(ball(c, 'big'));
         b.disabled = L.pick.length >= hbball.LEN || (!s.options.dup && L.pick.includes(c));
         b.title = hbball.COLOR_NAMES[c];
+        hk(b, String(c + 1));
         b.onclick = () => { L.pick.push(c); render(); };
         palette.append(b);
       });
-      const go = h('button', 'btn primary', '予想する');
+      const go = hk(h('button', 'btn primary', '予想する'), 'enter');
       go.disabled = L.pick.length !== hbball.LEN;
       go.onclick = () => sendMove({ guess: L.pick.slice() });
       input.append(slots, palette, go, h('p', 'muted small', '色をタップして左から並べます（並べたボールをタップで外せる）。ヒット＝色も場所も正解、ブロー＝色だけ正解'));
@@ -1089,9 +1127,11 @@ export function asobiRenderers(api) {
     el.replaceChildren(root);
   }
 
-  return {
+  // Esc・右クリック: 選んでいる途中のものをやめる
+  const clear = () => { ui.data = {}; lcArmed = false; };
+  return { clear, renderers: {
     morris: renderMorris, hex: renderHex, checkers: renderCheckers, domino: renderDomino, ccheckers: renderCChecker, ludo: renderLudo,
     sevens: renderSevens, speed: renderSpeed, memory: renderMemory, blackjack: renderBlackjack, lastcard: renderLastcard,
     pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball,
-  };
+  } };
 }

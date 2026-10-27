@@ -187,15 +187,58 @@ function choose(title, options) {
     const box = $('#modal-options');
     box.replaceChildren();
     const done = (v) => { modal.hidden = true; modal.onclick = null; resolve(v); };
-    for (const [value, label] of options) {
+    options.forEach(([value, label], i) => {
       const b = h('button', 'btn', label);
       b.onclick = (e) => { e.stopPropagation(); done(value); };
+      if (i < 9) hk(b, String(i + 1));
       box.append(b);
-    }
+    });
     modal.onclick = (e) => { if (e.target === modal) done(null); };
     modal.hidden = false;
   });
 }
+
+// ---------- パソコンのキーボード操作 ----------
+// hk(ボタン, 'h') のようにキーを決めると、そのキーで押せる（マウスのある画面では、ボタンの角にキーを小さく出す）。
+// キーは e.key を小文字にしたもの。いくつか決めるときは空白で区切る（'enter'・'space'・'backspace' も使える）
+const KEY_LABEL = { enter: '⏎', space: 'Space', backspace: '⌫', arrowleft: '←', arrowright: '→', arrowup: '↑', arrowdown: '↓' };
+function hk(el, keys, label) {
+  if (!el) return el;
+  el.dataset.key = keys;
+  const first = keys.split(' ')[0];
+  el.dataset.keyLabel = label ?? KEY_LABEL[first] ?? first.toUpperCase();
+  return el;
+}
+const keyToken = (e) => (e.key === ' ' ? 'space' : e.key.toLowerCase());
+let asobiClear = () => {};
+// 選んでいる途中のもの（駒・カードなど）を全部やめる
+function clearSelection() {
+  sel = null; ccSel = []; dfSel = []; bkSel = null; gsSel = null; gnSel = null; hbEntry = '';
+  asobiClear();
+  render();
+}
+document.addEventListener('keydown', (e) => {
+  if (!view || e.ctrlKey || e.metaKey || e.altKey) return;
+  const modalOpen = !$('#modal').hidden;
+  if (e.key === 'Escape') {
+    if (modalOpen) $('#modal').click(); // まわりを押したのと同じ（閉じる）
+    else if (!document.querySelector('.modal:not(#modal)')) clearSelection();
+    return;
+  }
+  if (e.repeat || (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName))) return;
+  const t = keyToken(e);
+  const scope = modalOpen ? '#modal' : '#room';
+  const btn = [...document.querySelectorAll(`${scope} [data-key]`)].find((b) => !b.disabled && b.offsetParent !== null && b.dataset.key.split(' ').includes(t));
+  if (!btn) return;
+  e.preventDefault();
+  btn.click();
+});
+// 盤の上で右クリック: 選んでいるものをやめる（右クリックを使うゲームは除く）
+$('#board').addEventListener('contextmenu', (e) => {
+  if (!view || ['tanks', 'paint', 'towerbattle'].includes(view.game)) return;
+  e.preventDefault();
+  clearSelection();
+});
 
 function sendMove(move) {
   sel = null;
@@ -1220,9 +1263,9 @@ function renderCatChoco(el, v) {
     const voted = s.votes.filter((x, i) => x !== null && i !== s.turn).length;
     const row = h('div', 'cc-vote');
     if (me >= 0 && me !== s.turn && !s.out[me] && s.votes[me] === null) {
-      const ok = h('button', 'btn primary', '👍 成功');
+      const ok = hk(h('button', 'btn primary', '👍 成功'), 'y');
       ok.onclick = () => send({ type: 'move', move: { vote: true } });
-      const ng = h('button', 'btn danger', '👎 失敗');
+      const ng = hk(h('button', 'btn danger', '👎 失敗'), 'n');
       ng.onclick = () => send({ type: 'move', move: { vote: false } });
       row.append(ok, ng);
     } else if (me >= 0 && s.votes[me] !== null && me !== s.turn) {
@@ -1732,7 +1775,7 @@ function renderDaifugo(el, v) {
     bar.append(ranks, go);
     hint.textContent = '12ボンバー：選んだ数字のカードを、全員（自分も）手札から捨てます';
   } else if (s.phase === 'play' && me === s.turn && !s.out[me] && !s.pending) {
-    const play = h('button', 'btn primary', dfSel.length ? `出す（${dfSel.length}枚）` : '出す');
+    const play = hk(h('button', 'btn primary', dfSel.length ? `出す（${dfSel.length}枚）` : '出す'), 'enter');
     let ok = false;
     if (dfSel.length) {
       try { daifugo.checkPlay(s, me, dfSel); ok = true; hint.textContent = '出せます'; hint.classList.add('ok'); }
@@ -1742,14 +1785,14 @@ function renderDaifugo(el, v) {
     play.onclick = () => sendMove({ play: dfSel });
     bar.append(play);
     if (s.field) {
-      const pass = h('button', 'btn', 'パス');
+      const pass = hk(h('button', 'btn', 'パス'), 'p');
       pass.onclick = () => sendMove({ pass: true });
       bar.append(pass);
     }
   }
   const ex = s.phase === 'exchange' && s.exchange.find((e) => e.from === me && !e.done);
   if (ex) {
-    const give = h('button', 'btn primary', `${name(ex.to)} に渡す（${dfSel.length}/${ex.count}枚）`);
+    const give = hk(h('button', 'btn primary', `${name(ex.to)} に渡す（${dfSel.length}/${ex.count}枚）`), 'enter');
     give.disabled = dfSel.length !== ex.count;
     give.onclick = () => sendMove({ give: dfSel });
     bar.append(give);
@@ -1757,6 +1800,7 @@ function renderDaifugo(el, v) {
   if (s.phase === 'result') {
     if (host) {
       const next = h('button', 'btn primary', s.options && s.options.exchange === false ? '次のラウンドへ' : '次のラウンドへ（カード交換あり）');
+      hk(next, 'n');
       next.onclick = () => sendMove({ next: true });
       bar.append(next);
     } else bar.append(h('span', 'muted', 'ホストが次のラウンドを始めるのを待っています…'));
@@ -1862,15 +1906,16 @@ function renderPoker(el, v) {
   }
   if (opt) {
     const bar = h('div', 'pk-actions');
-    const fold = h('button', 'btn danger', 'フォールド');
+    const fold = hk(h('button', 'btn danger', 'フォールド'), 'f');
     fold.onclick = () => sendMove({ fold: true });
     bar.append(fold);
     if (opt.canCheck) {
-      const check = h('button', 'btn', 'チェック');
+      const check = hk(h('button', 'btn', 'チェック'), 'c');
       check.onclick = () => sendMove({ check: true });
       bar.append(check);
     } else {
       const call = h('button', 'btn primary', opt.toCall >= s.stacks[me] ? `オールインでコール ${opt.toCall}` : `コール ${opt.toCall}`);
+      hk(call, 'c');
       call.onclick = () => sendMove({ call: true });
       bar.append(call);
     }
@@ -1889,7 +1934,7 @@ function renderPoker(el, v) {
       const clamp = (x) => Math.max(opt.minRaiseTo, Math.min(opt.maxRaiseTo, Math.round(Number(x) || 0)));
       pkRaise = clamp(pkRaise ?? opt.minRaiseTo);
       range.value = num.value = pkRaise;
-      const go = h('button', 'btn primary');
+      const go = hk(h('button', 'btn primary'), 'r');
       const label = () => { go.textContent = pkRaise >= opt.maxRaiseTo ? `オールイン ${pkRaise}` : `${s.currentBet ? 'レイズ' : 'ベット'} ${pkRaise}`; };
       label();
       range.oninput = () => { pkRaise = clamp(range.value); num.value = pkRaise; label(); };
@@ -2632,16 +2677,16 @@ function renderHitBlow(el, v, act) {
     pad.append(h('div', 'hb-pad-title', canSetup ? `秘密の数を決めよう（${digits}けた・同じ数字なし）` : '相手の数を予想しよう'), shown);
     const keys = h('div', 'hb-keys');
     for (const d of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']) {
-      const b = h('button', 'btn hb-key', d);
+      const b = hk(h('button', 'btn hb-key', d), d);
       b.disabled = hbEntry.includes(d) || hbEntry.length >= digits;
       b.onclick = () => { hbEntry += d; render(); };
       keys.append(b);
     }
-    const del = h('button', 'btn hb-key', '⌫');
+    const del = hk(h('button', 'btn hb-key', '⌫'), 'backspace');
     del.disabled = !hbEntry.length;
     del.onclick = () => { hbEntry = hbEntry.slice(0, -1); render(); };
     keys.append(del);
-    const go = h('button', 'btn primary hb-go', canSetup ? 'この数に決める' : '予想する');
+    const go = hk(h('button', 'btn primary hb-go', canSetup ? 'この数に決める' : '予想する'), 'enter');
     go.disabled = hbEntry.length !== digits;
     go.onclick = () => { const x = hbEntry; hbEntry = ''; sendMove(canSetup ? { secret: x } : { guess: x }); };
     pad.append(keys, go);
@@ -2927,16 +2972,16 @@ function renderGeister(el, v, act) {
   const tools = h('div', 'gs-tools');
   if (setup) {
     tools.append(h('p', 'muted small', '自分のおばけを2つタップすると入れかわります。青＝良いおばけ（出口から逃がせる）、赤＝悪いおばけ（取らせると得）。'));
-    const shuffle = h('button', 'btn', 'ランダムに並べる');
+    const shuffle = hk(h('button', 'btn', 'ランダムに並べる'), 'r');
     shuffle.onclick = () => { gsLayout = gsLayout.slice().sort(() => Math.random() - 0.5); gsSwap = null; render(); };
-    const ok = h('button', 'btn primary', 'この並びで決定');
+    const ok = hk(h('button', 'btn primary', 'この並びで決定'), 'enter');
     ok.onclick = () => { const l = gsLayout; sendMove({ layout: l }); };
     tools.append(shuffle, ok);
   } else if (s.phase === 'setup' && v.you >= 0) {
     tools.append(h('p', 'muted small', '相手が並べ終わるのを待っています…'));
   }
   if (canEscape) {
-    const esc = h('button', 'btn primary', 'このおばけを出口から逃がす（勝ち！）');
+    const esc = hk(h('button', 'btn primary', 'このおばけを出口から逃がす（勝ち！）'), 'e');
     esc.onclick = () => { const from = gsSel; gsSel = null; sendMove({ from, escape: true }); };
     tools.append(esc);
   }
@@ -2961,6 +3006,7 @@ function renderMancala(el, v, act) {
     b.append(mcSeeds(n), h('span', 'mc-count', String(n)));
     const canPlay = p === me && legal.includes(k);
     b.disabled = !canPlay;
+    if (p === me) hk(b, String(k + 1));
     if (canPlay) b.onclick = () => sendMove({ pit: k });
     return b;
   };
@@ -3005,7 +3051,7 @@ function renderConnect4(el, v, act) {
   const board = h('div', 'c4-board' + (act ? ' active' : ''));
   const win = new Set((s.winLine || []).map(([r, c]) => `${r},${c}`));
   for (let c = 0; c < connect4.COLS; c++) {
-    const col = h('button', 'c4-col');
+    const col = hk(h('button', 'c4-col'), String(c + 1));
     col.disabled = !legal.includes(c);
     col.onclick = () => sendMove({ col: c });
     for (let r = 0; r < connect4.ROWS; r++) {
@@ -3255,7 +3301,8 @@ function renderSkull(el, v) {
     const canPlace = (s.phase === 'place' && !s.stacks[me].length) || (s.phase === 'build' && s.turn === me);
     if (canPlace) {
       for (const type of ['flower', 'skull']) {
-        const b = h('button', 'btn sk-place ' + type, `${SK_FACE[type]} ${type === 'skull' ? 'ドクロ' : '花'}を置く（${hand[type]}）`);
+        const b = hk(h('button', 'btn sk-place ' + type, ''), type === 'skull' ? 'x' : 'f');
+        b.textContent = `${SK_FACE[type]} ${type === 'skull' ? 'ドクロ' : '花'}を置く（${hand[type]}）`;
         b.disabled = !hand[type];
         b.onclick = () => sendMove({ place: type });
         bar.append(b);
@@ -3266,12 +3313,12 @@ function renderSkull(el, v) {
       for (let n = minBid; n <= total; n++) { const o = h('option', null, `${n}枚`); o.value = String(n); sel.append(o); }
       sel.value = String(Math.max(minBid, Math.min(total, skBid)));
       sel.onchange = () => { skBid = Number(sel.value); };
-      const bid = h('button', 'btn primary', '宣言する');
+      const bid = hk(h('button', 'btn primary', '宣言する'), 'enter');
       bid.onclick = () => sendMove({ bid: Number(sel.value) });
       bar.append(h('span', 'muted small', '何枚めくれるか：'), sel, bid);
     }
     if (s.phase === 'bid' && s.turn === me) {
-      const pass = h('button', 'btn', 'パス');
+      const pass = hk(h('button', 'btn', 'パス'), 'p');
       pass.onclick = () => sendMove({ pass: true });
       bar.append(pass);
     }
@@ -3515,7 +3562,11 @@ async function gnClick(here, ts, s, v, legal) {
 
 const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, hagetaka: renderHagetaka, itchi: renderItchi };
 
-Object.assign(RENDERERS, asobiRenderers({ h, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset }));
+{
+  const asobi = asobiRenderers({ h, hk, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset });
+  asobiClear = asobi.clear;
+  Object.assign(RENDERERS, asobi.renderers);
+}
 
 // ---------- イベント ----------
 const nameInput = $('#name');

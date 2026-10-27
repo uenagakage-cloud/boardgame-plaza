@@ -56,7 +56,7 @@
 /* ---------- ドミノ ---------- */
 .dm { width: min(100%, 720px); display: grid; gap: 12px; }
 .dm-table { background: radial-gradient(circle at 50% 40%, #2e7d4f, #1b5434); border-radius: 16px; padding: 14px; display: grid; gap: 8px; justify-items: center; color: #fff; box-shadow: var(--shadow); }
-.dm-table .muted, .sp .muted, .bj-dealer .muted, .pt-mid .muted { color: rgba(255, 255, 255, .8); }
+.dm-table .muted, .sp .muted, .bj-dealer .muted, .pg-mid .muted { color: rgba(255, 255, 255, .8); }
 .dm-line { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
 .dm-ends { font-weight: 800; }
 .dm-tile { display: inline-flex; flex-direction: column; background: #fffdf5; border: 2px solid #333; border-radius: 6px; padding: 2px; box-shadow: 0 2px 3px rgba(0, 0, 0, .35); }
@@ -114,7 +114,7 @@
 .sv { width: min(100%, 760px); display: grid; gap: 12px; }
 .sv-table { display: grid; gap: 4px; background: radial-gradient(circle at 50% 40%, #2e7d4f, #1b5434); border-radius: 14px; padding: 10px; box-shadow: var(--shadow); overflow-x: auto; }
 .sv-row { display: grid; grid-template-columns: repeat(13, minmax(22px, 1fr)); gap: 3px; }
-.sv-row .pcard.small, .pt .pcard.small { width: auto; min-width: 0; height: 40px; font-size: .7rem; }
+.sv-row .pcard.small, .pg .pcard.small { width: auto; min-width: 0; height: 40px; font-size: .7rem; }
 .pcard.empty.next { border-color: #ffd43b; background: rgba(255, 212, 59, .15); }
 .pcard.last { box-shadow: 0 0 0 3px #ffd43b; }
 
@@ -141,8 +141,6 @@
 /* ---------- 神経衰弱 ---------- */
 .mm { width: min(100%, 560px); display: grid; gap: 12px; }
 .mm-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; background: radial-gradient(circle at 50% 40%, #2e7d4f, #1b5434); border-radius: 14px; padding: 10px; }
-.mm-grid.many { grid-template-columns: repeat(9, minmax(0, 1fr)); }
-@media (max-width: 600px) { .mm-grid.many { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 .mm-card { border: 0; background: transparent; padding: 0; aspect-ratio: 2 / 3; cursor: pointer; touch-action: manipulation; }
 .mm-card:disabled { cursor: default; }
 .mm-card .pcard { width: 100%; height: 100%; }
@@ -209,17 +207,17 @@
 .uno-hand-card.drawn .lc-card { box-shadow: 0 0 0 3px #ffd84a, 0 2px 4px rgba(0, 0, 0, .35); }
 
 /* ---------- ぶたのしっぽ ---------- */
-.pt { width: min(100%, 560px); display: grid; gap: 12px; }
-.pt-ring { position: relative; width: 100%; aspect-ratio: 1; background: radial-gradient(circle at 50% 50%, #2e7d4f, #1b5434); border-radius: 50%; box-shadow: var(--shadow); }
-.pt-slot { position: absolute; border: 0; padding: 0; background: transparent; }
-.pt-slot .pcard.small { width: 22px; height: 32px; }
-.pt-slot.can { cursor: pointer; }
-.pt-slot.can:hover .pcard { box-shadow: 0 0 0 2px #ffd43b; }
-.pt-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 6px; color: #fff; text-align: center; }
-.pt-pile { position: relative; width: 70px; height: 100px; display: grid; place-items: center; }
-.pt-pile .pcard { position: absolute; }
-.pt-took { font-weight: 900; color: #ffd43b; }
-@media (max-width: 600px) { .pt-slot .pcard.small { width: 16px; height: 24px; } .pt-slot .pcard .pc-rank, .pt-slot .pcard .pc-suit { display: none; } }
+.pg { width: min(100%, 560px); display: grid; gap: 12px; }
+.pg-ring { position: relative; width: 100%; aspect-ratio: 1; background: radial-gradient(circle at 50% 50%, #2e7d4f, #1b5434); border-radius: 50%; box-shadow: var(--shadow); }
+.pg-slot { position: absolute; border: 0; padding: 0; background: transparent; }
+.pg-slot .pcard.small { width: 22px; height: 32px; }
+.pg-slot.can { cursor: pointer; }
+.pg-slot.can:hover .pcard { box-shadow: 0 0 0 2px #ffd43b; }
+.pg-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 6px; color: #fff; text-align: center; }
+.pg-pile { position: relative; width: 70px; height: 100px; display: grid; place-items: center; }
+.pg-pile .pcard { position: absolute; }
+.pg-took { font-weight: 900; color: #ffd43b; }
+@media (max-width: 600px) { .pg-slot .pcard.small { width: 16px; height: 24px; } .pg-slot .pcard .pc-rank, .pg-slot .pcard .pc-suit { display: none; } }
 
 /* ---------- ヨット ---------- */
 .yt { width: min(100%, 620px); display: grid; gap: 12px; }
@@ -293,26 +291,77 @@
 @media (pointer: coarse) { .tk-pads { display: flex; } }
 
 /* ---------- ヒット&ブロー（ボール） ---------- */
-.hb { width: min(100%, 560px); display: grid; gap: 10px; }
-.hb-secret { display: flex; align-items: center; gap: 6px; justify-content: center; }
-.hb-ball { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+.hbb { width: min(100%, 560px); display: grid; gap: 10px; }
+.hbb-secret { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.hbb-ball { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fff 0 12%, var(--c) 40%); box-shadow: 0 2px 3px rgba(0, 0, 0, .35); flex: none; }
-.hb-ball.big { width: 36px; height: 36px; }
-.hb-ball.empty { background: rgba(0, 0, 0, .08); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .2); }
-.hb-ball.hidden { background: #495057; color: #fff; font-weight: 900; }
-.hb-list { display: grid; gap: 4px; max-height: 340px; overflow-y: auto; }
-.hb-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 5px 8px; }
-.hb-row.mine { border-color: var(--accent); }
-.hb-row.last { box-shadow: 0 0 0 2px #ffd43b; }
-.hb-who { font-size: .78rem; width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hb-balls { display: flex; gap: 4px; }
-.hb-res { font-weight: 800; font-size: .85rem; margin-left: auto; }
-.hb-pegs { display: flex; gap: 2px; width: 46px; flex-wrap: wrap; }
-.hb-peg { width: 9px; height: 9px; border-radius: 50%; }
-.hb-peg.hit { background: #e03131; }
-.hb-peg.blow { background: #fff; border: 1px solid #555; }
-.hb-input { display: grid; gap: 8px; justify-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
-.hb-slots, .hb-palette { display: flex; gap: 8px; }
-.hb-slot, .hb-color { border: 0; background: transparent; padding: 2px; border-radius: 50%; cursor: pointer; touch-action: manipulation; }
-.hb-slot .hb-ball { width: 40px; height: 40px; }
-.hb-color:disabled { opacity: .3; cursor: default; }
+.hbb-ball.big { width: 36px; height: 36px; }
+.hbb-ball.empty { background: rgba(0, 0, 0, .08); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .2); }
+.hbb-ball.hidden { background: #495057; color: #fff; font-weight: 900; }
+.hbb-list { display: grid; gap: 4px; max-height: 340px; overflow-y: auto; }
+.hbb-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 5px 8px; }
+.hbb-row.mine { border-color: var(--accent); }
+.hbb-row.last { box-shadow: 0 0 0 2px #ffd43b; }
+.hbb-who { font-size: .78rem; width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbb-balls { display: flex; gap: 4px; }
+.hbb-res { font-weight: 800; font-size: .85rem; margin-left: auto; }
+.hbb-pegs { display: flex; gap: 2px; width: 46px; flex-wrap: wrap; }
+.hbb-peg { width: 9px; height: 9px; border-radius: 50%; }
+.hbb-peg.hit { background: #e03131; }
+.hbb-peg.blow { background: #fff; border: 1px solid #555; }
+.hbb-input { display: grid; gap: 8px; justify-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.hbb-slots, .hbb-palette { display: flex; gap: 8px; }
+.hbb-slot, .hbb-color { border: 0; background: transparent; padding: 2px; border-radius: 50%; cursor: pointer; touch-action: manipulation; }
+.hbb-slot .hbb-ball { width: 40px; height: 40px; }
+.hbb-color:disabled { opacity: .3; cursor: default; }
+.mm-grid.n36 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.mm-grid.n52 { grid-template-columns: repeat(13, minmax(0, 1fr)); }
+@media (max-width: 600px) { .mm-grid.n36 { grid-template-columns: repeat(6, minmax(0, 1fr)); } .mm-grid.n52 { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+/* ================= パソコンで遊びやすく ================= */
+/* キーボードのキー（マウスのある画面だけ、ボタンの角に小さく出す） */
+@media (hover: hover) and (pointer: fine) {
+  [data-key-label] { position: relative; }
+  [data-key-label]::after {
+    content: attr(data-key-label); position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 8px; background: rgba(33, 37, 41, .82); color: #fff; font: 700 10px/15px system-ui, sans-serif; text-align: center;
+    pointer-events: none; z-index: 3; box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  }
+  .btn[data-key-label]::after { top: -7px; right: -7px; }
+  [data-key-label]:disabled::after { display: none; }
+  .c4-col[data-key-label]::after { right: 50%; transform: translateX(50%); }
+
+  /* マウスを乗せたときの反応 */
+  .mr-board.active .mr-pt:hover .mr-hint { fill: rgba(47, 158, 68, .95); }
+  .mr-board.active .mr-pt:hover .mr-stone.can, .mr-board.active .mr-pt:hover .target-remove { stroke: #1c7ed6; stroke-width: 6; }
+  .ck-board.active .ck-sq.dark:hover { filter: brightness(1.18); }
+  .cc2-board.active g:hover > .cc2-hole { fill: #9d8a60; }
+  .cc2-board.active g:hover > .cc2-peg.can { stroke: #222; stroke-width: 3; }
+  .ld-token.can:hover { outline-color: #fff; transform: translate(-50%, -60%) scale(1.15); animation: none; }
+  .sp-card:not(:disabled):hover .pcard, .hf-btn:not(:disabled):hover .hf-card { transform: translateY(-4px); transition: transform .12s; }
+  .mm-card:not(:disabled):hover .pcard { box-shadow: 0 0 0 3px #4dabf7; }
+  .yt-die:not(:disabled):hover { border-color: var(--accent); }
+  .hbb-color:not(:disabled):hover { transform: scale(1.12); }
+  .dm-hand-btn.playable:hover .dm-tile { box-shadow: 0 0 0 3px #4dabf7; }
+  .sp-pile.target:hover .pcard { transform: scale(1.06); }
+}
+
+/* パソコンの横長の画面: 盤が画面の高さに収まるように */
+@media (min-width: 900px) {
+  .chess-board { width: min(100%, 620px, calc(100vh - 290px)); }
+  .othello-board { width: min(100%, 600px, calc(100vh - 290px)); }
+  .mr-board { width: min(100%, 460px, calc(100vh - 360px)); }
+  .ck-board { width: min(100%, 440px, calc(100vh - 300px)); }
+  .hx-board { width: min(100%, 560px, calc((100vh - 290px) * 1.6)); }
+  .cc2-board { width: min(100%, 560px, calc(100vh - 230px)); }
+  .ld { width: min(100%, 520px, calc(100vh - 290px)); }
+  .mm { width: min(100%, 640px); }
+  .mm.c24 { width: min(100%, 640px, calc(100vh - 250px)); }
+  .yt-sheet th, .yt-sheet td { padding: 2px 6px; }
+  /* ヨット: 点数表をサイコロの右に並べる */
+  .yt { width: min(100%, 760px); grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; }
+  .yt > * { grid-column: 1; }
+  .yt > .yt-sheet { grid-column: 2; grid-row: 1 / span 8; }
+  .yt-die { width: 54px; height: 54px; font-size: 2.6rem; }
+  .pg { width: min(100%, 560px, calc(100vh - 300px)); }
+}
