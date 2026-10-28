@@ -670,6 +670,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .it-card { background: linear-gradient(135deg, #8fd3f4, #84fab0); color: #12324a; }
 .it.it-clear .it-card { background: linear-gradient(135deg, #ffe27a, #ff9a6b); }
 .it-banner { font-size: 1.8rem; font-weight: 900; color: #fff; background: #2a9d5c; border-radius: 99px; padding: 4px 26px; animation: df-pop 1.2s ease-out; }
+.it-banner.miss { background: #868e96; font-size: 1.3rem; }
+.it.it-miss .it-card { background: linear-gradient(135deg, #dee2e6, #adb5bd); }
 .it-cleared:empty { display: none; }
 
 /* ---------- ニコニコ風に流れるチャット ---------- */

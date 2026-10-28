@@ -1,9 +1,9 @@
 // 一致するまで終われまテン（サーバーとブラウザで共通）
-// 2〜8人の協力ゲーム。お題（例：赤い果物といえば？）に全員が同時に答えを書き、全員の答えがそろえばクリア。
-// そろわなければ、答えを見せ合ったうえで同じお題にもう一度挑戦（何度でも）。決めた数のお題をクリアしたら終わり。
+// 2〜8人の協力ゲーム。お題（例：赤い果物といえば？）に全員が同時に答えを書き、全員の答えがそろえば一致。
+// そろわなければ、答えを見せ合ってから次のお題へ（同じお題のやり直しはしない）。決めた数のお題を遊んだら終わり。
 // 書き方がちがうだけ（「林檎」と「りんご」など）のときは、全員が「一致でいいね」を押せば一致にできる。
-// 何回の挑戦でクリアできたかが記録。ホストは、どうしてもそろわないお題を変えられる。
-// 手: { answer: '文字' } / { agree: true } 一致でいいね / { retry: true } もう一度 / { skip: true } ホストがお題を変える / { resign: true }
+// 何問一致したかが記録。ホストは、答えにくいお題を変えられる。
+// 手: { answer: '文字' } / { agree: true } 一致でいいね / { next: true } 一致していない（次のお題へ） / { skip: true } ホストがお題を変える / { resign: true }
 export const id = 'itchi';
 export const title = '一致するまで終われまテン';
 export const sideNames = Array.from({ length: 8 }, (_, i) => `プレイヤー${i + 1}`);
@@ -144,6 +144,106 @@ SNSといえば？
 魚料理といえば？
 鍋の種類といえば？
 調味料といえば？
+緑色の野菜といえば？
+オレンジ色の野菜といえば？
+秋の味覚といえば？
+春の味覚といえば？
+焼き肉で最初に頼むものといえば？
+焼き鳥の定番といえば？
+パスタの種類といえば？
+ピザの具といえば？
+サンドイッチの具といえば？
+丼ものといえば？
+中華料理といえば？
+イタリア料理といえば？
+韓国料理といえば？
+駄菓子といえば？
+ポテトチップスの味といえば？
+かき氷の味といえば？
+スナック菓子といえば？
+パフェにのっているものといえば？
+ハンバーガーの具といえば？
+うどんの種類といえば？
+天ぷらのネタといえば？
+串カツの具といえば？
+ふりかけの味といえば？
+ご飯のおともといえば？
+夏の食べ物といえば？
+遠足のおやつといえば？
+喫茶店のメニューといえば？
+ファミレスのメニューといえば？
+日本の島といえば？
+東京の駅といえば？
+富士山がある県といえば？
+温泉地といえば？
+世界遺産といえば？
+日本の川といえば？
+赤い国旗の国といえば？
+アメリカの都市といえば？
+ヨーロッパの国といえば？
+アジアの国といえば？
+南の島といえば？
+恐竜といえば？
+鳥といえば？
+魚といえば？
+海の生き物といえば？
+森の動物といえば？
+犬の種類といえば？
+猫の名前といえば？
+秋の虫といえば？
+黄色い花といえば？
+木といえば？
+野菜といえば？
+きのこといえば？
+雨の日に使うものといえば？
+夏に使うものといえば？
+冬に着るものといえば？
+アクセサリーといえば？
+靴の種類といえば？
+家具といえば？
+リビングにあるものといえば？
+学校にある部屋といえば？
+部活といえば？
+修学旅行先といえば？
+学校の行事といえば？
+理科の実験道具といえば？
+好きな漢字一文字といえば？
+英語のあいさつといえば？
+体の部位といえば？
+顔のパーツといえば？
+風邪のときに食べるものといえば？
+薬局で買うものといえば？
+スーパーで買うものといえば？
+100円ショップで買うものといえば？
+誕生日プレゼントといえば？
+お土産の定番といえば？
+夏祭りの遊びといえば？
+キャンプでするものといえば？
+海でする遊びといえば？
+雪でする遊びといえば？
+トランプの遊びといえば？
+有名な映画といえば？
+ジブリ作品といえば？
+戦隊ヒーローの色といえば？
+将棋の駒といえば？
+チェスの駒といえば？
+有名な画家といえば？
+戦国武将といえば？
+発明家といえば？
+吹奏楽の楽器といえば？
+お化けといえば？
+妖怪といえば？
+宇宙といえば？
+魔法使いの持ち物といえば？
+忍者の道具といえば？
+海賊といえば？
+お城といえば？
+七夕といえば？
+ひな祭りといえば？
+節分といえば？
+朝起きてすることといえば？
+寝る前にすることといえば？
+休みの日にすることといえば？
 `.trim().split('\n').map((x) => x.trim()).filter(Boolean);
 
 // 答えを比べるときは、空白・かな/カナ・全角/半角・大文字小文字の違いは無視
@@ -153,14 +253,15 @@ export function normalizeAnswer(text) {
     .replace(/[\s・。、！？!?.,〜~ー]/g, '');
 }
 
+export const GOALS = [5, 3, 10, 15, 20]; // 遊ぶお題の数（先頭が既定）
 export function normalizeOptions(o) {
-  const goal = [1, 3, 5, 10].includes(Number(o && o.goal)) ? Number(o.goal) : 3;
+  const goal = GOALS.includes(Number(o && o.goal)) ? Number(o.goal) : GOALS[0];
   const seconds = [0, 30, 60, 90].includes(Number(o && o.seconds)) ? Number(o.seconds) : 60;
   return { goal, seconds };
 }
 export const variantName = (o) => {
   const x = normalizeOptions(o);
-  return `${x.goal}問クリアで終わり・${x.seconds ? `${x.seconds}秒` : '時間制限なし'}`;
+  return `お題${x.goal}問・${x.seconds ? `${x.seconds}秒` : '時間制限なし'}`;
 };
 
 function shuffle(arr, rng) {
@@ -179,7 +280,7 @@ export function init(options, players = 2, rng) {
   const opts = normalizeOptions(options);
   const s = {
     players, options: opts, out: Array(players).fill(false),
-    deck: shuffle(THEMES.map((_, i) => i), rng), theme: null, cleared: 0, attempts: 0, tries: 0,
+    deck: shuffle(THEMES.map((_, i) => i), rng), theme: null, cleared: 0, played: 0, attempts: 0, tries: 0, results: [],
     phase: 'write', answers: Array(players).fill(null), choice: Array(players).fill(null), matched: false,
     clearedThemes: [], endsAt: null, tickAt: null, turn: 0, result: null, history: [],
   };
@@ -192,7 +293,7 @@ function nextTheme(s, rng) {
   s.theme = s.deck.pop();
   s.tries = 0;
   s.history = []; // 新しい試合（ラウンド）になったらログは最初から
-  s.history.push(`お題${s.cleared + 1}：${THEMES[s.theme]}`);
+  s.history.push(`お題${s.played + 1}/${s.options.goal}：${THEMES[s.theme]}`);
   startTry(s);
 }
 
@@ -216,15 +317,25 @@ function reveal(s) {
   s.phase = 'reveal';
   s.endsAt = null;
   s.tickAt = null;
-  s.history.push(`${s.tries}回目：${live.map((p) => s.answers[p] || '（なし）').join(' / ')} → そろわず`);
+  s.history.push(`${live.map((p) => s.answers[p] || '（なし）').join(' / ')} → そろわず`);
 }
 
 function clear(s, why) {
   s.cleared += 1;
   s.matched = true;
   s.clearedThemes.push({ theme: THEMES[s.theme], tries: s.tries });
-  s.history.push(`${why}「${active(s).map((p) => s.answers[p]).find(Boolean) || ''}」（${s.tries}回目でクリア）`);
+  s.results.push({ theme: THEMES[s.theme], ok: true, answer: active(s).map((p) => s.answers[p]).find(Boolean) || '' });
+  s.history.push(`${why}「${active(s).map((p) => s.answers[p]).find(Boolean) || ''}」`);
   s.phase = 'clear';
+  s.tickAt = Date.now() + CLEAR_MS;
+  s.endsAt = s.tickAt;
+}
+
+// そろわなかった: 少し見せてから次のお題へ
+function miss(s) {
+  s.results.push({ theme: THEMES[s.theme], ok: false });
+  s.history.push('一致せず… 次のお題へ');
+  s.phase = 'miss';
   s.tickAt = Date.now() + CLEAR_MS;
   s.endsAt = s.tickAt;
 }
@@ -234,14 +345,15 @@ function finish(s) {
   s.tickAt = null;
   s.endsAt = null;
   const live = active(s);
-  s.result = { winners: live, team: 0, reason: `${s.attempts}回の挑戦で${s.cleared}問クリア` };
+  s.result = { winners: live, team: 0, reason: `${s.played}問中${s.cleared}問一致` };
 }
 
 export function tick(s, rng) {
   const ns = clone(s);
   if (s.phase === 'write') { reveal(ns); return ns; }
-  if (s.phase === 'clear') {
-    if (ns.cleared >= ns.options.goal) finish(ns);
+  if (s.phase === 'clear' || s.phase === 'miss') {
+    ns.played += 1;
+    if (ns.played >= ns.options.goal) finish(ns);
     else nextTheme(ns, rng);
     return ns;
   }
@@ -266,26 +378,27 @@ export function phaseText(s, you) {
   }
   if (s.phase === 'reveal') {
     if (you < 0) return 'そろいませんでした…';
-    return s.choice[you] ? 'ほかの人を待っています…' : 'そろわなかった！ 「もう一度」か、同じ意味なら「一致でいいね」';
+    return s.choice[you] ? 'ほかの人を待っています…' : 'そろわなかった… 同じ意味なら「一致でいいね」、ちがうなら「次のお題へ」';
   }
   if (s.phase === 'clear') return '全員一致！ 次のお題へ';
+  if (s.phase === 'miss') return '一致しなかった… 次のお題へ';
   return null;
 }
 
-export const resultText = (s) => `クリア！ ${s.result.reason}`;
-export const scoreOf = (s) => `${s.cleared}/${s.options.goal}問`;
+export const resultText = (s) => `おわり！ ${s.result.reason}`;
+export const scoreOf = (s) => `一致 ${s.cleared}/${s.played}問`;
 
 const clone = (s) => ({
   ...s, out: s.out.slice(), deck: s.deck ? s.deck.slice() : [], answers: s.answers.slice(), choice: s.choice.slice(),
-  clearedThemes: s.clearedThemes.slice(), history: s.history.slice(),
+  clearedThemes: s.clearedThemes.slice(), results: (s.results || []).slice(), history: s.history.slice(),
 });
 
-// 全員が選んだら: 全員「一致でいいね」ならクリア、だれか「もう一度」なら同じお題でもう一度
+// 全員が選んだら: 全員「一致でいいね」なら一致、だれか「次のお題へ」なら一致せずに次のお題へ
 function decide(s) {
   const live = active(s);
   if (!live.every((p) => s.choice[p])) return;
   if (live.every((p) => s.choice[p] === 'agree')) clear(s, '同じ意味なので一致！');
-  else startTry(s);
+  else miss(s);
 }
 
 export function applyMove(s, mv, seat, rng, ctx = {}) {
@@ -310,9 +423,9 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     if (active(ns).every((p) => ns.answers[p])) reveal(ns);
     return ns;
   }
-  if (mv.agree || mv.retry) {
+  if (mv.agree || mv.next || mv.retry) {
     if (s.phase !== 'reveal') throw new Error('今は選べません');
-    ns.choice[seat] = mv.agree ? 'agree' : 'retry';
+    ns.choice[seat] = mv.agree ? 'agree' : 'next';
     decide(ns);
     return ns;
   }

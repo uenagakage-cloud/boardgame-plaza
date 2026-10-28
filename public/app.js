@@ -54,7 +54,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
-  itchi: { icon: '🤝', desc: 'みんなの答えがそろうまで終われない！ 協力して以心伝心を目指す。2〜8人。' },
+  itchi: { icon: '🤝', desc: 'お題に全員で同じ答えを書けたら一致！ 何問そろうか、協力して以心伝心を目指す。2〜8人。' },
   hagetaka: { icon: '🦅', desc: '1〜15のカードを同時に出して得点を取り合う。同じ数は打ち消し！ 2〜6人。' },
   geister: { icon: '👻', desc: '良いおばけと悪いおばけの正体を隠して戦う、かけひきのゲーム。CPU対戦あり。' },
   mancala: { icon: '🥣', desc: '穴に石をまいて、自分のゴールにたくさん集める。CPU対戦あり。' },
@@ -391,7 +391,7 @@ function renderLobby() {
           card.append(label);
           return select;
         };
-        const goal = mk('クリアするお題', 'itGoal', [1, 3, 5, 10], (n) => `${n}問`, 3);
+        const goal = mk('お題の数', 'itGoal2', itchi.GOALS.slice().sort((a, b) => a - b), (n) => `${n}問`, itchi.GOALS[0]);
         const secs = mk('考える時間', 'itSeconds', [30, 60, 90, 0], (n) => (n ? `${n}秒` : 'なし'), 60);
         getOptions = () => ({ goal: Number(goal.value), seconds: Number(secs.value) });
       }
@@ -3229,10 +3229,11 @@ function renderItchi(el, v) {
   const name = (seat) => v.seats[seat]?.name || '?';
   const playing = me >= 0 && !s.out[me];
   const host = me >= 0 && me === v.hostSeat;
-  it.round.textContent = s.phase === 'end' ? '結果' : `お題 ${Math.min(s.phase === 'clear' ? s.cleared : s.cleared + 1, s.options.goal)}/${s.options.goal}・${s.tries}回目の挑戦（合計${s.attempts}回）`;
-  it.sub.textContent = s.phase === 'end' ? '' : '全員の答えをそろえよう！';
-  it.theme.textContent = s.phase === 'end' ? `${s.attempts}回の挑戦で${s.cleared}問クリア！` : s.themeText;
+  it.round.textContent = s.phase === 'end' ? '結果' : `お題 ${Math.min(s.played + 1, s.options.goal)}/${s.options.goal}・ここまで ${s.cleared}問一致`;
+  it.sub.textContent = s.phase === 'end' ? '' : '全員の答えをそろえよう！（1回勝負）';
+  it.theme.textContent = s.phase === 'end' ? `${s.played}問中 ${s.cleared}問一致！` : s.themeText;
   it.root.classList.toggle('it-clear', s.phase === 'clear');
+  it.root.classList.toggle('it-miss', s.phase === 'miss');
   itUpdateTimer();
 
   const writing = s.phase === 'write' && playing;
@@ -3241,25 +3242,28 @@ function renderItchi(el, v) {
 
   // 答え（そろった／そろわなかった）
   it.answers.replaceChildren();
-  if (s.phase === 'reveal' || s.phase === 'clear') {
+  if (s.phase === 'reveal' || s.phase === 'clear' || s.phase === 'miss') {
     for (let i = 0; i < s.players; i++) {
       if (s.out[i]) continue;
       const card = h('div', 'as-answer' + (s.phase === 'clear' ? ' ok' : ''));
       card.append(h('div', 'as-who', name(i)), h('div', 'as-text', s.answers[i] || '（書かなかった）'));
-      if (s.phase === 'reveal' && s.choice[i]) card.append(h('span', s.choice[i] === 'agree' ? 'as-badge' : 'as-votes', s.choice[i] === 'agree' ? '一致でいいね' : 'もう一度'));
+      if (s.phase === 'reveal' && s.choice[i]) card.append(h('span', s.choice[i] === 'agree' ? 'as-badge' : 'as-votes', s.choice[i] === 'agree' ? '一致でいいね' : '一致していない'));
       it.answers.append(card);
     }
   }
   it.tools.replaceChildren();
   if (s.phase === 'clear') it.tools.append(h('div', 'it-banner', '全員一致！'));
+  if (s.phase === 'miss') it.tools.append(h('div', 'it-banner miss', '一致しなかった… 次のお題へ'));
   if (s.phase === 'reveal' && playing) {
     const agree = h('button', 'btn' + (s.choice[me] === 'agree' ? ' primary' : ''), '同じ意味だから一致でいいね');
     agree.onclick = () => send({ type: 'move', move: { agree: true } });
-    const retry = h('button', 'btn' + (s.choice[me] === 'retry' ? ' primary' : ''), 'もう一度挑戦');
-    retry.onclick = () => send({ type: 'move', move: { retry: true } });
-    it.tools.append(h('span', 'muted small', 'みんなの答えを見て、次はそろえよう。全員が「一致でいいね」なら一致になります。'), agree, retry);
+    const next = h('button', 'btn' + (s.choice[me] === 'next' ? ' primary' : ''), 'ちがうので次のお題へ');
+    next.onclick = () => send({ type: 'move', move: { next: true } });
+    hk(agree, 'y');
+    hk(next, 'n');
+    it.tools.append(h('span', 'muted small', '書き方がちがうだけで同じ意味なら、全員が「一致でいいね」で一致になります。'), agree, next);
   }
-  if ((s.phase === 'reveal' || s.phase === 'write') && host && s.tries >= 2) {
+  if (s.phase === 'write' && host) {
     const skip = h('button', 'btn small ghost', 'このお題を変える');
     skip.onclick = () => send({ type: 'move', move: { skip: true } });
     it.tools.append(skip);
@@ -3271,7 +3275,7 @@ function renderItchi(el, v) {
     if (s.phase === 'write' && s.answers[i]) chip.append(h('span', 'pt-ok', '書いた'));
     return chip;
   }));
-  it.cleared.textContent = s.clearedThemes.length ? `クリアしたお題：${s.clearedThemes.map((c) => `${c.theme}（${c.tries}回）`).join('、')}` : '';
+  it.cleared.textContent = (s.results || []).length ? `これまで：${s.results.map((r) => `${r.ok ? '⭕' : '❌'}${r.theme.replace(/といえば？$/, '')}${r.ok ? `（${r.answer}）` : ''}`).join('、')}` : '';
 }
 
 // ---------- スカル ----------
@@ -3672,7 +3676,7 @@ const FX_RULES = {
   blokus: (e) => (/全部置きました/.test(e) ? ['全部置いた！ +15点', 'big'] : /置ける場所がなくなりました/.test(e) ? [e, 'info'] : null),
   paint: (e) => (/^全員正解/.test(e) ? ['全員正解！', 'big'] : /誰も正解できなかった/.test(e) ? ['だれも正解できず…', 'bad']
     : /正解！/.test(e) ? [e.replace(/（.*$/, ''), 'good'] : null),
-  itchi: (e) => (/そろわず/.test(e) ? ['そろわず… もう一度！', 'bad'] : /クリア/.test(e) ? ['一致！', 'big'] : null),
+  itchi: (e) => (/一致せず/.test(e) ? ['一致せず… 次のお題へ', 'bad'] : /一致！/.test(e) ? ['一致！', 'big'] : null),
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
   catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),

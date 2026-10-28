@@ -1484,7 +1484,7 @@ test('asasore: 3人が被って1人だけ別の答えでも、被った答えが
   assert.deepEqual(s.winners, [0]);
   assert.deepEqual(s.scores, [1, 1, 1, 0]);
 });
-test('itchi: 全員そろえばクリア・そろわなければもう一度・一致でいいね・目標でおわり', () => {
+test('itchi: 全員そろえば一致・そろわなければ次のお題へ・一致でいいね・決めた数で終わり', () => {
   let s = itchi.init({ goal: 3, seconds: 60 }, 3);
   const theme = s.theme;
   s = itchi.applyMove(s, { answer: 'りんご' }, 0);
@@ -1493,16 +1493,23 @@ test('itchi: 全員そろえばクリア・そろわなければもう一度・�
   s = itchi.applyMove(s, { answer: 'いちご' }, 2);
   assert.equal(s.phase, 'reveal', 'そろわなかった');
   s = itchi.applyMove(s, { agree: true }, 0);
-  s = itchi.applyMove(s, { retry: true }, 1);
+  s = itchi.applyMove(s, { next: true }, 1);
   s = itchi.applyMove(s, { agree: true }, 2);
-  assert.equal(s.phase, 'write', 'だれか「もう一度」なら同じお題でもう一度');
-  assert.equal(s.theme, theme);
-  assert.equal(s.tries, 2);
+  assert.equal(s.phase, 'miss', 'だれか「次のお題へ」なら一致せず');
+  s = itchi.tick(s);
+  assert.notEqual(s.theme, theme, '同じお題はやり直さず、次のお題へ');
+  assert.equal(s.played, 1);
+  assert.equal(s.cleared, 0);
   for (const p of [0, 1, 2]) s = itchi.applyMove(s, { answer: p === 1 ? 'リンゴ ' : 'りんご' }, p);
   assert.equal(s.phase, 'clear', 'かな・カナ・空白のちがいは同じ');
   assert.equal(s.cleared, 1);
   s = itchi.tick(s);
-  assert.notEqual(s.theme, theme, '次のお題へ');
+  // ホストはお題を変えられる（数には入らない）
+  assert.throws(() => itchi.applyMove(s, { skip: true }, 1, undefined, { hostSeat: 0 }), /ホスト/);
+  const t2 = s.theme;
+  s = itchi.applyMove(s, { skip: true }, 0, undefined, { hostSeat: 0 });
+  assert.notEqual(s.theme, t2);
+  assert.equal(s.played, 2);
   // 林檎とりんご → 全員「一致でいいね」で一致
   s = itchi.applyMove(s, { answer: '林檎' }, 0);
   s = itchi.applyMove(s, { answer: 'りんご' }, 1);
@@ -1510,21 +1517,10 @@ test('itchi: 全員そろえばクリア・そろわなければもう一度・�
   for (const p of [0, 1, 2]) s = itchi.applyMove(s, { agree: true }, p);
   assert.equal(s.phase, 'clear');
   s = itchi.tick(s);
-  // ホストはお題を変えられる
-  assert.throws(() => itchi.applyMove(s, { skip: true }, 1, undefined, { hostSeat: 0 }), /ホスト/);
-  const t2 = s.theme;
-  s = itchi.applyMove(s, { skip: true }, 0, undefined, { hostSeat: 0 });
-  assert.notEqual(s.theme, t2);
-  for (const p of [0, 1, 2]) s = itchi.applyMove(s, { answer: 'x' }, p);
-  s = itchi.tick(s);
-  assert.ok(s.result, '3問クリアで終わり');
-  assert.deepEqual(s.result.winners, [0, 1, 2]);
-  assert.match(itchi.resultText(s), /クリア/);
-  // 時間切れで書かなかった人がいたらそろわない
-  let t = itchi.init({}, 2);
-  t = itchi.applyMove(t, { answer: 'a' }, 0);
-  t = itchi.tick(t);
-  assert.equal(t.phase, 'reveal');
+  assert.ok(s.result, '3問遊んだら終わり');
+  assert.equal(s.result.reason, '3問中2問一致');
+  assert.equal(itchi.THEMES.length, new Set(itchi.THEMES).size, 'お題に同じものがない');
+  assert.ok(itchi.THEMES.length >= 227);
 });
 test('geister: 観戦者には全部の色を送り、遊んでいる人には相手の色を隠す', () => {
   let s = geister.init({});
