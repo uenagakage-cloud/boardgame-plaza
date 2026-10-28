@@ -16,6 +16,7 @@ import * as yacht from '../public/games/yacht.js';
 import * as koikoi from '../public/games/koikoi.js';
 import * as tanks from '../public/games/tanks.js';
 import * as hbball from '../public/games/hbball.js';
+import * as chinchiro from '../public/games/chinchiro.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -67,7 +68,7 @@ function playOut(mod, players, options = {}, seed = 1, maxSteps = 20000) {
 const allCpu = [
   [morris, 2], [hex, 2], [checkers, 2], [domino, 2], [domino, 4], [ccheckers, 2], [ccheckers, 3], [ccheckers, 6],
   [ludo, 2], [ludo, 4], [sevens, 3], [sevens, 6], [speed, 2], [memory, 1], [memory, 3], [blackjack, 1], [blackjack, 4],
-  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3],
+  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3], [chinchiro, 2], [chinchiro, 5],
 ];
 for (const [mod, players] of allCpu) {
   test(`${mod.id}: ${players}人の CPU 対戦が最後まで進む`, () => {
@@ -292,6 +293,39 @@ test('hbball: ヒットとブローの数え方', () => {
   assert.deepEqual(hbball.judge([0, 0, 1, 1], [1, 0, 0, 2]), { hit: 1, blow: 2 });
   const s = hbball.init({}, 2, seeded(8));
   assert.equal(hbball.viewFor(s).secret, null);
+});
+
+test('chinchiro: 役の強さ', () => {
+  const r = (d, t = 3) => chinchiro.role(d, t);
+  assert.equal(r([1, 1, 1]).kind, 'pinzoro');
+  assert.equal(r([4, 4, 4]).mult, 3);
+  assert.equal(r([6, 4, 5]).kind, 'shigoro');
+  assert.equal(r([3, 1, 2]).kind, 'hifumi');
+  assert.deepEqual([r([2, 2, 5]).kind, r([2, 2, 5]).rank], ['me', 5]);
+  assert.equal(r([1, 3, 6], 1).final, false, '役なしは3回までふり直し');
+  assert.equal(r([1, 3, 6], 3).name, '目なし');
+  assert.ok(r([1, 1, 1]).rank > r([6, 6, 6]).rank && r([2, 2, 2]).rank > r([4, 5, 6]).rank && r([4, 5, 6]).rank > r([6, 6, 1]).rank);
+});
+
+test('chinchiro: 親のシゴロで子全員から2倍、2〜5の目なら子がふって比べる', () => {
+  // サイコロの目を決めてふらせる（rng(6) は 1〜6 を返す）
+  const fixed = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+  let s = chinchiro.init({}, 3);
+  s = chinchiro.applyMove(s, { bet: 100 }, 1);
+  s = chinchiro.applyMove(s, { bet: 50 }, 2);
+  assert.equal(s.phase, 'roll');
+  let t = chinchiro.applyMove(s, { roll: true }, 0, fixed([4, 5, 6]));
+  assert.deepEqual(t.chips, [1300, 800, 900]);
+  assert.equal(t.phase, 'result');
+  t = chinchiro.applyMove(s, { roll: true }, 0, fixed([3, 3, 4])); // 親は4の目
+  assert.equal(t.turn, 1);
+  t = chinchiro.applyMove(t, { roll: true }, 1, fixed([5, 5, 6])); // 子は6の目で勝ち
+  assert.deepEqual(t.chips, [900, 1100, 1000]);
+  t = chinchiro.applyMove(t, { roll: true }, 2, fixed([2, 2, 4])); // 4の目で引き分け
+  assert.deepEqual(t.chips, [900, 1100, 1000]);
+  assert.equal(t.phase, 'result');
+  t = chinchiro.tick(t);
+  assert.equal(t.parent, 1, '親は次の人へ');
 });
 
 console.log(`\n${n} tests passed`);

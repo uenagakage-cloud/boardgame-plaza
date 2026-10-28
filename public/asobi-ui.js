@@ -16,6 +16,7 @@ import * as yacht from './games/yacht.js';
 import * as koikoi from './games/koikoi.js';
 import * as tanks from './games/tanks.js';
 import * as hbball from './games/hbball.js';
+import * as chinchiro from './games/chinchiro.js';
 import { SUIT_MARK, RANK_LABEL } from './games/util.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -1127,11 +1128,72 @@ export function asobiRenderers(api) {
     el.replaceChildren(root);
   }
 
+  // ================= チンチロ =================
+  let ccRollKey = '';
+  function renderChinchiro(el, v) {
+    const s = v.state, me = v.you;
+    const root = h('div', 'cr');
+    root.append(players(v, (i) => `${s.chips[i]}枚`, (chip, i) => { if (i === s.parent && !s.result) chip.prepend(h('span', 'cr-oya', '親')); }));
+    root.append(h('div', 'muted small cr-head', s.result ? '' : `第${s.hand}/${s.players * s.options.laps}回・親は ${nameOf(v, s.parent)}`));
+    // どんぶり（今ふっている人か、最後にふった人のサイコロ）
+    const who = s.phase === 'roll' ? s.turn : s.last ? s.last.by : null;
+    const r = who != null ? s.rolls[who] : null;
+    const bowl = h('div', 'cr-bowl');
+    const key = s.last ? `${v.code}:${s.last.at}` : '';
+    const fresh = key && key !== ccRollKey;
+    ccRollKey = key;
+    const dice = h('div', 'cr-dice' + (fresh ? ' rolling' : ''));
+    (r ? r.dice : [1, 2, 3]).forEach((d) => dice.append(h('span', 'cr-die' + (r ? '' : ' idle'), DIE[d])));
+    bowl.append(dice);
+    if (r) bowl.append(h('div', 'cr-role ' + r.role.kind, `${nameOf(v, who)}：${r.role.name}${r.role.final ? '' : `（あと${3 - r.tries}回ふれる）`}`));
+    else bowl.append(h('div', 'cr-role', s.phase === 'bet' ? '子がチップを賭けています…' : ''));
+    root.append(bowl);
+    // みんなの賭けと役
+    const list = h('div', 'cr-list');
+    for (let p = 0; p < s.players; p++) {
+      if (!v.seats[p]) continue;
+      const row = h('div', 'cr-row' + (p === me ? ' me' : '') + (p === s.turn && s.phase === 'roll' ? ' turn' : '') + (s.out[p] ? ' out' : ''));
+      row.append(h('span', 'cr-name', `${p === s.parent ? '👑 ' : ''}${nameOf(v, p)}`));
+      const info = [];
+      if (p === s.parent) info.push('親');
+      else if (s.bets[p] != null) info.push(`賭け ${s.bets[p]}`);
+      else if (s.phase === 'bet' && s.chips[p] > 0 && !s.out[p]) info.push('考え中…');
+      if (s.rolls[p]) info.push(s.rolls[p].role.name);
+      row.append(h('span', 'cr-info', info.join('・')));
+      const o = s.outcome && s.outcome[p];
+      if (o) row.append(h('span', 'cr-gain ' + (o.gain > 0 ? 'win' : o.gain < 0 ? 'lose' : ''), `${o.gain >= 0 ? '+' : ''}${o.gain}`));
+      list.append(row);
+    }
+    root.append(list);
+    // 操作
+    if (me >= 0 && !s.out[me] && !s.result) {
+      const bar = h('div', 'uno-actions');
+      if (s.phase === 'bet' && me !== s.parent && s.bets[me] == null && s.chips[me] > 0) {
+        bar.append(h('span', 'small', '賭けるチップ：'));
+        let nk = 0;
+        for (const b of [...chinchiro.BETS, s.chips[me]].filter((x, i, a) => x <= s.chips[me] && a.indexOf(x) === i)) {
+          const btn = h('button', 'btn primary', b === s.chips[me] && !chinchiro.BETS.includes(b) ? `全部（${b}）` : String(b));
+          hk(btn, String(++nk));
+          btn.onclick = () => move({ bet: b });
+          bar.append(btn);
+        }
+      }
+      if (s.phase === 'roll' && s.turn === me) {
+        const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
+        b.onclick = () => move({ roll: true });
+        bar.append(b);
+      }
+      if (bar.childElementCount) root.append(bar);
+    }
+    root.append(h('p', 'muted small as-help', '役: ピンゾロ(1・1・1) 5倍 ＞ ゾロ目 3倍 ＞ シゴロ(4・5・6) 2倍 ＞ 目(6〜1)。ヒフミ(1・2・3)は2倍払い、3回で役なしは目なし'));
+    el.replaceChildren(root);
+  }
+
   // Esc・右クリック: 選んでいる途中のものをやめる
   const clear = () => { ui.data = {}; lcArmed = false; };
   return { clear, renderers: {
     morris: renderMorris, hex: renderHex, checkers: renderCheckers, domino: renderDomino, ccheckers: renderCChecker, ludo: renderLudo,
     sevens: renderSevens, speed: renderSpeed, memory: renderMemory, blackjack: renderBlackjack, lastcard: renderLastcard,
-    pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball,
+    pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball, chinchiro: renderChinchiro,
   } };
 }

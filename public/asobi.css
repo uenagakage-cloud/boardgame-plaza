@@ -365,3 +365,31 @@
   .yt-die { width: 54px; height: 54px; font-size: 2.6rem; }
   .pg { width: min(100%, 560px, calc(100vh - 300px)); }
 }
+
+/* ---------- チンチロ ---------- */
+.cr { width: min(100%, 600px); display: grid; gap: 10px; }
+.cr-head { text-align: center; }
+.cr-oya { font-size: .7rem; font-weight: 900; color: #fff; background: #c92a2a; border-radius: 99px; padding: 0 6px; }
+.cr-bowl { justify-self: center; width: min(100%, 340px); aspect-ratio: 1.6; border-radius: 50%; display: grid; place-items: center; align-content: center; gap: 8px;
+  background: radial-gradient(ellipse at 50% 38%, #fffaf0 0 38%, #e9dcc0 62%, #b5651d 63% 70%, #8a4b15 71%); box-shadow: 0 10px 22px rgba(0, 0, 0, .25); }
+.cr-dice { display: flex; gap: 10px; }
+.cr-die { font-size: 3rem; line-height: 1; color: #222; text-shadow: 0 2px 2px rgba(0, 0, 0, .25); }
+.cr-die.idle { opacity: .25; }
+.cr-dice.rolling .cr-die { animation: cr-roll .55s ease-out; }
+.cr-dice.rolling .cr-die:nth-child(2) { animation-duration: .7s; }
+.cr-dice.rolling .cr-die:nth-child(3) { animation-duration: .85s; }
+@keyframes cr-roll { 0% { transform: translate(-20px, -26px) rotate(-260deg) scale(.6); opacity: .3; } 60% { transform: translate(6px, 4px) rotate(30deg); opacity: 1; } 100% { transform: none; } }
+.cr-role { font-weight: 900; font-size: 1.05rem; color: #5c3b1e; text-align: center; padding: 0 12px; }
+.cr-role.pinzoro, .cr-role.zoro, .cr-role.shigoro { color: #d9480f; font-size: 1.3rem; }
+.cr-role.hifumi, .cr-role.none { color: #c92a2a; }
+.cr-list { display: grid; gap: 4px; }
+.cr-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; }
+.cr-row.me { border-color: var(--accent); }
+.cr-row.turn { box-shadow: 0 0 0 3px #ffd43b; }
+.cr-row.out { opacity: .5; }
+.cr-name { font-weight: 700; min-width: 6em; }
+.cr-info { flex: 1; font-size: .85rem; color: var(--muted); }
+.cr-gain { font-weight: 900; }
+.cr-gain.win { color: #2f9e44; }
+.cr-gain.lose { color: #e03131; }
+@media (max-width: 600px) { .cr-die { font-size: 2.4rem; } }

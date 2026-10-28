@@ -37,11 +37,12 @@ import * as yacht from './games/yacht.js';
 import * as koikoi from './games/koikoi.js';
 import * as tanks from './games/tanks.js';
 import * as hbball from './games/hbball.js';
+import * as chinchiro from './games/chinchiro.js';
 import { asobiRenderers } from './asobi-ui.js';
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball, chinchiro };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
-const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball"]);
+const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro"]);
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -79,6 +80,7 @@ const GAME_INFO = {
   yacht: { icon: '🎲', desc: 'サイコロ5個を3回までふって役を作る。12の役を埋めて合計点で勝負。1人でも遊べる。' },
   koikoi: { icon: '🎴', desc: '花札で役を作る「こいこい」。続けるか勝負するかのかけひき。CPU対戦あり。' },
   tanks: { icon: '🛡', desc: '迷路で戦車を動かして撃ち合う。弾は壁で1回はね返る。2〜4人・CPUあり。' },
+  chinchiro: { icon: '🥣', desc: 'どんぶりにサイコロ3個をふって役を作る。親と子でチップを取り合う（点数だけ）。2〜6人・CPUあり。' },
   hbball: { icon: '🔴', desc: '色のボール4つのかくれた並びを、ヒットとブローのヒントで当てる。1〜4人。' },
   skull: { icon: '💀', desc: '花とドクロを伏せて置き、ドクロを避けて何枚めくれるか宣言するブラフゲーム。3〜6人。' },
 };
@@ -3702,6 +3704,8 @@ const FX_RULES = {
   },
   speed: (e) => (/スタート！/.test(e) ? ['スピード！', 'big'] : null),
   tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : /ラウンドの勝ち/.test(e) ? ['ラウンドの勝ち！', 'good'] : /相打ち/.test(e) ? ['相打ち！', 'info'] : /^第\d+ラウンド/.test(e) ? [e, 'info'] : null),
+  chinchiro: (e) => (/ピンゾロ/.test(e) ? ['ピンゾロ！ 5倍', 'big'] : /ゾロ目/.test(e) ? ['ゾロ目！ 3倍', 'big'] : /シゴロ/.test(e) ? ['シゴロ！ 2倍', 'big'] : /ヒフミ/.test(e) ? ['ヒフミ… 2倍払い', 'bad']
+    : /目なし/.test(e) ? ['目なし…', 'bad'] : /→ 6の目/.test(e) ? ['6の目！', 'good'] : /→ 1の目/.test(e) ? ['1の目…', 'bad'] : / → [2-5]の目/.test(e) ? [e.match(/[2-5]の目/)[0], 'info'] : null),
   hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'big'] : /0ヒット 0ブロー/.test(e) ? ['かすりもしない…', 'bad'] : /(\d)ヒット/.test(e) && /[12]ヒット/.test(e) ? [e.match(/\dヒット \dブロー/)[0], 'info'] : null),
 };
 // 前の状態と比べて分かる出来事（ログに出ないもの）
