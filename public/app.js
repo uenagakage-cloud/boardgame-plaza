@@ -3695,7 +3695,9 @@ const FX_RULES = {
   memory: (e) => (/そろった/.test(e) ? ['そろった！', 'good'] : null),
   blackjack: (e) => (/ブラックジャック！/.test(e) ? ['ブラックジャック！', 'big'] : /ディーラーがバースト/.test(e) ? ['ディーラーがバースト！', 'good'] : /バースト/.test(e) ? ['バースト…', 'bad']
     : /ダブル！/.test(e) ? ['ダブル！', 'info'] : /^第\d/.test(e) ? [e.replace(/\/\d+/, '').replace('第', '第 '), 'info'] : null),
-  lastcard: (e) => (/言い忘れ/.test(e) ? ['言い忘れ！ 2枚引く', 'bad'] : /ラストカード！/.test(e) ? ['ラストカード！', 'big'] : /ワイルドドロー4/.test(e) ? ['ドロー4！', 'bad']
+  lastcard: (e) => (/雷が落ちて/.test(e) ? ['⚡ ドカーン！ 雷で +4', 'bad'] : /イベント「(.+?)」/.test(e) ? [`★ イベント：${e.match(/イベント「(.+?)」/)[1]}！`, 'big']
+    : /重ねた！ \+(\d+)/.test(e) ? [`重ねた！ +${e.match(/\+(\d+)/)[1]}`, 'big'] : /たまった (\d+)枚/.test(e) ? [`まとめて +${e.match(/(\d+)枚/)[1]}…`, 'bad']
+    : /早押しの結果/.test(e) ? null : /言い忘れ/.test(e) ? ['言い忘れ！ 2枚引く', 'bad'] : /ラストカード！/.test(e) ? ['ラストカード！', 'big'] : /ワイルドドロー4/.test(e) ? ['ドロー4！', 'bad']
     : /ドロー2/.test(e) ? ['ドロー2！', 'bad'] : /リバース/.test(e) ? ['リバース！', 'info'] : /スキップ/.test(e) ? ['スキップ！', 'info'] : /ワイルド/.test(e) ? ['ワイルド！', 'info'] : null),
   pigtail: (e) => { const m = e.match(/(\d+)枚引き取り/); return m ? [`ぶた！ ${m[1]}枚 引き取り`, Number(m[1]) >= 8 ? 'big' : 'bad'] : null; },
   yacht: (e) => (/ヨット 50点/.test(e) ? ['ヨット！ 50点', 'big'] : /ボーナス/.test(e) ? ['ボーナス +35！', 'big'] : /B\.ストレート 30点/.test(e) ? ['B.ストレート！', 'good']
@@ -3835,6 +3837,8 @@ const fxQueue = [], FX_MS = 1750;
 let fxBusy = false;
 function showFx(text, tone) {
   fxQueue.push([text, tone]);
+  // 速いゲームで出来事が続くと待ちが長くなり、演出が遅れて出るので、待つのは新しい2つまで
+  while (fxQueue.length > 2) fxQueue.shift();
   if (!fxBusy) fxNext();
 }
 function fxNext() {

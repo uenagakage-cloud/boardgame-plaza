@@ -251,6 +251,60 @@ test('lastcard: 言い忘れを指摘されると2枚', () => {
   assert.equal(s.hands[0].length, 3);
 });
 
+test('lastcard: ドロー2・ドロー4は重ねられて、重ねられなかった人がまとめて引く', () => {
+  let s = lastcard.init({}, 3, seeded(11));
+  const c = (id, col, v) => ({ id, c: col, v });
+  s = { ...s, color: 'r', discard: [c(900, 'r', '5')], turn: 0, drawn: null,
+    hands: [[c(901, 'r', '+2'), c(902, 'g', '1')], [c(903, 'b', '+2'), c(904, 'y', '3')], [c(905, null, '+4'), c(906, 'g', '7')]] };
+  s = lastcard.applyMove(s, { play: 901 }, 0);
+  assert.equal(s.drawStack, 2);
+  assert.equal(s.turn, 1);
+  assert.deepEqual(lastcard.playableIds(s, 1), [903], '重ね中はドロー2だけ（色はちがってよい）');
+  s = lastcard.applyMove(s, { play: 903 }, 1);
+  assert.equal(s.drawStack, 4);
+  s = lastcard.applyMove(s, { play: 905, color: 'g' }, 2);
+  assert.equal(s.drawStack, 8);
+  assert.equal(s.turn, 0);
+  const before = s.hands[0].length;
+  s = lastcard.applyMove(s, { draw: true }, 0);
+  assert.equal(s.hands[0].length, before + 8, 'たまった8枚をまとめて引く');
+  assert.equal(s.drawStack, 0);
+  assert.equal(s.turn, 1, '引いた人は飛ばされる');
+});
+
+test('lastcard: イベント（雷・早押し・手札まわし・もう1回）', () => {
+  const c = (id, col, v) => ({ id, c: col, v });
+  const base = () => ({ ...lastcard.init({}, 3, seeded(12)), color: 'r', discard: [c(900, 'r', '5')], turn: 0, drawn: null,
+    hands: [[c(901, 'r', 'event'), c(902, 'g', '1'), c(907, 'g', '2')], [c(903, 'b', '9')], [c(905, 'y', '4'), c(906, 'g', '7')]] });
+  // rng(n) が返す値で効果を選ぶ（0:雷 1:早押し 2:手札まわし 3:もう1回）
+  const pickEvent = (k, after = []) => { const q = [k + 1, ...after]; return () => (q.length ? q.shift() : 100); };
+  let s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(0, [100]));
+  assert.equal(s.thunder, 1, '雷が次の人に付く');
+  s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(0, [1])); // 番が来た瞬間に雷が落ちた
+  assert.equal(s.thunder, null);
+  assert.equal(s.hands[1].length, 1 + lastcard.THUNDER_DRAW);
+  s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(2));
+  assert.deepEqual(s.hands[1].map((x) => x.id), [902, 907], '手札まわし');
+  s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(3));
+  assert.equal(s.turn, 0, 'もう1回');
+  s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(1), { bots: [false, false, false] });
+  assert.ok(s.race, '早押しが始まる');
+  assert.throws(() => lastcard.applyMove(s, { draw: true }, 1), /早押し中/);
+  s = lastcard.applyMove(s, { press: true }, 2);
+  s = lastcard.applyMove(s, { press: true }, 0);
+  s = lastcard.applyMove(s, { press: true }, 1);
+  assert.equal(s.race, null);
+  assert.deepEqual(s.hands.map((h) => h.length), [2 + 1, 1 + 2, 2 + 0], '押した順に +0・+1・+2');
+  assert.equal(s.turn, 1);
+  // 押さなかった人は時間切れで最後
+  s = lastcard.applyMove(base(), { play: 901 }, 0, pickEvent(1), { bots: [false, false, false] });
+  s = lastcard.applyMove(s, { press: true }, 1);
+  clock = s.race.deadline + 1;
+  s = lastcard.tick(s, seeded(1), { bots: [false, false, false] });
+  assert.equal(s.race, null);
+  assert.deepEqual(s.hands.map((h) => h.length), [2 + 1, 1, 2 + 2]);
+});
+
 test('pigtail: マークか数字がそろうと山を全部引き取る', () => {
   let s = pigtail.init({}, 2, seeded(6));
   const ring = s.ring.map((c, i) => [c, i]);

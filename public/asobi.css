@@ -394,3 +394,16 @@
 .cr-gain.win { color: #2f9e44; }
 .cr-gain.lose { color: #e03131; }
 @media (max-width: 600px) { .cr-die { font-size: 2.4rem; } }
+
+/* ラストカード: イベント・重ね・雷・早押し */
+.lc-card.event { box-shadow: 0 0 0 2px #ffd43b, 0 2px 4px rgba(0, 0, 0, .35); }
+.lc-card.event .lc-val { font-size: 1.9rem; }
+.lc-card.event.big .lc-val { font-size: 2.6rem; }
+.lc-stack { background: #e03131; color: #fff; padding: 3px 10px; border-radius: 99px; text-align: center; animation: as-pulse 1s infinite; }
+.uno-pile.stack .uno-back { background: #e03131; color: #fff; text-shadow: none; font-size: 1.6rem; }
+.lc-thunder { font-size: .72rem; font-weight: 900; color: #5c3d00; background: #ffd43b; border-radius: 99px; padding: 0 6px; animation: as-pulse .8s infinite; }
+.lc-race { display: grid; gap: 8px; justify-items: center; background: #fff3bf; border: 3px solid #f08c00; border-radius: 14px; padding: 12px; }
+.lc-race-title { font-weight: 900; color: #d9480f; text-align: center; }
+.lc-press { font-size: 1.6rem; padding: 14px 40px; animation: lc-shake .5s infinite; }
+@keyframes lc-shake { 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+.lc-race-order { font-size: .85rem; font-weight: 700; }

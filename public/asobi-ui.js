@@ -568,10 +568,11 @@ export function asobiRenderers(api) {
   }
 
   // ================= ラストカード =================
-  const LC_SYMBOL = { skip: '⊘', rev: '⇄', '+2': '+2', wild: 'W', '+4': '+4' };
+  const LC_SYMBOL = { skip: '⊘', rev: '⇄', '+2': '+2', wild: 'W', '+4': '+4', event: '★' };
   let lcArmed = false;
+  let lcTimer = null;
   function lcCard(c, extra = '') {
-    const e = h('span', `lc-card ${c.c ? 'c-' + c.c : 'wild'} ${extra}`);
+    const e = h('span', `lc-card ${c.c ? 'c-' + c.c : 'wild'}${c.v === 'event' ? ' event' : ''} ${extra}`);
     e.append(h('span', 'lc-oval'), h('span', 'lc-val', LC_SYMBOL[c.v] || c.v));
     e.title = lastcard.cardName(c);
     return e;
@@ -591,9 +592,11 @@ export function asobiRenderers(api) {
     const playable = me >= 0 ? lastcard.playableIds(s, me) : [];
     const myHand = me >= 0 ? s.hands[me] || [] : [];
     if (myHand.length !== 2) lcArmed = false;
+    clearTimeout(lcTimer);
     const root = h('div', 'uno');
     root.append(players(v, (i) => `${s.handCounts[i]}枚`, null, (chip, i) => {
       if (!s.out[i] && s.handCounts[i] === 1) chip.append(h('span', 'uno-badge', 'ラスト'));
+      if (s.thunder === i) chip.append(h('span', 'lc-thunder', '⚡雷'));
       if (s.unoPending === i && me >= 0 && me !== i && !s.out[me]) {
         const b = hk(h('button', 'btn danger small', '言ってない！'), 'c');
         b.onclick = () => move({ catchUno: i });
@@ -601,23 +604,42 @@ export function asobiRenderers(api) {
       }
     }));
     const table = h('div', 'uno-table');
-    const pile = h('button', 'uno-pile' + (myTurn && s.drawn == null ? ' active' : ''));
-    pile.append(h('span', 'uno-back', 'LAST'), h('span', 'uno-pile-count', `山札 ${s.deckCount}`));
-    pile.disabled = !(myTurn && s.drawn == null);
+    const pile = h('button', 'uno-pile' + (myTurn && s.drawn == null && !s.race ? ' active' : '') + (s.drawStack > 0 ? ' stack' : ''));
+    pile.append(h('span', 'uno-back', s.drawStack > 0 ? `+${s.drawStack}` : 'LAST'), h('span', 'uno-pile-count', myTurn && s.drawStack > 0 ? `まとめて${s.drawStack}枚引く` : `山札 ${s.deckCount}`));
+    pile.disabled = !(myTurn && s.drawn == null && !s.race);
     pile.onclick = () => sendMove({ draw: true });
     hk(pile, 'd');
     const discard = h('div', 'uno-discard');
     discard.append(lcCard(lastcard.top(s), 'big'));
     const info = h('div', 'uno-info');
     info.append(h('span', `uno-color-chip lc-chip-${s.color}`, `場の色：${lastcard.COLOR_NAMES[s.color]}`), h('span', 'uno-dir', s.direction === 1 ? '順番 ↻' : '順番 ↺'));
+    if (s.drawStack > 0) info.append(h('span', 'lc-stack', `+${s.drawStack} たまり中！`));
     table.append(pile, discard, info);
     root.append(table);
+    // 早押し
+    if (s.race) {
+      const race = h('div', 'lc-race');
+      const left = Math.max(0, Math.ceil((s.race.deadline - now()) / 1000));
+      race.append(h('div', 'lc-race-title', `⚡ 早押し！（あと${left}秒）押した順に +0・+1・+2…枚`));
+      if (me >= 0 && !s.out[me] && !s.race.order.includes(me)) {
+        const b = hk(h('button', 'btn primary lc-press', '押す！'), 'space enter');
+        b.onclick = () => move({ press: true });
+        race.append(b);
+      }
+      race.append(h('div', 'lc-race-order', s.race.order.length ? s.race.order.map((p, i) => `${i + 1}番 ${nameOf(v, p)}（+${i}）`).join('　') : 'まだだれも押していません'));
+      root.append(race);
+      lcTimer = setTimeout(render, 300);
+    }
     const la = s.lastAction;
     if (la && !s.result) {
       const text = la.type === 'play' ? `${nameOf(v, la.seat)} が ${lastcard.cardName(la.card)} を出しました`
         : la.type === 'draw' ? `${nameOf(v, la.seat)} が1枚引きました`
         : la.type === 'pass' ? `${nameOf(v, la.seat)} はパス`
         : la.type === 'caught' ? `${nameOf(v, la.by)} が ${nameOf(v, la.seat)} の言い忘れを指摘！ 2枚引きます`
+        : la.type === 'event' ? `${nameOf(v, la.seat)} のイベント：${lastcard.EVENT_NAMES[la.event]}！`
+        : la.type === 'stackDraw' ? `${nameOf(v, la.seat)} は重ねられず、${la.n}枚引きました`
+        : la.type === 'thunder' ? `⚡ ${nameOf(v, la.seat)} に雷が落ちて${lastcard.THUNDER_DRAW}枚！`
+        : la.type === 'race' ? `早押しの結果：${la.order.map((p, i) => `${nameOf(v, p)} +${i}`).join('・')}`
         : `${nameOf(v, la.seat)}：ラストカード！`;
       root.append(h('div', 'uno-last', text));
     }
