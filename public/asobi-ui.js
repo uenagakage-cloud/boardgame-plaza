@@ -438,37 +438,41 @@ export function asobiRenderers(api) {
     const mine = me >= 0 ? me : 0, opp = 1 - mine;
     clearTimeout(spTimer);
     const root = h('div', 'sp');
+    // まちがえたら1秒出せない（出せるカードは光らせない。自分の目で見つける）
+    const penaltyLeft = me >= 0 && s.penalty ? s.penalty[me] - now() : 0;
     const side = (p, isMe) => {
       const row = h('div', 'sp-side' + (isMe ? ' me' : ''));
       row.append(h('div', 'sp-name', `${nameOf(v, p)}（${speed.sideNames[p]}）・山 ${s.deckCounts[p]}枚`));
       const f = h('div', 'sp-field');
       s.field[p].forEach((c, k) => {
         if (!isMe || me < 0 || s.phase !== 'play') { f.append(c ? card(c, 'big') : h('span', 'pcard empty big')); return; }
-        const ok = c && (speed.canPlay(s, c, 0) || speed.canPlay(s, c, 1));
-        const b = h('button', 'sp-card' + (ok ? ' playable' : '') + (L.k === k ? ' sel' : ''));
+        const b = h('button', 'sp-card' + (L.k === k ? ' sel' : ''));
         b.append(c ? card(c, 'big') : h('span', 'pcard empty big'));
-        b.disabled = !c;
+        b.disabled = !c || penaltyLeft > 0;
         if (c) hk(b, String(k + 1));
-        b.onclick = () => {
-          if (!c) return;
-          const piles = [0, 1].filter((pi) => speed.canPlay(s, c, pi));
-          if (piles.length === 1) return move({ play: k, pile: piles[0] });
-          L.k = L.k === k ? null : k;
-          render();
-        };
+        b.onclick = () => { L.k = L.k === k ? null : k; render(); };
         f.append(b);
       });
       row.append(f);
+      if (isMe && penaltyLeft > 0) row.append(h('div', 'sp-penalty', '✋ まちがい！ 1秒お休み'));
       return row;
     };
+    if (penaltyLeft > 0) spTimer = setTimeout(render, penaltyLeft + 30);
     root.append(side(opp, false));
     const center = h('div', 'sp-center');
     [0, 1].forEach((pi) => {
       const top = s.piles[pi][s.piles[pi].length - 1];
-      const b = h('button', 'sp-pile' + (L.k != null && speed.canPlay(s, s.field[mine][L.k], pi) ? ' target' : '') + (s.last && s.last.pile === pi && s.last.at && now() - s.last.at < 600 ? ' bump' : ''));
+      const b = h('button', 'sp-pile' + (L.k != null ? ' armed' : '') + (s.last && !s.last.miss && s.last.pile === pi && s.last.at && now() - s.last.at < 600 ? ' bump' : '')
+        + (s.last && s.last.miss === me && s.last.pile === pi && now() - s.last.at < 600 ? ' miss' : ''));
       b.append(top ? card(top, 'big') : h('span', 'pcard empty big'));
       hk(b, pi === 0 ? 'arrowleft' : 'arrowright');
-      b.onclick = () => { if (L.k != null && speed.canPlay(s, s.field[mine][L.k], pi)) move({ play: L.k, pile: pi }); };
+      b.disabled = me < 0 || s.phase !== 'play';
+      b.onclick = () => {
+        if (L.k == null || penaltyLeft > 0) return;
+        const k = L.k;
+        L.k = null;
+        move({ play: k, pile: pi });
+      };
       center.append(b);
     });
     root.append(center);
@@ -487,7 +491,7 @@ export function asobiRenderers(api) {
     } else if (s.stuckAt) {
       root.append(h('div', 'sp-stuck', 'どちらも出せない！ 山から出しなおします…'));
     }
-    if (s.phase === 'play' && me >= 0) root.append(h('p', 'muted small as-help', '台のカードと1つちがい（KとAはつながる）の札をタップ。両方の台に出せるときは、札を選んでから台をタップ'));
+    if (s.phase === 'play' && me >= 0) root.append(h('p', 'muted small as-help', '自分の札をタップしてから、出す台をタップ（パソコンは 1〜4 → ← →）。台のカードと1つちがい（KとAはつながる）なら出せる。まちがえると1秒出せない！'));
     el.replaceChildren(root);
   }
 

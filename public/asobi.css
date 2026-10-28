@@ -124,12 +124,14 @@
 .sp-name { font-size: .85rem; font-weight: 700; }
 .sp-field { display: flex; gap: 6px; justify-content: center; }
 .sp-card { border: 0; background: transparent; padding: 0; border-radius: 8px; cursor: pointer; touch-action: manipulation; }
-.sp-card:not(.playable) .pcard { opacity: .8; }
-.sp-card.playable .pcard { box-shadow: 0 0 0 3px #ffd43b; }
 .sp-card.sel .pcard { box-shadow: 0 0 0 4px #4dabf7; transform: translateY(-6px); }
 .sp-center { display: flex; gap: 22px; justify-content: center; padding: 8px 0; }
 .sp-pile { border: 0; background: transparent; padding: 0; border-radius: 8px; }
-.sp-pile.target .pcard { box-shadow: 0 0 0 4px #4dabf7; cursor: pointer; }
+.sp-pile.armed .pcard { box-shadow: 0 0 0 3px rgba(255, 255, 255, .8); cursor: pointer; }
+.sp-pile.miss .pcard { animation: sp-shake .4s; box-shadow: 0 0 0 4px #e03131; }
+@keyframes sp-shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.sp-side { position: relative; }
+.sp-penalty { position: absolute; inset: 22px 0 0; display: flex; align-items: center; justify-content: center; background: rgba(224, 49, 49, .55); border-radius: 10px; font-weight: 900; font-size: 1.2rem; color: #fff; text-shadow: 0 2px 3px rgba(0, 0, 0, .4); }
 .sp-pile.bump .pcard { animation: sp-bump .35s ease-out; }
 @keyframes sp-bump { 0% { transform: scale(1.25) rotate(-6deg); } 100% { transform: none; } }
 .sp-over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .35); border-radius: 16px; }
@@ -343,7 +345,6 @@
   .yt-die:not(:disabled):hover { border-color: var(--accent); }
   .hbb-color:not(:disabled):hover { transform: scale(1.12); }
   .dm-hand-btn.playable:hover .dm-tile { box-shadow: 0 0 0 3px #4dabf7; }
-  .sp-pile.target:hover .pcard { transform: scale(1.06); }
 }
 
 /* パソコンの横長の画面: 盤が画面の高さに収まるように */

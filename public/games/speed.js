@@ -3,6 +3,7 @@
 // 「スタート」で、それぞれ山から1枚ずつ真ん中の2つの台に出す。あとは順番なしで、台のカードと1つちがい
 // （K と A はつながる）の場札をどんどん出す。場札が減ったら山から自動で補充。
 // どちらも出せなくなったら、それぞれ山から1枚ずつ台に出しなおす（自動）。先にカードが全部なくなった人の勝ち。
+// 出せないカードを出そうとすると、1秒間カードを出せない（ペナルティ）。
 // 手: { ready: true } / { play: 場札の位置0〜3, pile: 0|1 } / { resign: true }
 // CPU は tick の中で動く（ctx.bots）。
 import { shuffle, pickOptions, randInt, RANK_LABEL, SUIT_MARK } from './util.js';
@@ -16,6 +17,7 @@ export const noResign = false;
 export const OPTIONS = [{ key: 'level', label: 'CPU の強さ', values: ['normal', 'easy', 'hard'], names: ['ふつう', 'よわい', 'つよい'] }];
 const BOT_MS = { easy: 1500, normal: 950, hard: 600 };
 const STUCK_MS = 1300;  // どちらも出せないとき、台に出しなおすまで
+export const PENALTY_MS = 1000; // まちがえたとき、カードを出せない時間
 const START_MS = 3000;  // カウントダウン
 
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS, true);
@@ -27,7 +29,7 @@ export function init(options, _players, rng) {
   const mk = (suits) => shuffle(suits.flatMap((s) => Array.from({ length: 13 }, (_, i) => ({ id: `${s}${i + 1}`, s, r: i + 1 }))), rng);
   const decks = [mk(['h', 'd']), mk(['s', 'c'])];
   const field = decks.map((d) => d.splice(0, 4));
-  return { options: opts, phase: 'ready', ready: [false, false], decks, field, piles: [[], []], turn: 0, tickAt: null, botAt: [0, 0], last: null, result: null, history: [] };
+  return { options: opts, phase: 'ready', ready: [false, false], decks, field, piles: [[], []], turn: 0, tickAt: null, botAt: [0, 0], penalty: [0, 0], last: null, result: null, history: [] };
 }
 
 export const adjacent = (a, b) => { const d = Math.abs(a - b); return d === 1 || d === 12; };
@@ -49,7 +51,7 @@ export function phaseText(s, you) {
   return '台のカードと1つちがいの場札をどんどん出そう！';
 }
 
-const clone = (s) => ({ ...s, ready: s.ready.slice(), decks: s.decks.map((d) => d.slice()), field: s.field.map((f) => f.slice()), piles: s.piles.map((p) => p.slice()), botAt: s.botAt.slice(), history: s.history });
+const clone = (s) => ({ ...s, ready: s.ready.slice(), decks: s.decks.map((d) => d.slice()), field: s.field.map((f) => f.slice()), piles: s.piles.map((p) => p.slice()), botAt: s.botAt.slice(), penalty: (s.penalty || [0, 0]).slice(), history: s.history });
 
 // 山から台に1枚ずつ出す（山がなければ場札から）
 function flipToPiles(ns) {
@@ -98,7 +100,15 @@ export function applyMove(s, mv, seat, rng, ctx) {
   const k = Number(mv.play), pile = Number(mv.pile);
   const card = s.field[seat][k];
   if (!card) throw new Error('そこにカードはありません');
-  if (!canPlay(s, card, pile)) throw new Error('おそかった！ 出せませんでした');
+  const now = Date.now();
+  if (ns.penalty[seat] > now) return s; // ペナルティ中は出せない
+  if (!(pile === 0 || pile === 1) || !canPlay(s, card, pile)) {
+    // まちがい（遅れて先に出されたときも）: 1秒間出せない
+    ns.penalty[seat] = now + PENALTY_MS;
+    ns.misses = (ns.misses || 0) + 1;
+    ns.last = { miss: seat, card, pile, at: now };
+    return ns;
+  }
   play(ns, seat, k, pile);
   if (!checkWin(ns)) schedule(ns, Date.now(), ctx && ctx.bots);
   return ns;

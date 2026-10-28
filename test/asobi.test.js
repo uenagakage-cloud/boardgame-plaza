@@ -195,6 +195,20 @@ test('sevens: ドボンした人のカードはその場所に置かれ、間の
   assert.ok(s.table.h[2]);
 });
 
+test('speed: まちがったカードを出すと1秒出せない', () => {
+  let s = speed.init({}, 2, seeded(3));
+  s = { ...s, phase: 'play', piles: [[{ id: 'h5', s: 'h', r: 5 }], [{ id: 's9', s: 's', r: 9 }]], field: [[{ id: 'd6', s: 'd', r: 6 }, { id: 'h1', s: 'h', r: 1 }, null, null], s.field[1]] };
+  const t0 = clock;
+  let t = speed.applyMove(s, { play: 1, pile: 0 }, 0); // A は 5 にも 9 にも出せない
+  assert.equal(t.penalty[0], t0 + speed.PENALTY_MS);
+  assert.equal(t.field[0][1].id, 'h1', 'カードは手元に残る');
+  assert.equal(speed.applyMove(t, { play: 0, pile: 0 }, 0), t, 'ペナルティ中は出せない（何も変わらない）');
+  clock += speed.PENALTY_MS + 1;
+  t = speed.applyMove(t, { play: 0, pile: 0 }, 0); // 6 は 5 の上に出せる
+  assert.equal(t.piles[0].at(-1).id, 'd6');
+  clock = t0;
+});
+
 test('speed: 1つちがい（KとAはつながる）だけ出せる', () => {
   assert.ok(speed.adjacent(13, 1));
   assert.ok(speed.adjacent(5, 6));
