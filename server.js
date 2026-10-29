@@ -276,7 +276,7 @@ function scheduleBot(room) {
     }
     broadcastRoom(room);
     if (room.state.result) broadcastLobby();
-  }, g.botDelay || 700);
+  }, typeof g.botDelay === 'function' ? g.botDelay(room.state) : g.botDelay || 700);
 }
 
 function deleteRoom(room) {

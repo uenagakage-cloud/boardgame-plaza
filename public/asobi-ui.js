@@ -1155,39 +1155,60 @@ export function asobiRenderers(api) {
   }
 
   // ================= チンチロ =================
-  let ccRollKey = '';
+  // ふったサイコロは約1.2秒ころがってから止まり、出た目と役を大きく出す。最後にふった目は次の人がふるまで残す
+  const CR_ROLL_MS = 1200;
+  let crAnim = { key: '', until: 0 };
+  let crTimer = null;
+  function crDice(dice, extra = '') {
+    const box = h('div', 'cr-dice ' + extra);
+    dice.forEach((d) => box.append(h('span', 'cr-die', DIE[d])));
+    return box;
+  }
   function renderChinchiro(el, v) {
     const s = v.state, me = v.you;
+    clearTimeout(crTimer);
     const root = h('div', 'cr');
     root.append(players(v, (i) => `${s.chips[i]}枚`, (chip, i) => { if (i === s.parent && !s.result) chip.prepend(h('span', 'cr-oya', '親')); }));
-    root.append(h('div', 'muted small cr-head', s.result ? '' : `第${s.hand}/${s.players * s.options.laps}回・親は ${nameOf(v, s.parent)}`));
-    // どんぶり（今ふっている人か、最後にふった人のサイコロ）
-    const who = s.phase === 'roll' ? s.turn : s.last ? s.last.by : null;
-    const r = who != null ? s.rolls[who] : null;
+    root.append(h('div', 'muted small cr-head', s.result ? '' : `第${s.hand}/${s.players * s.options.laps}回・親は ${nameOf(v, s.parent)}（子が先にふって、最後に親がふります）`));
+    // どんぶり: いちばん新しい出目
     const bowl = h('div', 'cr-bowl');
-    const key = s.last ? `${v.code}:${s.last.at}` : '';
-    const fresh = key && key !== ccRollKey;
-    ccRollKey = key;
-    const dice = h('div', 'cr-dice' + (fresh ? ' rolling' : ''));
-    (r ? r.dice : [1, 2, 3]).forEach((d) => dice.append(h('span', 'cr-die' + (r ? '' : ' idle'), DIE[d])));
-    bowl.append(dice);
-    if (r) bowl.append(h('div', 'cr-role ' + r.role.kind, `${nameOf(v, who)}：${r.role.name}${r.role.final ? '' : `（あと${3 - r.tries}回ふれる）`}`));
-    else bowl.append(h('div', 'cr-role', s.phase === 'bet' ? '子がチップを賭けています…' : ''));
+    const last = s.last;
+    const key = last ? `${v.code}:${last.at}` : '';
+    if (key && key !== crAnim.key) crAnim = { key, until: Date.now() + CR_ROLL_MS };
+    const rolling = key && Date.now() < crAnim.until;
+    if (last) {
+      bowl.append(h('div', 'cr-who', `${nameOf(v, last.by)}（${last.by === s.parent ? '親' : '子'}）${last.tries > 1 ? `・${last.tries}回目` : ''}`));
+      if (rolling) {
+        bowl.append(crDice([0, 0, 0].map(() => 1 + Math.floor(Math.random() * 6)), 'rolling'));
+        bowl.append(h('div', 'cr-role', 'コロコロ…'));
+        crTimer = setTimeout(render, 90);
+      } else {
+        bowl.append(crDice(last.dice, 'landed'));
+        bowl.append(h('div', `cr-role ${last.role.final ? 'big' : 'retry'} ${last.role.kind}`, last.role.final ? last.role.name : `役なし… もう一度（あと${3 - last.tries}回）`));
+      }
+    } else {
+      bowl.append(crDice([1, 2, 3], 'idle'));
+      bowl.append(h('div', 'cr-role', s.phase === 'bet' ? '子がチップを賭けています…' : `${nameOf(v, s.turn)} の番`));
+    }
     root.append(bowl);
-    // みんなの賭けと役
+    if (s.phase === 'roll' && !rolling && (!last || last.by !== s.turn || last.role.final)) {
+      root.append(h('div', 'cr-next', `次は ${nameOf(v, s.turn)}（${s.turn === s.parent ? '親・最後' : '子'}）がふります`));
+    }
+    // ふる順（子 → 親）。それぞれの出目と役、結果
     const list = h('div', 'cr-list');
-    for (let p = 0; p < s.players; p++) {
+    const order = s.order && s.order.length ? [...s.order, s.parent] : [...Array(s.players).keys()];
+    for (const p of order) {
       if (!v.seats[p]) continue;
-      const row = h('div', 'cr-row' + (p === me ? ' me' : '') + (p === s.turn && s.phase === 'roll' ? ' turn' : '') + (s.out[p] ? ' out' : ''));
-      row.append(h('span', 'cr-name', `${p === s.parent ? '👑 ' : ''}${nameOf(v, p)}`));
-      const info = [];
-      if (p === s.parent) info.push('親');
-      else if (s.bets[p] != null) info.push(`賭け ${s.bets[p]}`);
-      else if (s.phase === 'bet' && s.chips[p] > 0 && !s.out[p]) info.push('考え中…');
-      if (s.rolls[p]) info.push(s.rolls[p].role.name);
-      row.append(h('span', 'cr-info', info.join('・')));
+      const r = s.rolls[p];
+      const showing = rolling && last && last.by === p; // ころがっている途中は結果を出さない
+      const row = h('div', 'cr-row' + (p === me ? ' me' : '') + (p === s.turn && s.phase === 'roll' ? ' turn' : '') + (s.out[p] ? ' out' : '') + (p === s.parent ? ' oya' : ''));
+      row.append(h('span', 'cr-name', `${p === s.parent ? '👑 親 ' : ''}${nameOf(v, p)}`));
+      const info = h('span', 'cr-info');
+      if (p !== s.parent) info.append(s.bets[p] != null ? `賭け ${s.bets[p]}` : s.phase === 'bet' && s.chips[p] > 0 && !s.out[p] ? '考え中…' : '');
+      if (r && !showing) { info.append(crDice(r.dice, 'mini')); info.append(h('b', `cr-mini-role ${r.role.kind}`, r.role.name)); }
+      row.append(info);
       const o = s.outcome && s.outcome[p];
-      if (o) row.append(h('span', 'cr-gain ' + (o.gain > 0 ? 'win' : o.gain < 0 ? 'lose' : ''), `${o.gain >= 0 ? '+' : ''}${o.gain}`));
+      if (o && !rolling) row.append(h('span', 'cr-gain ' + (o.gain > 0 ? 'win' : o.gain < 0 ? 'lose' : ''), `${o.gain > 0 ? '+' : ''}${o.gain}${o.mult > 1 ? `（${o.mult}倍）` : ''}`));
       list.append(row);
     }
     root.append(list);
@@ -1206,12 +1227,13 @@ export function asobiRenderers(api) {
       }
       if (s.phase === 'roll' && s.turn === me) {
         const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
+        b.disabled = rolling; // ころがっている間は待つ
         b.onclick = () => move({ roll: true });
         bar.append(b);
       }
       if (bar.childElementCount) root.append(bar);
     }
-    root.append(h('p', 'muted small as-help', '役: ピンゾロ(1・1・1) 5倍 ＞ ゾロ目 3倍 ＞ シゴロ(4・5・6) 2倍 ＞ 目(6〜1)。ヒフミ(1・2・3)は2倍払い、3回で役なしは目なし'));
+    root.append(h('p', 'muted small as-help', '役: ピンゾロ(1・1・1) 5倍 ＞ ゾロ目 3倍 ＞ シゴロ(4・5・6) 2倍 ＞ 目(6〜1) ＞ 目なし ＞ ヒフミ(1・2・3)。強い役が勝ち、ヒフミで負けると2倍払い'));
     el.replaceChildren(root);
   }
 

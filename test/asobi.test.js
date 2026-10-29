@@ -375,25 +375,39 @@ test('chinchiro: 役の強さ', () => {
   assert.ok(r([1, 1, 1]).rank > r([6, 6, 6]).rank && r([2, 2, 2]).rank > r([4, 5, 6]).rank && r([4, 5, 6]).rank > r([6, 6, 1]).rank);
 });
 
-test('chinchiro: 親のシゴロで子全員から2倍、2〜5の目なら子がふって比べる', () => {
+test('chinchiro: 子が先に全員ふり、最後に親がふってから比べる', () => {
   // サイコロの目を決めてふらせる（rng(6) は 1〜6 を返す）
   const fixed = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
   let s = chinchiro.init({}, 3);
   s = chinchiro.applyMove(s, { bet: 100 }, 1);
   s = chinchiro.applyMove(s, { bet: 50 }, 2);
   assert.equal(s.phase, 'roll');
-  let t = chinchiro.applyMove(s, { roll: true }, 0, fixed([4, 5, 6]));
-  assert.deepEqual(t.chips, [1300, 800, 900]);
+  assert.equal(s.turn, 1, '子からふる');
+  assert.throws(() => chinchiro.applyMove(s, { roll: true }, 0), /番ではありません/, '親は最後');
+  let t = chinchiro.applyMove(s, { roll: true }, 1, fixed([5, 5, 6])); // 子1は6の目
+  assert.equal(t.turn, 2);
+  t = chinchiro.applyMove(t, { roll: true }, 2, fixed([2, 2, 4])); // 子2は4の目
+  assert.equal(t.turn, 0, '子が終わったら親');
+  assert.deepEqual(t.chips, [1000, 1000, 1000], '親がふるまでチップは動かない');
+  const before = t;
+  t = chinchiro.applyMove(before, { roll: true }, 0, fixed([3, 3, 4])); // 親は4の目
+  assert.deepEqual(t.chips, [900, 1100, 1000], '子1は勝ち・子2は引き分け');
   assert.equal(t.phase, 'result');
-  t = chinchiro.applyMove(s, { roll: true }, 0, fixed([3, 3, 4])); // 親は4の目
-  assert.equal(t.turn, 1);
-  t = chinchiro.applyMove(t, { roll: true }, 1, fixed([5, 5, 6])); // 子は6の目で勝ち
-  assert.deepEqual(t.chips, [900, 1100, 1000]);
-  t = chinchiro.applyMove(t, { roll: true }, 2, fixed([2, 2, 4])); // 4の目で引き分け
-  assert.deepEqual(t.chips, [900, 1100, 1000]);
-  assert.equal(t.phase, 'result');
+  t = chinchiro.applyMove(before, { roll: true }, 0, fixed([4, 5, 6])); // 親がシゴロ
+  assert.deepEqual(t.chips, [1300, 800, 900], 'シゴロは2倍');
   t = chinchiro.tick(t);
   assert.equal(t.parent, 1, '親は次の人へ');
+});
+
+test('chinchiro: 比べ方（強い役が勝ち・倍率・ヒフミは2倍払い・同じは引き分け）', () => {
+  const r = (d) => chinchiro.role(d, 3);
+  assert.equal(chinchiro.compare(r([5, 5, 6]), r([3, 3, 4])), 1);
+  assert.equal(chinchiro.compare(r([2, 2, 4]), r([3, 3, 4])), 0);
+  assert.equal(chinchiro.compare(r([1, 1, 1]), r([6, 6, 2])), 5);
+  assert.equal(chinchiro.compare(r([3, 3, 1]), r([2, 2, 2])), -3);
+  assert.equal(chinchiro.compare(r([1, 2, 3]), r([2, 2, 1])), -2, '子のヒフミは2倍払い');
+  assert.equal(chinchiro.compare(r([1, 3, 6]), r([1, 2, 3])), 2, '親のヒフミは2倍払い');
+  assert.equal(chinchiro.compare(r([1, 3, 6]), r([2, 4, 6])), 0, '目なしどうしは引き分け');
 });
 
 console.log(`\n${n} tests passed`);

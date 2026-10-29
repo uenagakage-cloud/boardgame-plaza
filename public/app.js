@@ -589,7 +589,7 @@ function statusText(v) {
     return ['end', `${who}（${named(s.result.reason)}）`];
   }
   const phase = g.phaseText?.(s, v.you);
-  if (phase) return [v.you >= 0 ? 'mine' : 'spec', phase];
+  if (phase) return [v.you >= 0 ? 'mine' : 'spec', named(phase)];
   const check = s.check ? (v.game === 'shogi' ? '王手！ ' : 'チェック！ ') : !v.multi && String(s.history.at(-1) || '').endsWith('パス') ? `${g.sideNames[1 - s.turn]}はパス。 ` : '';
   if (v.you < 0) return ['spec', `${check}${v.multi ? nameOf(s.turn) : g.sideNames[s.turn]}の番です（観戦中）`];
   return s.turn === v.you ? ['mine', `${check}あなたの番です`] : ['theirs', `${check}${v.multi ? nameOf(s.turn) + 'の番です' : '相手の番です'}`];
@@ -3710,8 +3710,15 @@ const FX_RULES = {
   },
   speed: (e) => (/スタート！/.test(e) ? ['スピード！', 'big'] : null),
   tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : /ラウンドの勝ち/.test(e) ? ['ラウンドの勝ち！', 'good'] : /相打ち/.test(e) ? ['相打ち！', 'info'] : /^第\d+ラウンド/.test(e) ? [e, 'info'] : null),
-  chinchiro: (e) => (/ピンゾロ/.test(e) ? ['ピンゾロ！ 5倍', 'big'] : /ゾロ目/.test(e) ? ['ゾロ目！ 3倍', 'big'] : /シゴロ/.test(e) ? ['シゴロ！ 2倍', 'big'] : /ヒフミ/.test(e) ? ['ヒフミ… 2倍払い', 'bad']
-    : /目なし/.test(e) ? ['目なし…', 'bad'] : /→ 6の目/.test(e) ? ['6の目！', 'good'] : /→ 1の目/.test(e) ? ['1の目…', 'bad'] : / → [2-5]の目/.test(e) ? [e.match(/[2-5]の目/)[0], 'info'] : null),
+  // チンチロ: サイコロが止まってから（約1.2秒あと）出す
+  chinchiro: (e) => {
+    const m = e.match(/ → (.+)$/);
+    if (!m) return null;
+    const r = m[1];
+    const fx = /ピンゾロ/.test(r) ? ['ピンゾロ！ 5倍', 'big'] : /ゾロ目/.test(r) ? [`${r}！ 3倍`, 'big'] : /シゴロ/.test(r) ? ['シゴロ！ 2倍', 'big'] : /ヒフミ/.test(r) ? ['ヒフミ… 2倍払い', 'bad']
+      : /^目なし/.test(r) ? ['目なし…', 'bad'] : /^6の目/.test(r) ? ['6の目！', 'good'] : /^1の目/.test(r) ? ['1の目…', 'bad'] : /^[2-5]の目/.test(r) ? [r, 'info'] : null;
+    return fx && [...fx, 1200];
+  },
   hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'big'] : /0ヒット 0ブロー/.test(e) ? ['かすりもしない…', 'bad'] : /(\d)ヒット/.test(e) && /[12]ヒット/.test(e) ? [e.match(/\dヒット \dブロー/)[0], 'info'] : null),
 };
 // 前の状態と比べて分かる出来事（ログに出ないもの）
@@ -3825,12 +3832,12 @@ function fxCheck(v) {
     const from = !ps || s.history.length < prev.len ? 0 : prev.len; // 新しい試合ならログは最初から
     const lines = s.history.slice(from);
     const hits = lines.map((e, i) => rule(e, i === lines.length - 1, s, ps)).filter(Boolean);
-    if (hits.length) out.push([hits.map((x) => x[0]).join('　'), hits[hits.length - 1][1]]);
+    if (hits.length) out.push([hits.map((x) => x[0]).join('　'), hits[hits.length - 1][1], Math.max(...hits.map((x) => x[2] || 0))]);
   }
   const st = FX_STATE[v.game];
   if (st && ps && ps.history !== s.history) { const r = st(ps, s, v); if (r) out.push(r); }
   if (ps && !ps.result && s.result) out.push(resultFx(v));
-  for (const [text, tone] of out) showFx(named(text), tone);
+  for (const [text, tone, delay] of out) { if (delay) setTimeout(() => showFx(named(text), tone), delay); else showFx(named(text), tone); }
 }
 // 演出は1つずつ順番に出す
 const fxQueue = [], FX_MS = 1750;

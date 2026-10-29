@@ -1,10 +1,10 @@
 // チンチロ（チンチロリン）（サーバーとブラウザで共通）
 // 2〜6人。全員 1000 チップから（点数だけで、お金は使わない）。親を順番に回して、子は親と勝負する。
-// 1回の流れ: 子がチップを賭ける → 親がサイコロ3個をふる（役が出るまで3回まで）→ 親の役によっては、子もふって親と比べる。
+// 1回の流れ: 子がチップを賭ける → 子が1人ずつサイコロ3個をふる（役が出るまで3回まで）→ 最後に親がふる → 子1人ずつ親と比べる。
 // 役（強い順）: ピンゾロ（1・1・1、5倍）> ゾロ目（同じ目3つ、3倍）> シゴロ（4・5・6、2倍）> 目（2つそろった残りの1つ。6が一番強い）
-//   ヒフミ（1・2・3）は2倍払い、3回ふって役が出なければ「目なし」（1倍払い）。
-// 親がピンゾロ・ゾロ目・シゴロ・6の目なら子全員から取る。ヒフミ・1の目・目なしなら子全員に払う。2〜5の目なら子が1人ずつふって勝負。
-// 目どうしは大きいほうが勝ち、同じなら引き分け。決めた周（全員が親を何回するか）が終わったら、チップが一番多い人の勝ち。
+//   > 目なし（3回ふっても役が出ない）> ヒフミ（1・2・3）。
+// 比べ方: 強い役のほうが勝ち。勝った役がピンゾロ・ゾロ目・シゴロならその倍率、負けた側がヒフミなら2倍（大きいほう）。
+//   同じ強さなら引き分け。決めた周（全員が親を何回するか）が終わったら、チップが一番多い人の勝ち。
 // 手: { bet: 数 } / { roll: true } / { resign: true }
 import { pickOptions, seatNames, label, randInt } from './util.js';
 
@@ -18,11 +18,11 @@ export const logTitle = 'ログ';
 export const START_CHIPS = 1000;
 export const BETS = [50, 100, 200, 500];
 export const OPTIONS = [{ key: 'laps', label: '親の回数', values: [1, 2, 3], names: ['1人1回', '1人2回', '1人3回'] }];
-const RESULT_MS = 4000;
+const RESULT_MS = 6000;
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
 export const variantName = (o) => `親${normalizeOptions(o).laps}周`;
 
-// 役。rank が大きいほど強い。mult は勝ち負けの倍率。final: これ以上ふらない
+// 役。rank が大きいほど強い。mult は勝ったときの倍率。final: これ以上ふらない
 export function role(dice, tries = 3) {
   const d = dice.slice().sort((a, b) => a - b);
   const [a, b, c] = d;
@@ -32,6 +32,15 @@ export function role(dice, tries = 3) {
   if (a === 1 && b === 2 && c === 3) return { kind: 'hifumi', rank: -2, mult: 2, name: 'ヒフミ', final: true };
   if (a === b || b === c) { const me = a === b ? c : a; return { kind: 'me', rank: me, mult: 1, name: `${me}の目`, final: true }; }
   return tries >= 3 ? { kind: 'none', rank: -1, mult: 1, name: '目なし', final: true } : { kind: 'none', rank: -1, mult: 1, name: '役なし', final: false };
+}
+
+// 子の役 c と親の役 p を比べる。子から見たチップの増減の倍率（勝ち +、負け −、引き分け 0）
+export function compare(c, p) {
+  if (c.rank === p.rank) return 0;
+  const childWins = c.rank > p.rank;
+  const win = childWins ? c : p, lose = childWins ? p : c;
+  const mult = Math.max(['pinzoro', 'zoro', 'shigoro'].includes(win.kind) ? win.mult : 1, lose.kind === 'hifumi' ? 2 : 1);
+  return childWins ? mult : -mult;
 }
 
 export function init(options, players = 2) {
@@ -59,18 +68,27 @@ function startHand(s) {
   s.turn = p;
   s.outcome = null;
   s.tickAt = null;
+  s.last = null;
   s.history = [`第${s.hand}/${totalHands(s)}回・親は${label(p)}`];
   return s;
 }
 
-const children = (s) => [...Array(s.players).keys()].filter((p) => p !== s.parent && canPlay(s, p));
+// 子（親の次の人から順に）
+const children = (s) => {
+  const out = [];
+  for (let k = 1; k < s.players; k++) { const p = (s.parent + k) % s.players; if (canPlay(s, p)) out.push(p); }
+  return out;
+};
 
 export const canActOutOfTurn = (s) => s.phase === 'bet';
 export const scoreOf = (s, seat) => `${s.chips[seat]}枚`;
 export function phaseText(s, you) {
   if (s.result || you < 0) return null;
   if (s.phase === 'bet') return you === s.parent ? 'あなたが親です。子が賭けるのを待っています…' : s.bets[you] == null && canPlay(s, you) ? '賭けるチップを選んでください' : 'ほかの人を待っています…';
-  if (s.phase === 'roll') return you === s.turn ? 'サイコロをふってください' : `${label(s.turn)} がふっています`;
+  if (s.phase === 'roll') {
+    if (you !== s.turn) return `${label(s.turn)}（${s.turn === s.parent ? '親' : '子'}）がふっています`;
+    return you === s.parent ? '最後に親のあなたがふります。サイコロをふってください' : 'サイコロをふってください（あとで親と比べます）';
+  }
   if (s.phase === 'result') return 'この回の結果';
   return null;
 }
@@ -80,51 +98,27 @@ function pay(ns, from, to, n) {
   ns.chips[to] += n;
 }
 
-// 親の役が決まったとき
-function afterParent(ns) {
-  const r = ns.rolls[ns.parent].role;
-  const kids = children(ns).filter((p) => ns.bets[p]);
+// 親がふり終わったら、子1人ずつ比べてチップをやりとりする
+function settle(ns) {
+  const par = ns.rolls[ns.parent] ? ns.rolls[ns.parent].role : null;
   ns.outcome = Array(ns.players).fill(null);
-  const settleAll = (parentWins, mult, why) => {
-    for (const p of kids) {
-      const n = ns.bets[p] * mult;
-      if (parentWins) pay(ns, p, ns.parent, n); else pay(ns, ns.parent, p, n);
-      ns.outcome[p] = { gain: parentWins ? -n : n, text: why };
-    }
-    finishHand(ns);
-  };
-  if (r.kind === 'pinzoro' || r.kind === 'zoro' || r.kind === 'shigoro') return settleAll(true, r.mult, `親の${r.name}`);
-  if (r.kind === 'me' && r.rank === 6) return settleAll(true, 1, '親の6の目');
-  if (r.kind === 'hifumi') return settleAll(false, 2, '親のヒフミ');
-  if (r.kind === 'none') return settleAll(false, 1, '親の目なし');
-  if (r.kind === 'me' && r.rank === 1) return settleAll(false, 1, '親の1の目');
-  // 2〜5の目: 子が1人ずつふる
-  if (!kids.length) return finishHand(ns);
-  ns.order = kids;
-  ns.turn = kids[0];
-}
-
-// 子の役が決まったとき、親と比べる
-function settleChild(ns, p) {
-  const c = ns.rolls[p].role, par = ns.rolls[ns.parent].role;
-  const bet = ns.bets[p];
-  let gain, text;
-  if (c.kind === 'pinzoro' || c.kind === 'zoro' || c.kind === 'shigoro') { gain = bet * c.mult; text = c.name; }
-  else if (c.kind === 'hifumi') { gain = -bet * 2; text = 'ヒフミ'; }
-  else if (c.kind === 'none') { gain = -bet; text = '目なし'; }
-  else if (c.rank > par.rank) { gain = bet; text = `${c.name}で勝ち`; }
-  else if (c.rank < par.rank) { gain = -bet; text = `${c.name}で負け`; }
-  else { gain = 0; text = `${c.name}で引き分け`; }
-  if (gain > 0) pay(ns, ns.parent, p, gain); else if (gain < 0) pay(ns, p, ns.parent, -gain);
-  ns.outcome[p] = { gain, text };
-  const i = ns.order.indexOf(p);
-  if (i + 1 < ns.order.length) ns.turn = ns.order[i + 1];
-  else finishHand(ns);
+  for (const p of ns.order) {
+    if (ns.out[p] || !ns.rolls[p] || !par) continue;
+    const c = ns.rolls[p].role;
+    const k = compare(c, par);
+    const n = ns.bets[p] * Math.abs(k);
+    if (k > 0) pay(ns, ns.parent, p, n); else if (k < 0) pay(ns, p, ns.parent, n);
+    const text = k > 0 ? `${c.name}で勝ち` : k < 0 ? `${c.name}で負け` : `${c.name}で引き分け`;
+    ns.outcome[p] = { gain: k > 0 ? n : -n, text, mult: Math.abs(k) };
+  }
+  finishHand(ns);
 }
 
 function finishHand(ns) {
   ns.phase = 'result';
   ns.tickAt = Date.now() + RESULT_MS;
+  const par = ns.rolls[ns.parent];
+  if (par) ns.history.push(`親 ${label(ns.parent)} は ${par.role.name}`);
   for (const [p, o] of (ns.outcome || []).entries()) if (o) ns.history.push(`${label(p)} ${o.text}（${o.gain >= 0 ? '+' : ''}${o.gain}）`);
 }
 
@@ -139,11 +133,26 @@ function finishGame(ns) {
 
 const clone = (s) => ({ ...s, chips: s.chips.slice(), out: s.out.slice(), bets: s.bets.slice(), rolls: s.rolls.map((r) => r && { ...r, dice: r.dice.slice() }), order: s.order.slice(), history: s.history.slice() });
 
+// 全員が賭けたら、子から順にふる（最後に親）
 function maybeStartRolling(ns) {
   if (ns.phase !== 'bet') return;
   const kids = children(ns);
   if (!kids.length) { finishGame(ns); return; }
-  if (kids.every((p) => ns.bets[p] != null)) { ns.phase = 'roll'; ns.turn = ns.parent; ns.tickAt = null; }
+  if (kids.every((p) => ns.bets[p] != null)) {
+    ns.order = kids;
+    ns.phase = 'roll';
+    ns.turn = kids[0];
+    ns.tickAt = null;
+  }
+}
+
+// 次にふる人（子が全員終わったら親、親も終わったら比べる）
+function advance(ns, from) {
+  const i = ns.order.indexOf(from);
+  const rest = ns.order.slice(i + 1).filter((p) => !ns.out[p]);
+  if (from !== ns.parent && rest.length) { ns.turn = rest[0]; return; }
+  if (from !== ns.parent) { ns.turn = ns.parent; return; }
+  settle(ns);
 }
 
 export function applyMove(s, mv, seat, rng) {
@@ -156,13 +165,9 @@ export function applyMove(s, mv, seat, rng) {
     ns.history.push(`${label(seat)} が抜けました`);
     const alive = [...Array(ns.players).keys()].filter((p) => canPlay(ns, p));
     if (alive.length <= 1) { finishGame(ns); return ns; }
-    if (seat === s.parent && s.phase !== 'result') { ns.outcome = null; finishHand(ns); return ns; } // 親が抜けたら、この回はなし
+    if (seat === s.parent && s.phase !== 'result') { ns.outcome = null; ns.rolls = ns.rolls.map(() => null); finishHand(ns); ns.history.push('親が抜けたので、この回はなし'); return ns; }
     if (s.phase === 'bet') maybeStartRolling(ns);
-    else if (s.phase === 'roll' && s.turn === seat) {
-      ns.outcome = ns.outcome || Array(ns.players).fill(null);
-      const i = ns.order.indexOf(seat);
-      if (i >= 0 && i + 1 < ns.order.length) ns.turn = ns.order[i + 1]; else finishHand(ns);
-    }
+    else if (s.phase === 'roll' && s.turn === seat) advance(ns, seat);
     return ns;
   }
   if (s.out[seat]) throw new Error('抜けています');
@@ -182,11 +187,9 @@ export function applyMove(s, mv, seat, rng) {
     const dice = [0, 0, 0].map(() => randInt(rng, 6) + 1);
     const r = role(dice, tries);
     ns.rolls[seat] = { dice, tries, role: r };
-    ns.last = { by: seat, dice, tries, at: Date.now() };
-    ns.history.push(`${label(seat)} ${dice.join('・')} → ${r.name}${r.final ? '' : `（${tries}回目）`}`);
-    if (!r.final) return ns;
-    if (seat === s.parent) afterParent(ns);
-    else settleChild(ns, seat);
+    ns.last = { by: seat, dice, tries, at: Date.now(), role: r };
+    ns.history.push(`${label(seat)}（${seat === s.parent ? '親' : '子'}） ${dice.join('・')} → ${r.name}${r.final ? '' : `（${tries}回目）`}`);
+    if (r.final) advance(ns, seat);
     return ns;
   }
   throw new Error('不明な操作です');
@@ -212,4 +215,5 @@ export function aiMove(s, seat) {
   if (s.phase === 'roll' && s.turn === seat) return { roll: true };
   return null;
 }
-export const botDelay = 900;
+// CPU は、前の人の出目が見えるよう、ゆっくりふる
+export const botDelay = (s) => (s.phase === 'roll' ? 2200 : 700);

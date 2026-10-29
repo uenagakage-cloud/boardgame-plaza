@@ -407,3 +407,24 @@
 .lc-press { font-size: 1.6rem; padding: 14px 40px; animation: lc-shake .5s infinite; }
 @keyframes lc-shake { 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
 .lc-race-order { font-size: .85rem; font-weight: 700; }
+
+/* チンチロ: ころがる → 止まる → 役を大きく */
+.cr-who { font-weight: 800; color: #5c3b1e; font-size: .9rem; }
+.cr-dice.rolling .cr-die { animation: cr-tumble .18s linear infinite; display: inline-block; }
+.cr-dice.rolling .cr-die:nth-child(2) { animation-duration: .22s; }
+.cr-dice.rolling .cr-die:nth-child(3) { animation-duration: .16s; }
+@keyframes cr-tumble { 0% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(-5px, -6px) rotate(-25deg); } 50% { transform: translate(4px, 3px) rotate(20deg); } 75% { transform: translate(-3px, 5px) rotate(-12deg); } 100% { transform: translate(0, 0) rotate(0); } }
+.cr-dice.landed .cr-die { display: inline-block; animation: cr-land .45s ease-out; font-size: 3.6rem; }
+@keyframes cr-land { 0% { transform: scale(1.5) rotate(-15deg); } 60% { transform: scale(.92); } 100% { transform: none; } }
+.cr-role.big { font-size: 1.5rem; animation: cr-land .5s ease-out; }
+.cr-role.big.pinzoro, .cr-role.big.zoro, .cr-role.big.shigoro { font-size: 1.9rem; text-shadow: 0 0 12px rgba(255, 200, 0, .8); }
+.cr-next { text-align: center; font-weight: 800; color: var(--accent); }
+.cr-dice.mini { display: inline-flex; gap: 1px; margin: 0 6px; vertical-align: middle; }
+.cr-dice.mini .cr-die { font-size: 1.3rem; animation: none; }
+.cr-mini-role { font-size: .85rem; color: #5c3b1e; }
+.cr-mini-role.pinzoro, .cr-mini-role.zoro, .cr-mini-role.shigoro { color: #d9480f; }
+.cr-mini-role.hifumi, .cr-mini-role.none { color: #c92a2a; }
+.cr-row.oya { background: #fff9db; }
+.cr-info { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.cr-role { max-width: 88%; overflow-wrap: anywhere; }
+.cr-role.retry { font-size: .95rem; color: #868e96; }
