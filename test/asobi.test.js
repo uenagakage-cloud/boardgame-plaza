@@ -378,32 +378,50 @@ test('chinchiro: 役の強さ', () => {
 test('chinchiro: 子が先に全員ふり、最後に親がふってから比べる', () => {
   // サイコロの目を決めてふらせる（rng(6) は 1〜6 を返す）
   const fixed = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+  const stop = (x) => { assert.ok(x.wait, 'ころがっている間は結果を出さない'); return chinchiro.tick(x); }; // サイコロが止まる
   let s = chinchiro.init({}, 3);
   s = chinchiro.applyMove(s, { bet: 100 }, 1);
   s = chinchiro.applyMove(s, { bet: 100 }, 2);
   assert.equal(s.phase, 'roll');
   assert.equal(s.turn, 1, '子からふる');
   assert.throws(() => chinchiro.applyMove(s, { roll: true }, 0), /番ではありません/, '親は最後');
-  let t = chinchiro.applyMove(s, { roll: true }, 1, fixed([5, 5, 6])); // 子1は6の目
+  let t = stop(chinchiro.applyMove(s, { roll: true }, 1, fixed([5, 5, 6]))); // 子1は6の目
   assert.equal(t.turn, 2, '役が出たらそこで決まり（ふり直しはできない）');
-  t = chinchiro.applyMove(t, { roll: true }, 2, fixed([1, 3, 6])); // 子2は役なし → ふり直す
+  t = stop(chinchiro.applyMove(t, { roll: true }, 2, fixed([1, 3, 6]))); // 子2は役なし → ふり直す
   assert.equal(t.turn, 2);
-  t = chinchiro.applyMove(t, { roll: true }, 2, fixed([2, 2, 4])); // 4の目
+  t = stop(chinchiro.applyMove(t, { roll: true }, 2, fixed([2, 2, 4]))); // 4の目
   assert.equal(t.turn, 0, '子が終わったら親');
   assert.deepEqual(t.chips, [1000, 1000, 1000], '親がふるまでチップは動かない');
   const before = t;
-  t = chinchiro.applyMove(before, { roll: true }, 0, fixed([3, 3, 4])); // 親は4の目
+  t = stop(chinchiro.applyMove(before, { roll: true }, 0, fixed([3, 3, 4]))); // 親は4の目
   assert.deepEqual(t.chips, [900, 1100, 1000], '子1は勝ち・子2は引き分け');
   assert.equal(t.phase, 'result');
-  t = chinchiro.applyMove(before, { roll: true }, 0, fixed([4, 5, 6])); // 親がシゴロ
+  t = stop(chinchiro.applyMove(before, { roll: true }, 0, fixed([4, 5, 6]))); // 親がシゴロ
   assert.deepEqual(t.chips, [1400, 800, 800], 'シゴロは2倍');
   // 3回とも役が出なければ目なし
   let u = before;
-  for (let k = 0; k < 3; k++) u = chinchiro.applyMove(u, { roll: true }, 0, fixed([1, 3, 6]));
+  for (let k = 0; k < 3; k++) u = stop(chinchiro.applyMove(u, { roll: true }, 0, fixed([1, 3, 6])));
   assert.equal(u.phase, 'result');
   assert.equal(u.rolls[0].role.name, '目なし');
   t = chinchiro.tick(t);
   assert.equal(t.parent, 1, '親は次の人へ');
+});
+
+test('chinchiro: サイコロが止まるまでは、ログ・番・チップが変わらない（結果が先に分からない）', () => {
+  const fixed = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+  let s = chinchiro.init({}, 2);
+  s = chinchiro.applyMove(s, { bet: 100 }, 1);
+  s = chinchiro.tick(chinchiro.applyMove(s, { roll: true }, 1, fixed([5, 5, 6])));
+  const before = s;
+  const rolling = chinchiro.applyMove(before, { roll: true }, 0, fixed([4, 5, 6])); // 親のシゴロ
+  assert.deepEqual(rolling.chips, before.chips, 'チップはまだ動かない');
+  assert.equal(rolling.history.length, before.history.length, 'ログにもまだ出ない');
+  assert.equal(rolling.phase, 'roll');
+  assert.ok(rolling.tickAt > 0);
+  assert.throws(() => chinchiro.applyMove(rolling, { roll: true }, 0), /止まるまで/);
+  const done = chinchiro.tick(rolling);
+  assert.equal(done.phase, 'result');
+  assert.deepEqual(done.chips, [1200, 800]);
 });
 
 test('chinchiro: 賭けは100枚ずつ', () => {

@@ -3710,14 +3710,14 @@ const FX_RULES = {
   },
   speed: (e) => (/スタート！/.test(e) ? ['スピード！', 'big'] : null),
   tanks: (e) => (/自爆/.test(e) ? ['自爆…', 'bad'] : /倒した/.test(e) ? ['撃破！', 'big'] : /ラウンドの勝ち/.test(e) ? ['ラウンドの勝ち！', 'good'] : /相打ち/.test(e) ? ['相打ち！', 'info'] : /^第\d+ラウンド/.test(e) ? [e, 'info'] : null),
-  // チンチロ: サイコロが止まってから（約1.2秒あと）出す
+  // チンチロ: 出目のログはサイコロが止まってから届く
   chinchiro: (e) => {
     const m = e.match(/ → (.+)$/);
     if (!m) return null;
     const r = m[1];
     const fx = /ピンゾロ/.test(r) ? ['ピンゾロ！ 5倍', 'big'] : /ゾロ目/.test(r) ? [`${r}！ 3倍`, 'big'] : /シゴロ/.test(r) ? ['シゴロ！ 2倍', 'big'] : /ヒフミ/.test(r) ? ['ヒフミ… 2倍払い', 'bad']
       : /^目なし/.test(r) ? ['目なし…', 'bad'] : /^6の目/.test(r) ? ['6の目！', 'good'] : /^1の目/.test(r) ? ['1の目…', 'bad'] : /^[2-5]の目/.test(r) ? [r, 'info'] : null;
-    return fx && [...fx, 1200];
+    return fx;
   },
   hbball: (e) => (/3ヒット/.test(e) ? ['おしい！ 3ヒット', 'big'] : /0ヒット 0ブロー/.test(e) ? ['かすりもしない…', 'bad'] : /(\d)ヒット/.test(e) && /[12]ヒット/.test(e) ? [e.match(/\dヒット \dブロー/)[0], 'info'] : null),
 };

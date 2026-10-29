@@ -1238,7 +1238,7 @@ export function asobiRenderers(api) {
       }
       if (s.phase === 'roll' && s.turn === me) {
         const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
-        b.disabled = rolling; // ころがっている間は待つ
+        b.disabled = rolling || !!s.wait; // ころがっている間は待つ
         b.onclick = () => move({ roll: true });
         bar.append(b);
       }

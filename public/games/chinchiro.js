@@ -21,6 +21,8 @@ export const BET_STEP = 100; // 賭けは100枚ずつ（持っているのが100
 export const MAX_TRIES = 3;
 export const OPTIONS = [{ key: 'laps', label: '親の回数', values: [1, 2, 3], names: ['1人1回', '1人2回', '1人3回'] }];
 const RESULT_MS = 6000;
+// サイコロがころがって止まるまで。この間は出目をログに書かず、番も回さず、チップも動かさない（結果が先に分からないように）
+export const ROLL_SHOW_MS = 1300;
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
 export const variantName = (o) => `親${normalizeOptions(o).laps}周`;
 
@@ -49,7 +51,7 @@ export function init(options, players = 2) {
   const s = {
     players, options: normalizeOptions(options), chips: Array(players).fill(START_CHIPS), out: Array(players).fill(false),
     hand: 0, parent: -1, phase: 'bet', bets: Array(players).fill(null), rolls: Array(players).fill(null), order: [], turn: 0,
-    outcome: null, tickAt: null, last: null, result: null, history: [],
+    outcome: null, tickAt: null, last: null, wait: null, result: null, history: [],
   };
   return startHand(s);
 }
@@ -71,6 +73,7 @@ function startHand(s) {
   s.outcome = null;
   s.tickAt = null;
   s.last = null;
+  s.wait = null;
   s.history = [`第${s.hand}/${totalHands(s)}回・親は${label(p)}`];
   return s;
 }
@@ -88,6 +91,7 @@ export function phaseText(s, you) {
   if (s.result || you < 0) return null;
   if (s.phase === 'bet') return you === s.parent ? 'あなたが親です。子が賭けるのを待っています…' : s.bets[you] == null && canPlay(s, you) ? '賭けるチップを選んでください' : 'ほかの人を待っています…';
   if (s.phase === 'roll') {
+    if (s.wait) return 'コロコロ…';
     if (you !== s.turn) return `${label(s.turn)}（${s.turn === s.parent ? '親' : '子'}）がふっています`;
     return you === s.parent ? '最後に親のあなたがふります。サイコロをふってください' : 'サイコロをふってください（あとで親と比べます）';
   }
@@ -163,6 +167,7 @@ export function applyMove(s, mv, seat, rng) {
   const ns = clone(s);
   if (mv.resign) {
     if (s.out[seat]) throw new Error('抜けています');
+    if (ns.wait) settleRoll(ns); // ころがり中のサイコロは先に止める
     ns.out[seat] = true;
     ns.history.push(`${label(seat)} が抜けました`);
     const alive = [...Array(ns.players).keys()].filter((p) => canPlay(ns, p));
@@ -185,6 +190,7 @@ export function applyMove(s, mv, seat, rng) {
   }
   if (mv.roll) {
     if (s.phase !== 'roll' || s.turn !== seat) throw new Error('あなたの番ではありません');
+    if (s.wait) throw new Error('サイコロが止まるまで待ってください');
     const prev = s.rolls[seat];
     if (prev && prev.tries >= MAX_TRIES) throw new Error(`ふれるのは${MAX_TRIES}回までです`);
     const tries = (prev ? prev.tries : 0) + 1;
@@ -192,15 +198,25 @@ export function applyMove(s, mv, seat, rng) {
     const r = role(dice, tries);
     ns.rolls[seat] = { dice, tries, role: r };
     ns.last = { by: seat, dice, tries, at: Date.now(), role: r };
-    ns.history.push(`${label(seat)}（${seat === s.parent ? '親' : '子'}） ${dice.join('・')} → ${r.name}${r.final ? '' : `（${tries}回目）`}`);
-    // 役が出たら（3回目は目なしでも）そこで決まり
-    if (r.final) advance(ns, seat);
+    // 止まってから（tick で）ログに書き、役が出ていれば次の人へ
+    ns.wait = { seat, final: r.final, line: `${label(seat)}（${seat === s.parent ? '親' : '子'}） ${dice.join('・')} → ${r.name}${r.final ? '' : `（${tries}回目）`}` };
+    ns.tickAt = Date.now() + ROLL_SHOW_MS;
     return ns;
   }
   throw new Error('不明な操作です');
 }
 
+// サイコロが止まった: ログに書き、役が出たら（3回目は目なしでも）そこで決まり
+function settleRoll(ns) {
+  const w = ns.wait;
+  ns.wait = null;
+  ns.tickAt = null;
+  ns.history.push(w.line);
+  if (w.final) advance(ns, w.seat);
+}
+
 export function tick(s) {
+  if (s.wait && !s.result) { const ns = clone(s); settleRoll(ns); return ns; }
   if (s.phase !== 'result' || s.result) return { ...s, tickAt: null };
   const ns = clone(s);
   const alive = [...Array(ns.players).keys()].filter((p) => canPlay(ns, p));
@@ -218,8 +234,8 @@ export function aiMove(s, seat) {
     if (chips < BET_STEP) return { bet: chips };
     return { bet: Math.max(BET_STEP, Math.min(Math.floor(chips / BET_STEP) * BET_STEP, Math.round(chips * 0.12 / BET_STEP) * BET_STEP)) };
   }
-  if (s.phase === 'roll' && s.turn === seat) return { roll: true };
+  if (s.phase === 'roll' && s.turn === seat && !s.wait) return { roll: true };
   return null;
 }
 // CPU は、前の人の出目が見えるよう、ゆっくりふる
-export const botDelay = (s) => (s.phase === 'roll' ? 2200 : 700);
+export const botDelay = (s) => (s.phase === 'roll' ? 1500 : 700);
