@@ -428,3 +428,4 @@
 .cr-info { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
 .cr-role { max-width: 88%; overflow-wrap: anywhere; }
 .cr-role.retry { font-size: .95rem; color: #868e96; }
+.cr-bet-amount { font-size: 1.4rem; font-weight: 900; min-width: 3.5em; text-align: center; }

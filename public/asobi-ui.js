@@ -1159,6 +1159,7 @@ export function asobiRenderers(api) {
   const CR_ROLL_MS = 1200;
   let crAnim = { key: '', until: 0 };
   let crTimer = null;
+  let crBet = { key: '', n: 0 }; // 賭ける額（決める前）
   function crDice(dice, extra = '') {
     const box = h('div', 'cr-dice ' + extra);
     dice.forEach((d) => box.append(h('span', 'cr-die', DIE[d])));
@@ -1184,14 +1185,16 @@ export function asobiRenderers(api) {
         crTimer = setTimeout(render, 90);
       } else {
         bowl.append(crDice(last.dice, 'landed'));
+        const decided = s.phase !== 'roll' || s.turn !== last.by || last.tries >= chinchiro.MAX_TRIES;
         bowl.append(h('div', `cr-role ${last.role.final ? 'big' : 'retry'} ${last.role.kind}`, last.role.final ? last.role.name : `役なし… もう一度（あと${3 - last.tries}回）`));
+        if (last.role.final && !decided) bowl.append(h('div', 'cr-role retry', '決める？ ふり直す？'));
       }
     } else {
       bowl.append(crDice([1, 2, 3], 'idle'));
       bowl.append(h('div', 'cr-role', s.phase === 'bet' ? '子がチップを賭けています…' : `${nameOf(v, s.turn)} の番`));
     }
     root.append(bowl);
-    if (s.phase === 'roll' && !rolling && (!last || last.by !== s.turn || last.role.final)) {
+    if (s.phase === 'roll' && !rolling && (!last || last.by !== s.turn)) {
       root.append(h('div', 'cr-next', `次は ${nameOf(v, s.turn)}（${s.turn === s.parent ? '親・最後' : '子'}）がふります`));
     }
     // ふる順（子 → 親）。それぞれの出目と役、結果
@@ -1216,20 +1219,42 @@ export function asobiRenderers(api) {
     if (me >= 0 && !s.out[me] && !s.result) {
       const bar = h('div', 'uno-actions');
       if (s.phase === 'bet' && me !== s.parent && s.bets[me] == null && s.chips[me] > 0) {
-        bar.append(h('span', 'small', '賭けるチップ：'));
-        let nk = 0;
-        for (const b of [...chinchiro.BETS, s.chips[me]].filter((x, i, a) => x <= s.chips[me] && a.indexOf(x) === i)) {
-          const btn = h('button', 'btn primary', b === s.chips[me] && !chinchiro.BETS.includes(b) ? `全部（${b}）` : String(b));
-          hk(btn, String(++nk));
-          btn.onclick = () => move({ bet: b });
-          bar.append(btn);
-        }
+        // 賭けは100枚ずつ好きな額（100枚より少なければ全部）
+        const chips = s.chips[me], step = chinchiro.BET_STEP;
+        const max = chips < step ? chips : Math.floor(chips / step) * step;
+        const k = `${v.code}:${v.gameNo}:${s.hand}`;
+        if (crBet.key !== k) crBet = { key: k, n: Math.min(max, Math.max(step, crBet.n || step)) };
+        crBet.n = Math.min(max, Math.max(Math.min(step, max), crBet.n));
+        const set = (n) => { crBet.n = Math.min(max, Math.max(Math.min(step, max), n)); render(); };
+        const minus = hk(h('button', 'btn', `−${step}`), 'arrowleft arrowdown');
+        minus.disabled = crBet.n <= Math.min(step, max);
+        minus.onclick = () => set(crBet.n - step);
+        const plus = hk(h('button', 'btn', `＋${step}`), 'arrowright arrowup');
+        plus.disabled = crBet.n >= max;
+        plus.onclick = () => set(crBet.n + step);
+        const all = hk(h('button', 'btn small', '全部'), 'a');
+        all.onclick = () => set(max);
+        const go = hk(h('button', 'btn primary', `${crBet.n}枚 賭ける`), 'enter');
+        go.onclick = () => move({ bet: crBet.n });
+        bar.append(h('span', 'small', '賭けるチップ：'), minus, h('span', 'cr-bet-amount', `${crBet.n}`), plus, all, go);
       }
       if (s.phase === 'roll' && s.turn === me) {
-        const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
-        b.disabled = rolling; // ころがっている間は待つ
-        b.onclick = () => move({ roll: true });
-        bar.append(b);
+        const r = s.rolls[me];
+        if (r && r.role.final && r.tries < chinchiro.MAX_TRIES) {
+          // 役が出た: この役で決めるか、ふり直すか（3回目まで）
+          const stand = hk(h('button', 'btn primary big', `${r.role.name}で決める`), 'enter');
+          stand.disabled = rolling;
+          stand.onclick = () => move({ stand: true });
+          const again = hk(h('button', 'btn big', `ふり直す（あと${chinchiro.MAX_TRIES - r.tries}回）`), 'space');
+          again.disabled = rolling;
+          again.onclick = () => move({ roll: true });
+          bar.append(stand, again);
+        } else {
+          const b = hk(h('button', 'btn primary big', r ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
+          b.disabled = rolling; // ころがっている間は待つ
+          b.onclick = () => move({ roll: true });
+          bar.append(b);
+        }
       }
       if (bar.childElementCount) root.append(bar);
     }

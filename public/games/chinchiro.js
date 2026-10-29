@@ -1,11 +1,12 @@
 // チンチロ（チンチロリン）（サーバーとブラウザで共通）
 // 2〜6人。全員 1000 チップから（点数だけで、お金は使わない）。親を順番に回して、子は親と勝負する。
-// 1回の流れ: 子がチップを賭ける → 子が1人ずつサイコロ3個をふる（役が出るまで3回まで）→ 最後に親がふる → 子1人ずつ親と比べる。
+// 1回の流れ: 子がチップを賭ける（100枚ずつ好きな額）→ 子が1人ずつサイコロ3個をふる → 最後に親がふる → 子1人ずつ親と比べる。
+// ふるのは1人3回まで。役が出ても、3回目まではふり直してよい（「この役で決める」か「ふり直す」）。役が出なければふり直す。
 // 役（強い順）: ピンゾロ（1・1・1、5倍）> ゾロ目（同じ目3つ、3倍）> シゴロ（4・5・6、2倍）> 目（2つそろった残りの1つ。6が一番強い）
 //   > 目なし（3回ふっても役が出ない）> ヒフミ（1・2・3）。
 // 比べ方: 強い役のほうが勝ち。勝った役がピンゾロ・ゾロ目・シゴロならその倍率、負けた側がヒフミなら2倍（大きいほう）。
 //   同じ強さなら引き分け。決めた周（全員が親を何回するか）が終わったら、チップが一番多い人の勝ち。
-// 手: { bet: 数 } / { roll: true } / { resign: true }
+// 手: { bet: 数 } / { roll: true } / { stand: true } 今の役で決める / { resign: true }
 import { pickOptions, seatNames, label, randInt } from './util.js';
 
 export const id = 'chinchiro';
@@ -16,7 +17,8 @@ export const sideNames = seatNames(6);
 export const lobbyReturn = true;
 export const logTitle = 'ログ';
 export const START_CHIPS = 1000;
-export const BETS = [50, 100, 200, 500];
+export const BET_STEP = 100; // 賭けは100枚ずつ（持っているのが100枚より少なければ全部）
+export const MAX_TRIES = 3;
 export const OPTIONS = [{ key: 'laps', label: '親の回数', values: [1, 2, 3], names: ['1人1回', '1人2回', '1人3回'] }];
 const RESULT_MS = 6000;
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
@@ -87,6 +89,8 @@ export function phaseText(s, you) {
   if (s.phase === 'bet') return you === s.parent ? 'あなたが親です。子が賭けるのを待っています…' : s.bets[you] == null && canPlay(s, you) ? '賭けるチップを選んでください' : 'ほかの人を待っています…';
   if (s.phase === 'roll') {
     if (you !== s.turn) return `${label(s.turn)}（${s.turn === s.parent ? '親' : '子'}）がふっています`;
+    const r = s.rolls[you];
+    if (r && r.role.final) return `${r.role.name}！ この役で決めるか、ふり直すか（あと${MAX_TRIES - r.tries}回）`;
     return you === s.parent ? '最後に親のあなたがふります。サイコロをふってください' : 'サイコロをふってください（あとで親と比べます）';
   }
   if (s.phase === 'result') return 'この回の結果';
@@ -175,21 +179,32 @@ export function applyMove(s, mv, seat, rng) {
     if (s.phase !== 'bet' || seat === s.parent || s.bets[seat] != null) throw new Error('今は賭けられません');
     const bet = Math.floor(Number(mv.bet));
     if (!(bet >= 1) || bet > s.chips[seat]) throw new Error('持っているチップより多くは賭けられません');
+    if (bet % BET_STEP !== 0 && bet !== s.chips[seat]) throw new Error(`賭けは${BET_STEP}枚ずつです`);
     ns.bets[seat] = bet;
     ns.history.push(`${label(seat)} ${bet}枚賭けた`);
     maybeStartRolling(ns);
     return ns;
   }
+  if (mv.stand) {
+    if (s.phase !== 'roll' || s.turn !== seat) throw new Error('あなたの番ではありません');
+    const cur = s.rolls[seat];
+    if (!cur || !cur.role.final) throw new Error('まだ役が出ていません');
+    ns.history.push(`${label(seat)} は ${cur.role.name} で決めた`);
+    advance(ns, seat);
+    return ns;
+  }
   if (mv.roll) {
     if (s.phase !== 'roll' || s.turn !== seat) throw new Error('あなたの番ではありません');
     const prev = s.rolls[seat];
+    if (prev && prev.tries >= MAX_TRIES) throw new Error(`ふれるのは${MAX_TRIES}回までです`);
     const tries = (prev ? prev.tries : 0) + 1;
     const dice = [0, 0, 0].map(() => randInt(rng, 6) + 1);
     const r = role(dice, tries);
     ns.rolls[seat] = { dice, tries, role: r };
     ns.last = { by: seat, dice, tries, at: Date.now(), role: r };
-    ns.history.push(`${label(seat)}（${seat === s.parent ? '親' : '子'}） ${dice.join('・')} → ${r.name}${r.final ? '' : `（${tries}回目）`}`);
-    if (r.final) advance(ns, seat);
+    ns.history.push(`${label(seat)}（${seat === s.parent ? '親' : '子'}） ${dice.join('・')} → ${r.name}${tries < MAX_TRIES ? `（${tries}回目）` : ''}`);
+    // 3回目なら、そこで決まり。それより前に役が出たら、決めるかふり直すかを選ぶ
+    if (tries >= MAX_TRIES) advance(ns, seat);
     return ns;
   }
   throw new Error('不明な操作です');
@@ -204,15 +219,20 @@ export function tick(s) {
 }
 
 // ---------- CPU ----------
-// 賭けは持っているチップの1割くらい。ふる番ならふる
+// 賭けは持っているチップの1割くらい（100枚ずつ）。4の目より強い役が出たら決め、弱ければふり直す
 export function aiMove(s, seat) {
   if (s.result || s.out[seat]) return null;
   if (s.phase === 'bet') {
     if (seat === s.parent || s.bets[seat] != null || !canPlay(s, seat)) return null;
-    const want = BETS.filter((b) => b <= Math.max(50, s.chips[seat] * 0.12));
-    return { bet: Math.min(s.chips[seat], want.length ? want[want.length - 1] : s.chips[seat]) };
+    const chips = s.chips[seat];
+    if (chips < BET_STEP) return { bet: chips };
+    return { bet: Math.max(BET_STEP, Math.min(Math.floor(chips / BET_STEP) * BET_STEP, Math.round(chips * 0.12 / BET_STEP) * BET_STEP)) };
   }
-  if (s.phase === 'roll' && s.turn === seat) return { roll: true };
+  if (s.phase === 'roll' && s.turn === seat) {
+    const r = s.rolls[seat];
+    if (r && r.role.final && (r.role.rank >= 4 || r.tries >= MAX_TRIES)) return { stand: true };
+    return { roll: true };
+  }
   return null;
 }
 // CPU は、前の人の出目が見えるよう、ゆっくりふる
