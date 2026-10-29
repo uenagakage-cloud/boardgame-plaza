@@ -1185,9 +1185,7 @@ export function asobiRenderers(api) {
         crTimer = setTimeout(render, 90);
       } else {
         bowl.append(crDice(last.dice, 'landed'));
-        const decided = s.phase !== 'roll' || s.turn !== last.by || last.tries >= chinchiro.MAX_TRIES;
         bowl.append(h('div', `cr-role ${last.role.final ? 'big' : 'retry'} ${last.role.kind}`, last.role.final ? last.role.name : `役なし… もう一度（あと${3 - last.tries}回）`));
-        if (last.role.final && !decided) bowl.append(h('div', 'cr-role retry', '決める？ ふり直す？'));
       }
     } else {
       bowl.append(crDice([1, 2, 3], 'idle'));
@@ -1239,22 +1237,10 @@ export function asobiRenderers(api) {
         bar.append(h('span', 'small', '賭けるチップ：'), minus, h('span', 'cr-bet-amount', `${crBet.n}`), plus, all, go);
       }
       if (s.phase === 'roll' && s.turn === me) {
-        const r = s.rolls[me];
-        if (r && r.role.final && r.tries < chinchiro.MAX_TRIES) {
-          // 役が出た: この役で決めるか、ふり直すか（3回目まで）
-          const stand = hk(h('button', 'btn primary big', `${r.role.name}で決める`), 'enter');
-          stand.disabled = rolling;
-          stand.onclick = () => move({ stand: true });
-          const again = hk(h('button', 'btn big', `ふり直す（あと${chinchiro.MAX_TRIES - r.tries}回）`), 'space');
-          again.disabled = rolling;
-          again.onclick = () => move({ roll: true });
-          bar.append(stand, again);
-        } else {
-          const b = hk(h('button', 'btn primary big', r ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
-          b.disabled = rolling; // ころがっている間は待つ
-          b.onclick = () => move({ roll: true });
-          bar.append(b);
-        }
+        const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
+        b.disabled = rolling; // ころがっている間は待つ
+        b.onclick = () => move({ roll: true });
+        bar.append(b);
       }
       if (bar.childElementCount) root.append(bar);
     }
