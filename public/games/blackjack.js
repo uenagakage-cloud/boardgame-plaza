@@ -15,7 +15,7 @@ export const sideNames = seatNames(6);
 export const lobbyReturn = true;
 export const logTitle = 'ログ';
 export const START_CHIPS = 1000;
-export const BETS = [10, 50, 100, 200, 500];
+export const BET_STEP = 100; // 賭けは100枚ずつ（持っているのが100枚より少なければ全部）
 export const OPTIONS = [{ key: 'rounds', label: 'ゲーム数', values: [5, 3, 10], names: ['5回', '3回', '10回'] }];
 const DEALER_MS = 700, RESULT_MS = 4500;
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
@@ -136,6 +136,7 @@ export function applyMove(s, mv, seat, rng) {
     if (s.phase !== 'bet' || s.bets[seat] != null) throw new Error('今は賭けられません');
     const bet = Math.floor(Number(mv.bet));
     if (!(bet >= 1) || bet > s.chips[seat]) throw new Error('持っているチップより多くは賭けられません');
+    if (bet % BET_STEP !== 0 && bet !== s.chips[seat]) throw new Error(`賭けは${BET_STEP}枚ずつです`);
     ns.bets[seat] = bet;
     ns.chips[seat] -= bet;
     if (ns.bets.every((b, p) => b != null || !playing(ns, p))) deal(ns);
@@ -179,13 +180,14 @@ export function tick(s, rng) {
 }
 
 // ---------- CPU ----------
-// 賭けは持っているチップの1割くらい。基本の作戦（ざっくり）で引く
+// 賭けは持っているチップの1割くらい（100枚ずつ）。基本の作戦（ざっくり）で引く
 export function aiMove(s, seat) {
   if (s.result || s.out[seat]) return null;
   if (s.phase === 'bet') {
     if (s.bets[seat] != null || !playing(s, seat)) return null;
-    const want = BETS.filter((b) => b <= Math.max(10, s.chips[seat] * 0.12));
-    return { bet: Math.min(s.chips[seat], want.length ? want[want.length - 1] : s.chips[seat]) };
+    const chips = s.chips[seat];
+    if (chips < BET_STEP) return { bet: chips };
+    return { bet: Math.max(BET_STEP, Math.min(Math.floor(chips / BET_STEP) * BET_STEP, Math.round(chips * 0.12 / BET_STEP) * BET_STEP)) };
   }
   if (s.phase !== 'play' || s.done[seat] || !s.hands[seat].length) return null;
   const hand = s.hands[seat], t = total(hand);

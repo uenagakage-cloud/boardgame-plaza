@@ -17,6 +17,7 @@ import * as koikoi from '../public/games/koikoi.js';
 import * as tanks from '../public/games/tanks.js';
 import * as hbball from '../public/games/hbball.js';
 import * as chinchiro from '../public/games/chinchiro.js';
+import * as roulette from '../public/games/roulette.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -68,7 +69,7 @@ function playOut(mod, players, options = {}, seed = 1, maxSteps = 20000) {
 const allCpu = [
   [morris, 2], [hex, 2], [checkers, 2], [domino, 2], [domino, 4], [ccheckers, 2], [ccheckers, 3], [ccheckers, 6],
   [ludo, 2], [ludo, 4], [sevens, 3], [sevens, 6], [speed, 2], [memory, 1], [memory, 3], [blackjack, 1], [blackjack, 4],
-  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3], [chinchiro, 2], [chinchiro, 5],
+  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3], [chinchiro, 2], [chinchiro, 5], [roulette, 1], [roulette, 4],
 ];
 for (const [mod, players] of allCpu) {
   test(`${mod.id}: ${players}人の CPU 対戦が最後まで進む`, () => {
@@ -228,6 +229,50 @@ test('memory: 同じ数字ならもらってもう一度、ちがえば次の人
   s = memory.tick(s);
   assert.equal(s.turn, 1);
   assert.equal(memory.viewFor(s).cards[x], null, 'めくっていない札の中身は見えない');
+});
+
+test('blackjack: 賭けは100枚ずつ（足りなければ全部）', () => {
+  const s = blackjack.init({}, 2, seeded(4));
+  assert.throws(() => blackjack.applyMove(s, { bet: 150 }, 0), /100枚ずつ/);
+  assert.equal(blackjack.applyMove(s, { bet: 300 }, 0).bets[0], 300);
+  const poor = { ...s, chips: [60, 1000] };
+  assert.equal(blackjack.applyMove(poor, { bet: 60 }, 0).bets[0], 60);
+});
+
+test('roulette: 配当（数字36倍・赤黒など2倍・ダズンと列3倍・0は外側の外れ）', () => {
+  assert.equal(roulette.payout('n17', 17), 35);
+  assert.equal(roulette.payout('n17', 18), 0);
+  assert.equal(roulette.payout('red', 1), 1);
+  assert.equal(roulette.payout('black', 1), 0);
+  assert.equal(roulette.payout('even', 0), 0, '0は偶数ではない');
+  assert.equal(roulette.payout('d3', 30), 2);
+  assert.equal(roulette.payout('c1', 34), 2);
+  assert.equal(roulette.payout('c3', 36), 2);
+  assert.equal(roulette.payout('n0', 0), 35);
+  assert.equal(roulette.WHEEL.length, 37);
+  assert.equal(new Set(roulette.WHEEL).size, 37);
+});
+
+test('roulette: 置いて、全員OKで回り、止まってから配当', () => {
+  let s = roulette.init({}, 2);
+  s = roulette.applyMove(s, { place: { spot: 'red', amount: 200 } }, 0);
+  s = roulette.applyMove(s, { place: { spot: 'n7', amount: 100 } }, 0);
+  assert.equal(s.chips[0], 700);
+  assert.throws(() => roulette.applyMove(s, { place: { spot: 'red', amount: 150 } }, 0), /100枚ずつ/);
+  assert.throws(() => roulette.applyMove(s, { place: { spot: 'n37', amount: 100 } }, 0), /置けません/);
+  s = roulette.applyMove(s, { place: { spot: 'black', amount: 100 } }, 1);
+  s = roulette.applyMove(s, { clear: true }, 1);
+  assert.equal(s.chips[1], 1000, '戻した');
+  s = roulette.applyMove(s, { ready: true }, 0);
+  assert.equal(s.phase, 'bet');
+  const seven = () => roulette.WHEEL.indexOf(7) + 1; // rng が 7 の場所を返す
+  s = roulette.applyMove(s, { ready: true }, 1, seven);
+  assert.equal(s.phase, 'spin');
+  assert.equal(s.number, 7);
+  assert.equal(s.chips[0], 700, '回っている間は配当しない');
+  s = roulette.tick(s);
+  assert.equal(s.phase, 'result');
+  assert.equal(s.chips[0], 700 + 400 + 3600, '赤（7は赤）2倍・7に36倍');
 });
 
 test('blackjack: 合計の数え方と配当', () => {

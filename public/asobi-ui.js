@@ -17,6 +17,7 @@ import * as koikoi from './games/koikoi.js';
 import * as tanks from './games/tanks.js';
 import * as hbball from './games/hbball.js';
 import * as chinchiro from './games/chinchiro.js';
+import * as roulette from './games/roulette.js';
 import { SUIT_MARK, RANK_LABEL } from './games/util.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -37,6 +38,31 @@ export function asobiRenderers(api) {
     if (k !== ui.key) { ui.key = k; ui.data = {}; }
     return ui.data;
   };
+
+  // 掛け金を選ぶ: −100 / 金額 / ＋100 / 全部 / 賭ける（← → で増減、Enter で賭ける）。
+  // 100枚ずつ選べて、「全部」は持っているチップ全部（端数も）。key が変わったら最初の額に戻す
+  let betSel = { key: '', n: 0 };
+  function betPicker(key, chips, onBet, { step = 100, label = '賭ける', start = step } = {}) {
+    const top = chips < step ? chips : Math.floor(chips / step) * step; // ＋で行ける一番上
+    const low = Math.min(step, chips);
+    if (betSel.key !== key) betSel = { key, n: Math.min(chips, Math.max(low, start)) };
+    betSel.n = Math.min(chips, Math.max(low, betSel.n));
+    const set = (n) => { betSel.n = Math.min(chips, Math.max(low, n)); render(); };
+    const box = h('span', 'bet-picker');
+    const minus = hk(h('button', 'btn', `−${step}`), 'arrowleft arrowdown');
+    minus.disabled = betSel.n <= low;
+    minus.onclick = () => set(betSel.n > top ? top : betSel.n - step);
+    const plus = hk(h('button', 'btn', `＋${step}`), 'arrowright arrowup');
+    plus.disabled = betSel.n >= top;
+    plus.onclick = () => set(betSel.n + step);
+    const all = hk(h('button', 'btn small', `全部（${chips}）`), 'a');
+    all.disabled = betSel.n === chips;
+    all.onclick = () => set(chips);
+    const go = hk(h('button', 'btn primary', `${betSel.n}枚 ${label}`), 'enter');
+    go.onclick = () => onBet(betSel.n);
+    box.append(minus, h('span', 'bet-amount', String(betSel.n)), plus, all, go);
+    return box;
+  }
 
   // 参加者の並び（手番・自分・抜けた・勝ち）
   function players(v, info, extra, after) {
@@ -545,14 +571,7 @@ export function asobiRenderers(api) {
     if (me >= 0 && !s.out[me] && !s.result) {
       const bar = h('div', 'uno-actions');
       if (s.phase === 'bet' && s.bets[me] == null && s.chips[me] > 0) {
-        bar.append(h('span', 'small', '賭けるチップ：'));
-        let nk = 0;
-        for (const b of [...blackjack.BETS, s.chips[me]].filter((x, i, a) => x <= s.chips[me] && a.indexOf(x) === i)) {
-          const btn = h('button', 'btn primary', b === s.chips[me] && !blackjack.BETS.includes(b) ? `全部（${b}）` : String(b));
-          hk(btn, String(++nk));
-          btn.onclick = () => move({ bet: b });
-          bar.append(btn);
-        }
+        bar.append(h('span', 'small', '賭けるチップ：'), betPicker(`bj:${v.code}:${v.gameNo}:${s.round}`, s.chips[me], (n) => move({ bet: n }), { step: blackjack.BET_STEP }));
       } else if (s.phase === 'play' && s.hands[me].length && !s.done[me]) {
         const hit = h('button', 'btn primary', 'ヒット（もう1枚）'), stand = h('button', 'btn', 'スタンド（止める）');
         hk(hit, 'h');
@@ -1159,7 +1178,6 @@ export function asobiRenderers(api) {
   const CR_ROLL_MS = 1200;
   let crAnim = { key: '', until: 0 };
   let crTimer = null;
-  let crBet = { key: '', n: 0 }; // 賭ける額（決める前）
   function crDice(dice, extra = '') {
     const box = h('div', 'cr-dice ' + extra);
     dice.forEach((d) => box.append(h('span', 'cr-die', DIE[d])));
@@ -1217,24 +1235,7 @@ export function asobiRenderers(api) {
     if (me >= 0 && !s.out[me] && !s.result) {
       const bar = h('div', 'uno-actions');
       if (s.phase === 'bet' && me !== s.parent && s.bets[me] == null && s.chips[me] > 0) {
-        // 賭けは100枚ずつ好きな額（100枚より少なければ全部）
-        const chips = s.chips[me], step = chinchiro.BET_STEP;
-        const max = chips < step ? chips : Math.floor(chips / step) * step;
-        const k = `${v.code}:${v.gameNo}:${s.hand}`;
-        if (crBet.key !== k) crBet = { key: k, n: Math.min(max, Math.max(step, crBet.n || step)) };
-        crBet.n = Math.min(max, Math.max(Math.min(step, max), crBet.n));
-        const set = (n) => { crBet.n = Math.min(max, Math.max(Math.min(step, max), n)); render(); };
-        const minus = hk(h('button', 'btn', `−${step}`), 'arrowleft arrowdown');
-        minus.disabled = crBet.n <= Math.min(step, max);
-        minus.onclick = () => set(crBet.n - step);
-        const plus = hk(h('button', 'btn', `＋${step}`), 'arrowright arrowup');
-        plus.disabled = crBet.n >= max;
-        plus.onclick = () => set(crBet.n + step);
-        const all = hk(h('button', 'btn small', '全部'), 'a');
-        all.onclick = () => set(max);
-        const go = hk(h('button', 'btn primary', `${crBet.n}枚 賭ける`), 'enter');
-        go.onclick = () => move({ bet: crBet.n });
-        bar.append(h('span', 'small', '賭けるチップ：'), minus, h('span', 'cr-bet-amount', `${crBet.n}`), plus, all, go);
+        bar.append(h('span', 'small', '賭けるチップ：'), betPicker(`cr:${v.code}:${v.gameNo}:${s.hand}`, s.chips[me], (n) => move({ bet: n }), { step: chinchiro.BET_STEP }));
       }
       if (s.phase === 'roll' && s.turn === me) {
         const b = hk(h('button', 'btn primary big', s.rolls[me] ? 'もう一度ふる' : 'サイコロをふる'), 'space enter');
@@ -1248,11 +1249,126 @@ export function asobiRenderers(api) {
     el.replaceChildren(root);
   }
 
+  // ================= ルーレット =================
+  // ホイールは作り直さずに使い回す（回る動きが途中で止まらないように）。ほかの部分は毎回描き直す
+  let rl = null;
+  let rlChip = 100; // 置くチップの額
+  const RL_COLOR = { red: '#d62f2f', black: '#222', green: '#1c8a43' };
+  function rlBuild(el) {
+    const root = h('div', 'rl');
+    const top = h('div', 'rl-top');
+    const wheelBox = h('div', 'rl-wheel-box');
+    const R = 100, n = roulette.WHEEL.length, step = 360 / n;
+    const g = svg('svg', { viewBox: '-110 -110 220 220', class: 'rl-wheel' });
+    const spin = svg('g', { class: 'rl-spin' });
+    roulette.WHEEL.forEach((num, i) => {
+      const a0 = ((i - 0.5) * step - 90) * Math.PI / 180, a1 = ((i + 0.5) * step - 90) * Math.PI / 180;
+      const p = (a, r) => `${Math.cos(a) * r},${Math.sin(a) * r}`;
+      spin.append(svg('path', { d: `M0,0 L${p(a0, R)} A${R},${R} 0 0 1 ${p(a1, R)} Z`, fill: RL_COLOR[roulette.colorOf(num)], stroke: '#c9a227', 'stroke-width': 0.6 }));
+      const am = (i * step - 90) * Math.PI / 180;
+      const t = svg('text', { x: Math.cos(am) * 86, y: Math.sin(am) * 86, class: 'rl-num', transform: `rotate(${i * step} ${Math.cos(am) * 86} ${Math.sin(am) * 86})` });
+      t.textContent = String(num);
+      spin.append(t);
+    });
+    spin.append(svg('circle', { r: 58, fill: '#5c3b1e', stroke: '#c9a227', 'stroke-width': 3 }), svg('circle', { r: 12, fill: '#c9a227' }));
+    g.append(spin, svg('polygon', { points: '-7,-112 7,-112 0,-96', class: 'rl-pointer' }));
+    wheelBox.append(g);
+    const info = h('div', 'rl-info');
+    top.append(wheelBox, info);
+    const players = h('div', 'rl-players');
+    const table = h('div', 'rl-table');
+    const bar = h('div', 'uno-actions rl-bar');
+    const recent = h('div', 'rl-recent');
+    root.append(players, top, bar, table, recent, h('p', 'muted small as-help', '置くチップを選んで、テーブルのマスをタップ（何か所でも）。数字1つは36倍、赤・黒・奇数・偶数・1〜18・19〜36は2倍、1〜12などと列は3倍（賭けた分も入れて）。0が出ると外側の賭けは外れ。'));
+    el.replaceChildren(root);
+    return { el, root, spin, info, players, table, bar, recent, spinKey: '', angle: 0 };
+  }
+  function renderRoulette(el, v) {
+    const s = v.state, me = v.you;
+    if (!rl || rl.el !== el || !el.contains(rl.root)) rl = rlBuild(el);
+    const n = roulette.WHEEL.length, step = 360 / n;
+    // ホイール: 回り始めたら、出る数が上の▼に来るよう約5秒かけて回す
+    const key = s.spinAt ? `${v.code}:${s.spinAt}` : '';
+    if (key && key !== rl.spinKey && (s.phase === 'spin' || s.phase === 'result')) {
+      rl.spinKey = key;
+      const i = roulette.WHEEL.indexOf(s.number);
+      const target = Math.ceil(rl.angle / 360) * 360 + 360 * 6 - i * step; // 何周かしてから止まる
+      const left = s.spinAt + roulette.SPIN_MS - 300 - now();
+      rl.angle = target;
+      rl.spin.style.transition = left > 200 ? `transform ${left}ms cubic-bezier(.15, .7, .1, 1)` : 'none';
+      rl.spin.style.transform = `rotate(${target}deg)`;
+    }
+    // 結果
+    rl.info.replaceChildren();
+    if (s.phase === 'spin') rl.info.append(h('div', 'rl-big', '🎡 回っています…'));
+    else if (s.phase === 'result' || (s.result && s.number != null)) {
+      const c = roulette.colorOf(s.number);
+      const big = h('div', `rl-big rl-hit ${c}`, String(s.number));
+      rl.info.append(big, h('div', 'small', { red: '赤', black: '黒', green: '緑（0）' }[c]));
+      const o = me >= 0 && s.outcome && s.outcome[me];
+      if (o && o.bet) rl.info.append(h('div', 'rl-gain ' + (o.win > o.bet ? 'win' : o.win < o.bet ? 'lose' : ''), roulette.netText(o)));
+    } else if (s.phase === 'bet') {
+      const left = Math.max(0, Math.ceil((s.deadline - now()) / 1000));
+      rl.info.append(h('div', 'rl-big small', `第${s.round}/${s.options.rounds}回`), h('div', 'small', `チップを置いてください（あと${left}秒）`));
+    }
+    // 参加者（チップ・置いた額・OK）
+    rl.players.replaceChildren(players(v, (i) => `${s.chips[i]}枚${(s.phase === 'bet' || s.phase === 'spin') && roulette.staked(s, i) ? `・置いた${roulette.staked(s, i)}` : ''}`, null, (chip, i) => {
+      if (s.phase === 'bet' && s.ready[i]) chip.append(h('span', 'pt-ok', 'OK'));
+    }));
+    // テーブル
+    const mine = (spot) => s.bets.filter((b) => b.spot === spot && b.by === me).reduce((a, b) => a + b.amount, 0);
+    const others = (spot) => s.bets.filter((b) => b.spot === spot && b.by !== me).reduce((a, b) => a + b.amount, 0);
+    const canPlace = me >= 0 && !s.out[me] && s.phase === 'bet' && !s.result && s.chips[me] > 0;
+    const amount = Math.min(rlChip, me >= 0 ? s.chips[me] : 0);
+    const won = (spot) => (s.phase === 'result' || s.result) && s.number != null && roulette.payout(spot, s.number) > 0;
+    const cell = (spot, text, cls, col, row, span = 1, rowSpan = 1) => {
+      const b = h('button', `rl-cell ${cls}` + (won(spot) ? ' won' : ''));
+      b.style.gridColumn = `${col} / span ${span}`;
+      b.style.gridRow = `${row} / span ${rowSpan}`;
+      b.append(h('span', 'rl-label', text));
+      const m = mine(spot), o = others(spot);
+      if (m) b.append(h('span', 'rl-chip mine', String(m)));
+      if (o) b.append(h('span', 'rl-chip other', String(o)));
+      b.disabled = !canPlace;
+      b.onclick = () => move({ place: { spot, amount } });
+      return b;
+    };
+    const grid = h('div', 'rl-grid');
+    grid.append(cell('n0', '0', 'green', 1, 1, 1, 3));
+    for (let c = 0; c < 12; c++) for (let r = 0; r < 3; r++) {
+      const num = c * 3 + (3 - r);
+      grid.append(cell(`n${num}`, String(num), roulette.colorOf(num), c + 2, r + 1));
+    }
+    ['c3', 'c2', 'c1'].forEach((sp, r) => grid.append(cell(sp, '2:1', 'out', 14, r + 1)));
+    ['d1', 'd2', 'd3'].forEach((sp, k) => grid.append(cell(sp, roulette.OUTSIDE[sp].name, 'out', 2 + k * 4, 4, 4)));
+    ['low', 'even', 'red', 'black', 'odd', 'high'].forEach((sp, k) => grid.append(cell(sp, roulette.OUTSIDE[sp].name, `out ${sp === 'red' ? 'red' : sp === 'black' ? 'black' : ''}`, 2 + k * 2, 5, 2)));
+    rl.table.replaceChildren(grid);
+    // 操作
+    rl.bar.replaceChildren();
+    if (canPlace || (me >= 0 && s.phase === 'bet' && !s.out[me] && roulette.staked(s, me))) {
+      rl.bar.append(h('span', 'small', '置くチップ：'));
+      [100, 200, 500, 1000].forEach((x, k) => {
+        if (x > (s.chips[me] || 0) && x !== 100) return;
+        const b = hk(h('button', 'btn small' + (rlChip === x ? ' primary' : ''), String(x)), String(k + 1));
+        b.onclick = () => { rlChip = x; render(); };
+        rl.bar.append(b);
+      });
+      if (roulette.staked(s, me)) { const c = hk(h('button', 'btn small ghost', '置いたチップを戻す'), 'c'); c.onclick = () => move({ clear: true }); rl.bar.append(c); }
+      const ok = hk(h('button', 'btn primary' + (s.ready[me] ? ' done' : ''), s.ready[me] ? 'OK済み（待って）' : 'OK（回して！）'), 'enter');
+      ok.onclick = () => move({ ready: !s.ready[me] });
+      rl.bar.append(ok);
+    }
+    // 最近の結果
+    rl.recent.replaceChildren(h('span', 'small muted', '最近の結果：'), ...(s.spins || []).slice().reverse().map((x) => h('span', `rl-mini ${roulette.colorOf(x)}`, String(x))));
+    clearTimeout(rl.timer);
+    if (s.phase === 'bet' && !s.result) rl.timer = setTimeout(render, 1000); // 残り時間
+  }
+
   // Esc・右クリック: 選んでいる途中のものをやめる
   const clear = () => { ui.data = {}; lcArmed = false; };
   return { clear, renderers: {
     morris: renderMorris, hex: renderHex, checkers: renderCheckers, domino: renderDomino, ccheckers: renderCChecker, ludo: renderLudo,
     sevens: renderSevens, speed: renderSpeed, memory: renderMemory, blackjack: renderBlackjack, lastcard: renderLastcard,
-    pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball, chinchiro: renderChinchiro,
+    pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball, chinchiro: renderChinchiro, roulette: renderRoulette,
   } };
 }

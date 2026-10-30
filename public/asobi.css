@@ -40,7 +40,7 @@
 .hx-edge.blue { stroke: #1c7ed6; }
 
 /* ---------- チェッカー ---------- */
-.ck-board { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 440px); aspect-ratio: 1; border: 6px solid #5c3b1e; border-radius: 6px; box-shadow: var(--shadow); }
+.ck-board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); width: min(100%, 440px); aspect-ratio: 1; border: 6px solid #5c3b1e; border-radius: 6px; box-shadow: var(--shadow); }
 .ck-sq { position: relative; display: flex; align-items: center; justify-content: center; }
 .ck-sq.light { background: #f1dfb6; }
 .ck-sq.dark { background: #7a5233; cursor: pointer; }
@@ -89,7 +89,7 @@
 
 /* ---------- ルドー ---------- */
 .ld { width: min(100%, 520px); display: grid; gap: 10px; }
-.ld-board { position: relative; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(15, 1fr); aspect-ratio: 1; width: 100%;
+.ld-board { position: relative; display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); grid-template-rows: repeat(15, minmax(0, 1fr)); aspect-ratio: 1; width: 100%;
   background: #fffaf0; border: 4px solid #444; border-radius: 8px; overflow: hidden; }
 .ld-cell { border: 1px solid #c8c0ae; }
 .ld-cell.track { background: #fff; }
@@ -429,3 +429,44 @@
 .cr-role { max-width: 88%; overflow-wrap: anywhere; }
 .cr-role.retry { font-size: .95rem; color: #868e96; }
 .cr-bet-amount { font-size: 1.4rem; font-weight: 900; min-width: 3.5em; text-align: center; }
+
+/* 盤のマスは中身（キングの印など）で大きさが変わらないように */
+.ck-board { grid-template-rows: repeat(8, minmax(0, 1fr)); }
+.ck-sq { min-width: 0; min-height: 0; overflow: hidden; }
+.ck-piece { line-height: 1; flex: none; }
+.ld-cell { min-width: 0; min-height: 0; overflow: hidden; }
+
+/* 掛け金を選ぶ部品 */
+.bet-picker { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.bet-amount { font-size: 1.4rem; font-weight: 900; min-width: 3.5em; text-align: center; }
+
+/* ---------- ルーレット ---------- */
+.rl { width: min(100%, 760px); display: grid; gap: 10px; }
+.rl-top { display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap; }
+.rl-wheel-box { width: min(46vw, 230px); aspect-ratio: 1; }
+.rl-wheel { width: 100%; height: 100%; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .3)); }
+.rl-spin { transform-origin: 0 0; }
+.rl-num { fill: #fff; font-size: 8px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
+.rl-pointer { fill: #ffd43b; stroke: #5c3b1e; stroke-width: 1.5; }
+.rl-info { display: grid; justify-items: center; gap: 4px; min-width: 9em; text-align: center; }
+.rl-big { font-size: 1.4rem; font-weight: 900; }
+.rl-big.small { font-size: 1.1rem; }
+.rl-hit { font-size: 3rem; width: 1.8em; height: 1.8em; border-radius: 50%; display: grid; place-items: center; color: #fff; animation: cr-land .5s ease-out; }
+.rl-hit.red { background: #d62f2f; } .rl-hit.black { background: #222; } .rl-hit.green { background: #1c8a43; }
+.rl-gain { font-weight: 900; }
+.rl-gain.win { color: #2f9e44; } .rl-gain.lose { color: #e03131; }
+.rl-table { overflow-x: auto; }
+.rl-grid { display: grid; grid-template-columns: repeat(14, minmax(24px, 1fr)); grid-template-rows: repeat(3, 40px) 34px 34px; gap: 2px; background: #1c6b3a; padding: 6px; border-radius: 10px; min-width: 340px; }
+.rl-cell { position: relative; border: 1px solid rgba(255, 255, 255, .5); border-radius: 4px; color: #fff; font-weight: 800; padding: 0; font-size: .8rem; background: #1c6b3a; min-width: 0; touch-action: manipulation; }
+.rl-cell.red { background: #d62f2f; } .rl-cell.black { background: #222; } .rl-cell.green { background: #1c8a43; }
+.rl-cell.out { font-size: .72rem; }
+.rl-cell:not(:disabled) { cursor: pointer; }
+.rl-cell:not(:disabled):hover { filter: brightness(1.25); }
+.rl-cell.won { box-shadow: 0 0 0 3px #ffd43b inset; animation: as-pulse 1s infinite; }
+.rl-chip { position: absolute; font-size: .6rem; font-weight: 900; border-radius: 99px; padding: 0 4px; line-height: 1.4; pointer-events: none; }
+.rl-chip.mine { right: 1px; top: 1px; background: #ffd43b; color: #222; }
+.rl-chip.other { left: 1px; bottom: 1px; background: rgba(255, 255, 255, .85); color: #222; }
+.rl-recent { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.rl-mini { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: .72rem; font-weight: 800; }
+.rl-mini.red { background: #d62f2f; } .rl-mini.black { background: #222; } .rl-mini.green { background: #1c8a43; }
+@media (max-width: 600px) { .rl-grid { grid-template-rows: repeat(3, 34px) 30px 30px; } .rl-cell { font-size: .68rem; } }
