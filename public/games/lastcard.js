@@ -6,11 +6,13 @@
 // 重ね: ドロー2・ワイルドドロー4を出されたら、次の人はドロー2（場がドロー2のとき）かワイルドドロー4を重ねられる。
 //   引く枚数は足されていき、重ねられなかった人がまとめて引いて、番は飛ばされる。
 // イベント（★）: 出すと、4つのうち1つの効果がランダムで起きる。
-//   雷: 次の人に雷が付く。その人の番が来るたびに一定の確率で雷が落ち、4枚引く（落ちたら消える）。
+//   雷: 次の人に雷が付く。番が来たときに一定の確率で雷が落ち、4枚引く（落ちたら消える）。
+//       落ちなければ、その人の番が終わると雷は次の番の人へ移る。
 //   早押し: すぐに全員で早押し。押した順に 0枚・1枚・2枚…と引く（押さなかった人は最後）。
 //   手札まわし: 全員の手札を、順番の向きに次の人へまわす。
 //   もう1回: 出した人の番がもう1回続く。
-// 手: { play: カードid, color?, uno? } / { draw: true } / { pass: true } / { uno: true } 言い忘れの宣言
+// 同じ色・同じ数字/記号のカードは、まとめて出せる（効果は枚数分。ワイルド・イベントは1枚ずつ）。
+// 手: { play: カードid, more?: [同じカードのid…], color?, uno? } / { draw: true } / { pass: true } / { uno: true } 言い忘れの宣言
 //     { catchUno: 席 } 言い忘れを指摘 / { press: true } 早押し / { resign: true }
 // 早押しの CPU は tick の中で押す（ctx.bots）。
 import { randInt } from './util.js';
@@ -139,8 +141,12 @@ const clone = (s) => ({
 
 const label = (seat) => `P${seat + 1}`;
 
-// 番を回す。雷が付いている人なら、一定の確率で雷が落ちる
+// 番を回す。雷を持った人の番が終わったら雷は次の人へ移り、一定の確率で落ちる
 function setTurn(ns, p, rng) {
+  if (ns.thunder != null && ns.thunder === ns.turn && p !== ns.turn) {
+    ns.thunder = p;
+    ns.history.push(`⚡ 雷が ${label(p)} へ移った`);
+  }
   ns.turn = p;
   ns.drawn = null;
   if (ns.thunder === p && randInt(rng, 100) < THUNDER_CHANCE) {
@@ -210,9 +216,10 @@ export function applyMove(s, mv, seat, rng, ctx) {
     ns.deck.unshift(...ns.hands[seat]);
     ns.hands[seat] = [];
     if (ns.unoPending === seat) ns.unoPending = null;
-    if (ns.thunder === seat) ns.thunder = null;
     ns.history.push(`${label(seat)} 投了`);
     const left = activeSeats(ns);
+    // 雷は次の人へ（番の人なら setTurn で移る）
+    if (ns.thunder === seat && ns.turn !== seat) ns.thunder = left.length > 1 ? nextSeat(ns, seat) : null;
     if (left.length === 1) { ns.result = { winner: left[0], reason: '他の全員が投了' }; ns.race = null; ns.tickAt = null; return ns; }
     if (ns.race) { if (activeSeats(ns).every((q) => ns.race.order.includes(q))) finishRace(ns, rng); return ns; }
     if (ns.turn === seat) setTurn(ns, nextSeat(ns, seat), rng);
@@ -280,12 +287,21 @@ export function applyMove(s, mv, seat, rng, ctx) {
     if (!playableIds(s, seat).includes(mv.play)) throw new Error(s.drawStack > 0 ? '重ねられるのはドロー2・ワイルドドロー4だけです' : 'そのカードは出せません');
     const card = hand[idx];
     if ((card.v === 'wild' || card.v === '+4') && !COLORS.includes(mv.color)) throw new Error('色を選んでください');
-    hand.splice(idx, 1);
-    ns.discard.push(card);
+    // いっしょに出す同じカード
+    const more = Array.isArray(mv.more) ? [...new Set(mv.more)].filter((i) => i !== card.id) : [];
+    if (more.length && (!card.c || card.v === 'event')) throw new Error('ワイルド・イベントは1枚ずつ出します');
+    const extra = more.map((i) => {
+      const c = hand.find((x) => x.id === i);
+      if (!c) throw new Error('そのカードは持っていません');
+      if (c.c !== card.c || c.v !== card.v) throw new Error('まとめて出せるのは同じ色・同じ数字のカードだけです');
+      return c;
+    });
+    const k = 1 + extra.length;
+    for (const c of [card, ...extra]) { hand.splice(hand.indexOf(c), 1); ns.discard.push(c); }
     ns.color = card.c || mv.color;
     ns.drawn = null;
-    let note = `${label(seat)} ${cardName(card)}${card.c ? '' : `（${COLOR_NAMES[ns.color]}）`}`;
-    ns.lastAction = { type: 'play', seat, card };
+    let note = `${label(seat)} ${cardName(card)}${k > 1 ? ` ×${k}枚` : ''}${card.c ? '' : `（${COLOR_NAMES[ns.color]}）`}`;
+    ns.lastAction = { type: 'play', seat, card, n: k };
 
     if (!hand.length) {
       ns.unoPending = null;
@@ -299,13 +315,15 @@ export function applyMove(s, mv, seat, rng, ctx) {
     }
 
     const twoLeft = activeSeats(ns).length === 2;
-    if (card.v === 'rev') ns.direction = -ns.direction;
+    // リバースは枚数分向きが変わる（偶数枚なら元のまま）
+    if (card.v === 'rev' && k % 2) ns.direction = -ns.direction;
     let next = nextSeat(ns, seat);
     if (card.v === 'skip' || (card.v === 'rev' && twoLeft)) {
-      next = nextSeat(ns, next);
+      // 枚数分とばす（2人のときのリバースもスキップと同じ）
+      for (let i = 0; i < k; i++) next = nextSeat(ns, next);
     } else if (card.v === '+2' || card.v === '+4') {
       // 引く枚数はためて、次の人へ（重ねられなければ、その人がまとめて引く）
-      ns.drawStack = s.drawStack + (card.v === '+2' ? 2 : 4);
+      ns.drawStack = s.drawStack + (card.v === '+2' ? 2 : 4) * k;
       note += s.drawStack > 0 ? ` 重ねた！ +${ns.drawStack} → ${label(next)}` : ` → ${label(next)} +${ns.drawStack}`;
     } else if (card.v === 'event') {
       const ev = EVENTS[randInt(rng, EVENTS.length)];
@@ -350,7 +368,9 @@ export function aiMove(s, seat) {
   const rank = (c) => (c.v === '+4' ? 0 : c.v === 'wild' ? 1 : /^\d$/.test(c.v) ? 3 : 4);
   const cards = ids.map((i) => hand.find((c) => c.id === i)).sort((a, b) => rank(b) - rank(a));
   const card = cards[0];
-  const mv = { play: card.id, uno: hand.length === 2 || undefined };
+  const twins = card.c && card.v !== 'event' ? hand.filter((c) => c !== card && c.c === card.c && c.v === card.v).map((c) => c.id) : [];
+  const mv = { play: card.id, uno: hand.length - twins.length === 2 || undefined };
+  if (twins.length) mv.more = twins;
   if (!card.c) {
     const counts = {};
     for (const c of hand) if (c.c) counts[c.c] = (counts[c.c] || 0) + 1;

@@ -596,21 +596,31 @@ export function asobiRenderers(api) {
     e.title = lastcard.cardName(c);
     return e;
   }
-  async function playLc(c, armed) {
-    let color;
+  // 手札にある、いっしょに出せる同じカード
+  const lcTwins = (hand, c) => (c.c && c.v !== 'event' ? hand.filter((x) => x.id !== c.id && x.c === c.c && x.v === c.v) : []);
+  async function playLc(c, armed, hand) {
+    let color, more;
     if (!c.c) {
       color = await choose('色を選んでください', lastcard.COLORS.map((x) => [x, lastcard.COLOR_NAMES[x]]));
       if (!color) return;
     }
+    const twins = lcTwins(hand, c);
+    if (twins.length) {
+      const n = await choose(`${lastcard.cardName(c)} を何枚出しますか？`, [...Array(twins.length + 1).keys()].map((i) => [String(i + 1), `${i + 1}枚`]).reverse());
+      if (!n) return;
+      more = twins.slice(0, Number(n) - 1).map((x) => x.id);
+    }
     lcArmed = false;
-    sendMove({ play: c.id, color, uno: armed || undefined });
+    sendMove({ play: c.id, more, color, uno: armed || undefined });
   }
   function renderLastcard(el, v) {
     const s = v.state, me = v.you;
     const myTurn = me >= 0 && s.turn === me && !s.result && !s.out[me];
     const playable = me >= 0 ? lastcard.playableIds(s, me) : [];
     const myHand = me >= 0 ? s.hands[me] || [] : [];
-    if (myHand.length !== 2) lcArmed = false;
+    // まとめて出して残り1枚になれるときも「ラストカード」を言える
+    const canLast = myHand.length === 2 || playable.some((id) => { const c = myHand.find((x) => x.id === id); return c && myHand.length - lcTwins(myHand, c).length <= 2; });
+    if (!canLast) lcArmed = false;
     clearTimeout(lcTimer);
     const root = h('div', 'uno');
     root.append(players(v, (i) => `${s.handCounts[i]}枚`, null, (chip, i) => {
@@ -651,7 +661,7 @@ export function asobiRenderers(api) {
     }
     const la = s.lastAction;
     if (la && !s.result) {
-      const text = la.type === 'play' ? `${nameOf(v, la.seat)} が ${lastcard.cardName(la.card)} を出しました`
+      const text = la.type === 'play' ? `${nameOf(v, la.seat)} が ${lastcard.cardName(la.card)}${la.n > 1 ? ` を${la.n}枚まとめて` : ' を'}出しました`
         : la.type === 'draw' ? `${nameOf(v, la.seat)} が1枚引きました`
         : la.type === 'pass' ? `${nameOf(v, la.seat)} はパス`
         : la.type === 'caught' ? `${nameOf(v, la.by)} が ${nameOf(v, la.seat)} の言い忘れを指摘！ 2枚引きます`
@@ -664,7 +674,7 @@ export function asobiRenderers(api) {
     }
     if (me >= 0 && !s.out[me] && !s.result) {
       const bar = h('div', 'uno-actions');
-      if (myTurn && myHand.length === 2 && playable.length) {
+      if (myTurn && canLast && playable.length) {
         const arm = h('button', 'btn uno-call' + (lcArmed ? ' armed' : ''), lcArmed ? 'ラストカード！（出すときに宣言）' : '「ラストカード」と言う');
         hk(arm, 'u');
         arm.onclick = () => { lcArmed = !lcArmed; render(); };
@@ -683,7 +693,7 @@ export function asobiRenderers(api) {
         b.append(lcCard(c));
         b.disabled = !ok;
         if (ok && nk < 9) hk(b, String(++nk));
-        b.onclick = () => playLc(c, lcArmed);
+        b.onclick = () => playLc(c, lcArmed, myHand);
         hand.append(b);
       }
       root.append(hand);

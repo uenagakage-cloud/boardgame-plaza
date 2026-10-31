@@ -350,6 +350,38 @@ test('lastcard: イベント（雷・早押し・手札まわし・もう1回）
   assert.deepEqual(s.hands.map((h) => h.length), [2 + 1, 1, 2 + 2]);
 });
 
+test('lastcard: 雷は落ちなければ次の番の人へ移る', () => {
+  const c = (id, col, v) => ({ id, c: col, v });
+  let s = { ...lastcard.init({}, 3, seeded(12)), color: 'r', discard: [c(900, 'r', '5')], turn: 0, drawn: null,
+    hands: [[c(901, 'r', 'event'), c(902, 'g', '1')], [c(903, 'r', '9'), c(904, 'b', '1')], [c(905, 'r', '4'), c(906, 'g', '7')]] };
+  const never = () => 100; // 0 で雷イベント、その後は落ちない
+  let first = true;
+  s = lastcard.applyMove(s, { play: 901 }, 0, () => (first ? (first = false, 1) : 100));
+  assert.equal(s.thunder, 1);
+  s = lastcard.applyMove(s, { play: 903 }, 1, never);
+  assert.equal(s.thunder, 2, 'P2 の番が終わると P3 へ');
+  assert.equal(s.turn, 2);
+  s = lastcard.applyMove(s, { play: 905 }, 2, () => 0); // P1 の番で落ちる
+  assert.equal(s.thunder, null);
+  assert.equal(s.hands[0].length, 1 + lastcard.THUNDER_DRAW);
+});
+
+test('lastcard: 同じ色・同じ数字はまとめて出せる', () => {
+  const c = (id, col, v) => ({ id, c: col, v });
+  const base = () => ({ ...lastcard.init({}, 3, seeded(12)), color: 'r', discard: [c(900, 'r', '5')], turn: 0, drawn: null,
+    hands: [[c(901, 'r', '5'), c(902, 'r', '5'), c(903, 'g', '5'), c(904, 'r', 'skip'), c(905, 'r', 'skip'), c(906, 'r', '+2'), c(907, 'r', '+2')], [c(910, 'b', '1')], [c(911, 'y', '4')]] });
+  let s = lastcard.applyMove(base(), { play: 901, more: [902] }, 0);
+  assert.equal(s.hands[0].length, 5);
+  assert.equal(s.turn, 1);
+  assert.throws(() => lastcard.applyMove(base(), { play: 901, more: [903] }, 0), /同じ色・同じ数字/);
+  s = lastcard.applyMove(base(), { play: 904, more: [905] }, 0);
+  assert.equal(s.turn, 0, 'スキップ2枚で2人飛ばし');
+  s = lastcard.applyMove(base(), { play: 906, more: [907] }, 0);
+  assert.equal(s.drawStack, 4, 'ドロー2を2枚で +4');
+  const ai = lastcard.aiMove(base(), 0);
+  assert.ok(ai.more && ai.more.length === 1, 'CPU もまとめて出す');
+});
+
 test('pigtail: マークか数字がそろうと山を全部引き取る', () => {
   let s = pigtail.init({}, 2, seeded(6));
   const ring = s.ring.map((c, i) => [c, i]);
