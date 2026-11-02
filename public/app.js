@@ -4,6 +4,7 @@ import * as gobblet from './games/gobblet.js';
 import * as othello from './games/othello.js';
 import * as wordbasket from './games/wordbasket.js';
 import * as catchoco from './games/catchoco.js';
+import * as werewolf from './games/werewolf.js';
 import * as ito from './games/ito.js';
 import * as daifugo from './games/daifugo.js';
 import * as poker from './games/poker.js';
@@ -18,6 +19,7 @@ import * as asasore from './games/asasore.js';
 import * as geister from './games/geister.js';
 import * as mancala from './games/mancala.js';
 import * as connect4 from './games/connect4.js';
+import * as wordwolf from './games/wordwolf.js';
 import * as hagetaka from './games/hagetaka.js';
 import * as itchi from './games/itchi.js';
 import { RULES } from './rules.js';
@@ -41,7 +43,7 @@ import * as chinchiro from './games/chinchiro.js';
 import * as roulette from './games/roulette.js';
 import { asobiRenderers } from './asobi-ui.js';
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball, chinchiro, roulette };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball, chinchiro, roulette };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
 const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro","roulette"]);
 const GAME_INFO = {
@@ -51,11 +53,13 @@ const GAME_INFO = {
   othello: { icon: '◐', desc: '相手の石をはさんで裏返す。最後に多い方が勝ち。' },
   wordbasket: { icon: '🧺', desc: '場の文字で始まり手札の文字で終わる言葉を早い者勝ちで。2〜6人。' },
   catchoco: { icon: '🐈‍⬛', desc: '手持ちのアイテムでピンチを切り抜ける大喜利。チーム戦・2〜6人。' },
+  werewolf: { icon: '🐺', desc: '夜は1回だけ。話し合いで人狼を見つけて処刑しよう。3〜6人。' },
   ito: { icon: '🔢', desc: '数字を言葉で表して、みんなで小さい順に並べる協力ゲーム。2〜10人。' },
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
   itchi: { icon: '🤝', desc: 'お題に全員で同じ答えを書けたら一致！ 何問そろうか、協力して以心伝心を目指す。2〜8人。' },
+  wordwolf: { icon: '🐺', desc: '1人だけ違うお題の「ウルフ」を、話し合いで見つけ出す。3〜8人。' },
   hagetaka: { icon: '🦅', desc: '1〜15のカードを同時に出して得点を取り合う。同じ数は打ち消し！ 2〜6人。' },
   geister: { icon: '👻', desc: '良いおばけと悪いおばけの正体を隠して戦う、かけひきのゲーム。CPU対戦あり。' },
   mancala: { icon: '🥣', desc: '穴に石をまいて、自分のゴールにたくさん集める。CPU対戦あり。' },
@@ -396,6 +400,22 @@ function renderLobby() {
         const goal = mk('お題の数', 'itGoal2', itchi.GOALS.slice().sort((a, b) => a - b), (n) => `${n}問`, itchi.GOALS[0]);
         const secs = mk('考える時間', 'itSeconds', [30, 60, 90, 0], (n) => (n ? `${n}秒` : 'なし'), 60);
         getOptions = () => ({ goal: Number(goal.value), seconds: Number(secs.value) });
+      }
+      if (key === 'wordwolf') {
+        const mk = (labelText, storeKey, values, fmt, def) => {
+          const label = h('label', 'option-toggle');
+          const select = h('select', 'size-select');
+          for (const n of values) { const o = h('option', null, fmt(n)); o.value = String(n); select.append(o); }
+          select.value = store.get(storeKey, String(def));
+          select.onchange = () => store.set(storeKey, select.value);
+          label.append(h('span', null, labelText), select);
+          card.append(label);
+          return select;
+        };
+        const minutes = mk('話し合い', 'wwMinutes', [1, 2, 3, 5], (n) => `${n}分`, 3);
+        const rounds = mk('ラウンド', 'wwRounds', [1, 3, 5], (n) => `${n}回`, 3);
+        const wolves = mk('ウルフ', 'wwWolves', [1, 2], (n) => (n === 1 ? '1人' : '2人（6人以上）'), 1);
+        getOptions = () => ({ minutes: Number(minutes.value), rounds: Number(rounds.value), wolves: Number(wolves.value) });
       }
       if (key === 'asasore') {
         const mk = (labelText, storeKey, values, fmt, def) => {
@@ -1319,6 +1339,158 @@ function renderCatChoco(el, v) {
     if (e.text) item.append(h('p', 'cc-log-text', e.text));
     cc.log.append(item);
   }
+}
+
+// ---------- ワンナイト人狼 ----------
+let wwCenterSel = []; // 選んだ中央のカード
+let wwKey = '';
+
+function renderWerewolf(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const named = (text) => text.replace(/P(\d+)/g, (all, n) => v.seats[n - 1]?.name || all);
+  const key = `${v.code}:${v.gameNo}:${s.phase}`;
+  if (key !== wwKey) { wwKey = key; wwCenterSel = []; }
+  const root = h('div', 'ww');
+  const playing = me >= 0 && !s.out[me];
+  const others = [...Array(s.players).keys()].filter((i) => i !== me && !s.out[i]);
+  const counts = {};
+  for (const r of werewolf.composition(s.players)) counts[r] = (counts[r] || 0) + 1;
+  root.append(h('div', 'ww-comp', '役職: ' + Object.entries(counts).map(([r, n]) => werewolf.ROLES[r].name + (n > 1 ? `×${n}` : '')).join('・') + '（2枚は中央）'));
+
+  // 参加者
+  const players = h('div', 'uno-players');
+  for (let i = 0; i < s.players; i++) {
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.result && s.result.winners.includes(i) ? ' winner' : ''));
+    chip.append(h('span', 'pname', name(i)));
+    if (v.seats[i]) chip.append(h('span', 'dot ' + (v.seats[i].online ? 'on' : 'off')));
+    if (!s.result && s.phase === 'night' && s.night[i].done) chip.append(h('span', 'wb-vote', '行動済み'));
+    if (!s.result && s.phase === 'day' && s.votes[i] !== null) chip.append(h('span', 'wb-vote', '投票済み'));
+    if (s.wolves && s.wolves.includes(i) && i !== me) chip.append(h('span', 'ww-wolf-tag', '人狼'));
+    players.append(chip);
+  }
+  root.append(players);
+
+  // 自分の役職
+  if (playing && !s.result) {
+    const role = werewolf.ROLES[s.roles[me]];
+    const card = h('div', `ww-role team${role.team}`);
+    card.append(h('div', 'ww-role-label', 'あなたの役職（夜のはじめ）'), h('div', 'ww-role-name', role.name), h('p', 'ww-role-desc', role.desc));
+    root.append(card);
+  }
+
+  // 夜の行動
+  if (playing && !s.result && s.phase === 'night' && !s.night[me].done) {
+    const kind = werewolf.nightOptions(s, me);
+    const panel = h('div', 'ww-panel');
+    const centerButtons = (limit) => {
+      const row = h('div', 'ww-center');
+      for (let i = 0; i < 2; i++) {
+        const b = h('button', 'ww-card-back' + (wwCenterSel.includes(i) ? ' sel' : ''), `中央 ${i + 1}`);
+        b.onclick = () => {
+          wwCenterSel = wwCenterSel.includes(i) ? wwCenterSel.filter((x) => x !== i) : [...wwCenterSel, i].slice(-limit);
+          render();
+        };
+        row.append(b);
+      }
+      return row;
+    };
+    const playerButtons = (label, onPick) => {
+      const row = h('div', 'ww-targets');
+      for (const i of others) {
+        const b = h('button', 'btn', `${name(i)}${label}`);
+        b.onclick = () => onPick(i);
+        row.append(b);
+      }
+      return row;
+    };
+    if (kind === 'seer') {
+      panel.append(h('h3', null, '占う：1人のカードを見るか、中央のカードを2枚見る'));
+      panel.append(playerButtons(' を占う', (i) => send({ type: 'move', move: { night: { look: i } } })));
+      panel.append(centerButtons(2));
+      const ok = h('button', 'btn primary', '選んだ中央2枚を見る');
+      ok.disabled = wwCenterSel.length !== 2;
+      ok.onclick = () => send({ type: 'move', move: { night: { center: wwCenterSel } } });
+      const skip = h('button', 'btn', '占わない');
+      skip.onclick = () => send({ type: 'move', move: { night: {} } });
+      panel.append(ok, skip);
+    } else if (kind === 'thief') {
+      panel.append(h('h3', null, 'カードを交換する相手を選ぶ'));
+      panel.append(playerButtons(' と交換', (i) => send({ type: 'move', move: { night: { swap: i } } })));
+      const skip = h('button', 'btn', '交換しない');
+      skip.onclick = () => send({ type: 'move', move: { night: {} } });
+      panel.append(skip);
+    } else if (kind === 'lonewolf') {
+      panel.append(h('h3', null, '人狼はあなた1人です。中央のカードを1枚見られます'));
+      panel.append(centerButtons(1));
+      const ok = h('button', 'btn primary', wwCenterSel.length ? '選んだカードを見る' : '見ないで朝を待つ');
+      ok.onclick = () => send({ type: 'move', move: { night: { center: wwCenterSel } } });
+      panel.append(ok);
+    } else {
+      const ok = h('button', 'btn primary', '確認した（朝を待つ）');
+      ok.onclick = () => send({ type: 'move', move: { night: {} } });
+      panel.append(ok);
+    }
+    root.append(panel);
+  }
+
+  // 夜にわかったこと
+  if (playing && !s.result && s.night[me].info.length) {
+    const box = h('div', 'ww-info');
+    box.append(h('h3', null, '夜にわかったこと'));
+    for (const line of s.night[me].info) box.append(h('p', null, named(line)));
+    root.append(box);
+  }
+
+  // 昼の投票
+  if (!s.result && s.phase === 'day') {
+    const panel = h('div', 'ww-panel');
+    const voted = s.votes.filter((x) => x !== null).length, total = s.out.filter((o) => !o).length;
+    panel.append(h('h3', null, `処刑する人に投票（${voted}/${total}）`));
+    if (playing) {
+      const row = h('div', 'ww-targets');
+      for (const i of others) {
+        const b = h('button', 'btn' + (s.votes[me] === i ? ' primary' : ''), name(i));
+        b.onclick = () => send({ type: 'move', move: { vote: i } });
+        row.append(b);
+      }
+      panel.append(row);
+      panel.append(h('p', 'muted small', 'チャットで話し合いましょう。全員が投票した時点で結果が出ます（それまでは変更できます）。全員が別々の人に投票すると誰も処刑されません。'));
+    }
+    root.append(panel);
+  }
+
+  // 結果
+  if (s.result) {
+    const table = h('table', 'ww-result');
+    const head = h('tr');
+    for (const t of ['名前', '夜のはじめ', '夜明け', '得票', '']) head.append(h('th', null, t));
+    table.append(head);
+    for (let i = 0; i < s.players; i++) {
+      const tr = h('tr', s.result.winners.includes(i) ? 'win' : '');
+      const finalRole = werewolf.ROLES[s.final[i]];
+      tr.append(
+        h('td', null, name(i) + (i === me ? '（あなた）' : '')),
+        h('td', null, werewolf.ROLES[s.roles[i]].name),
+        h('td', `team${finalRole.team}`, finalRole.name),
+        h('td', null, String(s.voteCount ? s.voteCount[i] : 0)),
+        h('td', null, (s.executed.includes(i) ? '処刑 ' : '') + (s.result.winners.includes(i) ? '勝ち' : '')),
+      );
+      table.append(tr);
+    }
+    root.append(table);
+    root.append(h('p', 'ww-centers', '中央のカード: ' + s.center.map((r) => werewolf.ROLES[r].name).join('・')));
+    const log = h('div', 'ww-info');
+    log.append(h('h3', null, '夜の行動'));
+    for (let i = 0; i < s.players; i++) {
+      for (const line of s.night[i].info) {
+        if (line === '夜の行動はありません') continue;
+        log.append(h('p', null, `${name(i)}（${werewolf.ROLES[s.roles[i]].name}）：${named(line)}`));
+      }
+    }
+    root.append(log);
+  }
+  el.replaceChildren(root);
 }
 
 // ---------- ito ----------
@@ -3114,6 +3286,104 @@ function renderConnect4(el, v, act) {
   el.replaceChildren(root);
 }
 
+// ---------- ワードウルフ ----------
+let wwGuess = ''; // ウルフの逆転の答え（描き直しても消えないよう覚えておく）
+
+function wwUpdateTimer() {
+  const t = document.querySelector('.wf-timer');
+  if (!t || !view || view.game !== 'wordwolf' || !view.state || !view.state.endsAt) { if (t) t.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((view.state.endsAt - (Date.now() + serverOffset)) / 1000));
+  t.textContent = view.state.phase === 'talk' ? `残り ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : `${left}秒`;
+  t.classList.toggle('hurry', left <= 10);
+}
+setInterval(wwUpdateTimer, 250);
+
+function renderWordWolf(el, v) {
+  const s = v.state, me = v.you;
+  const name = (seat) => v.seats[seat]?.name || '?';
+  const playing = me >= 0 && !s.out[me];
+  const host = me >= 0 && me === v.hostSeat;
+  const root = h('div', 'wf');
+  const head = h('div', 'wf-head');
+  head.append(h('div', 'muted small', s.phase === 'end' ? '結果' : `第${s.round}/${s.options.rounds}ラウンド・ウルフ${s.wolfCount}人`), h('div', 'wf-timer'));
+  root.append(head);
+
+  // 自分のお題
+  const card = h('div', 'wf-card');
+  if (s.phase === 'reveal' || s.phase === 'end') {
+    card.classList.add('open');
+    card.append(h('div', 'wf-label', 'みんなのお題'), h('div', 'wf-word', s.major),
+      h('div', 'wf-label', 'ウルフのお題'), h('div', 'wf-word wolf', s.minor));
+  } else if (playing) {
+    card.append(h('div', 'wf-label', 'あなたのお題'), h('div', 'wf-word', s.words[me] || '？'),
+      h('div', 'muted small', '自分がウルフ（少数派）かもしれません。お題そのものは言わずに話し合おう'));
+  } else card.append(h('div', 'wf-label', '観戦中'), h('div', 'wf-word', '？'));
+  root.append(card);
+
+  // 段階ごとの操作
+  const tools = h('div', 'wf-tools');
+  if (s.phase === 'talk') {
+    tools.append(h('p', 'muted small', '通話やチャットで、お題の特徴を話し合おう（「好き？」「よく行く？」など）。時間になったら投票です。'));
+    if (host) {
+      const b = h('button', 'btn', '話し合いを終えて投票へ');
+      b.onclick = () => send({ type: 'move', move: { endTalk: true } });
+      tools.append(b);
+    }
+  }
+  if (s.phase === 'vote') {
+    tools.append(h('div', 'wf-sub', 'ウルフだと思う人に投票'));
+    const list = h('div', 'wf-vote-list');
+    for (let i = 0; i < s.players; i++) {
+      if (s.out[i]) continue;
+      const mine = s.votes[me] === i;
+      const b = h('button', 'btn' + (mine ? ' primary' : ''), name(i) + (i === me ? '（自分）' : ''));
+      b.disabled = !playing || i === me;
+      b.onclick = () => send({ type: 'move', move: { vote: i } });
+      list.append(b);
+    }
+    tools.append(list);
+    tools.append(h('p', 'muted small', '全員が投票すると結果が出ます（投票先は変えられます）。'));
+  }
+  if (s.phase === 'guess') {
+    if (me === s.executed) {
+      const form = h('form', 'row wf-guess');
+      const input = h('input');
+      input.maxLength = 30;
+      input.placeholder = 'みんなのお題は？';
+      input.value = wwGuess;
+      input.oninput = () => { wwGuess = input.value; };
+      const b = h('button', 'btn primary', '答える');
+      form.append(input, b);
+      form.onsubmit = (e) => { e.preventDefault(); if (input.value.trim()) { send({ type: 'move', move: { guess: input.value } }); wwGuess = ''; } };
+      tools.append(h('div', 'wf-sub', 'あなたはウルフでした！ みんなのお題を当てれば逆転勝ち'), form);
+      setTimeout(() => { if (!document.activeElement || document.activeElement === document.body) input.focus(); }, 0);
+    } else tools.append(h('div', 'wf-sub', `${name(s.executed)} さんはウルフでした！ 逆転を考えています…`));
+  }
+  if (s.phase === 'reveal' || s.phase === 'end') {
+    const res = h('div', 'wf-result ' + (s.winner === 'wolf' ? 'wolf' : 'citizen'), s.winner === 'wolf' ? 'ウルフの勝ち！' : '市民の勝ち！');
+    tools.append(res, h('div', 'wf-sub', `ウルフは ${s.wolves.map(name).join('・')} さん${s.executed != null ? `（処刑：${name(s.executed)} さん）` : '（処刑なし）'}`));
+    if (s.guess) tools.append(h('div', 'muted small', `ウルフの逆転の答え：「${s.guess}」`));
+  }
+  root.append(tools);
+
+  // 参加者（投票したか・結果のときは投票先と役）
+  const players = h('div', 'uno-players');
+  for (let i = 0; i < s.players; i++) {
+    const open = s.phase === 'reveal' || s.phase === 'end';
+    const chip = h('div', 'wb-player' + (i === me ? ' me' : '') + (s.out[i] ? ' out' : '') + (s.result && s.result.winner === i ? ' winner' : '')
+      + (open && s.wolves.includes(i) ? ' wf-wolf' : ''));
+    chip.append(h('span', 'pname', name(i)));
+    if (open && s.wolves.includes(i)) chip.append(h('span', 'wb-vote', 'ウルフ'));
+    if (s.phase === 'vote' && s.votes[i] != null) chip.append(h('span', 'pt-ok', '投票済み'));
+    if (open && s.votes[i] != null && s.votes[i] >= 0) chip.append(h('span', 'muted small', `→${name(s.votes[i])}`));
+    chip.append(h('span', 'wb-count', `${s.scores[i]}点`));
+    players.append(chip);
+  }
+  root.append(players);
+  el.replaceChildren(root);
+  wwUpdateTimer();
+}
+
 // ---------- ハゲタカのえじき ----------
 function hgPointCard(n, extra = '') {
   return h('span', `hg-point ${n > 0 ? 'plus' : 'minus'} ${extra}`, hagetaka.fmt(n));
@@ -3606,7 +3876,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, hagetaka: renderHagetaka, itchi: renderItchi };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka, itchi: renderItchi };
 
 {
   const asobi = asobiRenderers({ h, hk, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset });
@@ -3673,6 +3943,10 @@ const FX_RULES = {
   paint: (e) => (/^全員正解/.test(e) ? ['全員正解！', 'big'] : /誰も正解できなかった/.test(e) ? ['だれも正解できず…', 'bad']
     : /正解！/.test(e) ? [e.replace(/（.*$/, ''), 'good'] : null),
   itchi: (e) => (/一致せず/.test(e) ? ['一致せず… 次のお題へ', 'bad'] : /一致！/.test(e) ? ['一致！', 'big'] : null),
+  werewolf: (e) => (/^夜が明けました/.test(e) ? ['☀ 夜が明けました', 'info'] : /を処刑$/.test(e) ? [`⚔ ${e}`, 'big'] : /^処刑なし/.test(e) ? ['処刑なし', 'info'] : null),
+  wordwolf: (e) => (/話し合いスタート/.test(e) ? ['話し合いスタート！', 'info'] : /^投票の時間/.test(e) ? ['投票の時間！', 'info']
+    : /が処刑されました/.test(e) ? [`⚔ ${e}`, 'big'] : /→ 正解！ 逆転/.test(e) ? ['ウルフの逆転勝ち！', 'big']
+    : /→ ウルフの勝ち/.test(e) ? ['🐺 ウルフの勝ち', 'bad'] : /→ 市民の勝ち/.test(e) ? ['市民の勝ち！', 'good'] : null),
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
   catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),

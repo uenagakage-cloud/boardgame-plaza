@@ -5,6 +5,7 @@ import * as gobblet from '../public/games/gobblet.js';
 import * as othello from '../public/games/othello.js';
 import * as wbk from '../public/games/wordbasket.js';
 import * as cc from '../public/games/catchoco.js';
+import * as ww from '../public/games/werewolf.js';
 import * as ito from '../public/games/ito.js';
 import * as df from '../public/games/daifugo.js';
 import * as pk from '../public/games/poker.js';
@@ -19,6 +20,7 @@ import * as asasore from '../public/games/asasore.js';
 import * as geister from '../public/games/geister.js';
 import * as mancala from '../public/games/mancala.js';
 import * as connect4 from '../public/games/connect4.js';
+import * as wordwolf from '../public/games/wordwolf.js';
 import * as hagetaka from '../public/games/hagetaka.js';
 import * as itchi from '../public/games/itchi.js';
 import { simulate as towerPhysics } from '../lib/towerbattle-physics.js';
@@ -306,6 +308,78 @@ test('catchoco: 手番の人が抜けたら次の人へ', () => {
   assert.equal(s.won[1].length, 1);
   s = cc.applyMove(s, { resign: true }, 1);
   assert.ok(s.result);
+});
+
+
+
+// ワンナイト人狼: 役職を指定した状態を作る
+const wwState = (roles, center) => Object.assign(ww.init({}, roles.length), { roles, center });
+const wwNightAll = (s, acts = {}) => {
+  for (let p = 0; p < s.players; p++) s = ww.applyMove(s, { night: acts[p] || {} }, p);
+  return s;
+};
+const wwVote = (s, votes) => votes.reduce((st, t, p) => ww.applyMove(st, { vote: t }, p), s);
+test('werewolf: 役職の構成と秘密', () => {
+  assert.deepEqual(ww.composition(3).sort(), ['seer', 'thief', 'villager', 'wolf', 'wolf']);
+  assert.ok(ww.composition(5).includes('madman'));
+  const s = ww.init({}, 4);
+  assert.equal(s.roles.length + s.center.length, 6);
+  const v = ww.viewFor(s, 0);
+  assert.equal(v.roles.filter((r) => r !== null).length, 1);
+  assert.equal(v.center, null);
+});
+test('werewolf: 占い師は交換前のカードを見る・怪盗は交換後の役職になる', () => {
+  let s = wwState(['seer', 'thief', 'wolf', 'villager'], ['wolf', 'villager']);
+  s = ww.applyMove(s, { night: { swap: 2 } }, 1);
+  s = ww.applyMove(s, { night: { look: 1 } }, 0);
+  assert.ok(s.night[0].info[0].includes('怪盗'));
+  assert.ok(s.night[1].info[0].includes('人狼'));
+  s = ww.applyMove(s, { night: {} }, 2);
+  assert.equal(s.night[2].info[0], '人狼はあなた1人です');
+  assert.equal(s.phase, 'night');
+  s = ww.applyMove(s, { night: {} }, 3);
+  assert.equal(s.phase, 'day');
+  assert.deepEqual(s.final, ['seer', 'wolf', 'thief', 'villager']);
+});
+test('werewolf: 占い師は中央2枚も見られる', () => {
+  const s = wwState(['seer', 'wolf', 'wolf'], ['thief', 'villager']);
+  assert.throws(() => ww.applyMove(s, { night: { center: [0] } }, 0), /2枚/);
+  const ns = ww.applyMove(s, { night: { center: [0, 1] } }, 0);
+  assert.equal(ns.night[0].info.length, 2);
+});
+test('werewolf: 人狼を処刑すれば村人陣営の勝ち', () => {
+  let s = wwNightAll(wwState(['seer', 'wolf', 'villager', 'villager'], ['wolf', 'thief']));
+  assert.throws(() => ww.applyMove(s, { vote: 0 }, 0), /投票できません/);
+  s = wwVote(s, [1, 0, 1, 1]);
+  assert.deepEqual(s.executed, [1]);
+  assert.deepEqual(s.result.winners, [0, 2, 3]);
+  assert.equal(s.result.team, 0);
+});
+test('werewolf: 人狼が生き残れば人狼陣営（狂人も）の勝ち・投票は変更できる', () => {
+  let s = wwNightAll(wwState(['wolf', 'madman', 'villager', 'villager', 'seer'], ['wolf', 'thief']));
+  s = ww.applyMove(s, { vote: 3 }, 0);
+  s = ww.applyMove(s, { vote: 4 }, 0); // 変更
+  assert.equal(s.votes[0], 4);
+  s = wwVote(s, [2, 2, 1, 2, 3]);
+  assert.deepEqual(s.executed, [2]);
+  assert.deepEqual(s.result.winners, [0, 1]);
+});
+test('werewolf: 全員1票ずつなら処刑なし・人狼が中央なら平和村で村人の勝ち', () => {
+  let s = wwNightAll(wwState(['seer', 'thief', 'villager'], ['wolf', 'wolf']));
+  s = wwVote(s, [1, 2, 0]);
+  assert.deepEqual(s.executed, []);
+  assert.deepEqual(s.result.winners, [0, 1, 2]);
+  let t = wwNightAll(wwState(['seer', 'thief', 'villager'], ['wolf', 'wolf']));
+  t = wwVote(t, [2, 2, 0]);
+  assert.deepEqual(t.result.winners, []);
+  assert.ok(t.result.allLose);
+});
+test('werewolf: 怪盗が人狼と交換すると人狼陣営になる', () => {
+  let s = wwState(['thief', 'wolf', 'villager'], ['wolf', 'seer']);
+  s = wwNightAll(s, { 0: { swap: 1 } });
+  s = wwVote(s, [2, 2, 1]); // 元人狼（今は怪盗）の1に1票、2に2票
+  assert.deepEqual(s.executed, [2]);
+  assert.deepEqual(s.result.winners, [0]);
 });
 
 
@@ -1443,6 +1517,54 @@ test('connect4: 下に落ちる・4つ並んだら勝ち・いっぱいの列に
   for (const [c, p] of [[0, 0], [6, 1], [1, 0], [6, 1], [2, 0]]) w = connect4.applyMove(w, { col: c }, p);
   assert.deepEqual(connect4.aiMove(w, 1), { col: 3 }, '相手の4つ目を防ぐ');
 });
+test('wordwolf: お題が配られ、投票で処刑、ウルフの逆転、点数', () => {
+  let s = wordwolf.init({ minutes: 1, rounds: 1 }, 4);
+  assert.equal(s.wolves.length, 1);
+  const wolf = s.wolves[0];
+  const citizens = [0, 1, 2, 3].filter((p) => p !== wolf);
+  assert.ok(citizens.every((p) => s.words[p] === s.major));
+  assert.equal(s.words[wolf], s.minor);
+  const v = wordwolf.viewFor(s, citizens[0]);
+  assert.equal(v.words[wolf], null, 'ほかの人のお題は見えない');
+  assert.deepEqual(v.wolves, [], 'ウルフが誰かは見えない');
+  assert.throws(() => wordwolf.applyMove(s, { endTalk: true }, citizens[0], undefined, { hostSeat: wolf }), /ホスト/);
+  s = wordwolf.applyMove(s, { endTalk: true }, 0, undefined, { hostSeat: 0 });
+  assert.equal(s.phase, 'vote');
+  assert.throws(() => wordwolf.applyMove(s, { vote: 0 }, 0), /自分/);
+  // 全員でウルフに投票（ウルフは市民の1人に）
+  for (const p of citizens) s = wordwolf.applyMove(s, { vote: wolf }, p);
+  s = wordwolf.applyMove(s, { vote: citizens[0] }, wolf);
+  assert.equal(s.executed, wolf);
+  assert.equal(s.phase, 'guess');
+  assert.throws(() => wordwolf.applyMove(s, { guess: 'x' }, citizens[0]), /答えられません/);
+  s = wordwolf.applyMove(s, { guess: 'ぜったいちがう' }, wolf);
+  assert.equal(s.winner, 'citizen');
+  assert.ok(citizens.every((p) => s.scores[p] === 1));
+  s = wordwolf.tick(s);
+  assert.ok(s.result, '1ラウンドで終わり');
+
+  // 逆転: ウルフがみんなのお題を当てる・同数なら処刑なしでウルフの勝ち
+  let r = wordwolf.init({ rounds: 1 }, 3);
+  const w = r.wolves[0];
+  const others = [0, 1, 2].filter((p) => p !== w);
+  r = wordwolf.tick(r); // 話し合いの時間切れ → 投票
+  r = wordwolf.applyMove(r, { vote: w }, others[0]);
+  r = wordwolf.applyMove(r, { vote: w }, others[1]);
+  r = wordwolf.applyMove(r, { vote: others[0] }, w);
+  r = wordwolf.applyMove(r, { guess: r.major }, w);
+  assert.equal(r.winner, 'wolf');
+  assert.equal(r.scores[w], 3);
+  let t = wordwolf.init({ rounds: 1 }, 3);
+  t = wordwolf.tick(t);
+  t = wordwolf.applyMove(t, { vote: 1 }, 0);
+  t = wordwolf.applyMove(t, { vote: 2 }, 1);
+  t = wordwolf.applyMove(t, { vote: 0 }, 2);
+  assert.equal(t.executed, null);
+  assert.equal(t.winner, 'wolf', '同数は処刑なしでウルフの勝ち');
+  // 6人以上でウルフ2人
+  assert.equal(wordwolf.init({ wolves: 2 }, 6).wolves.length, 2);
+  assert.equal(wordwolf.init({ wolves: 2 }, 5).wolves.length, 1);
+});
 test('hagetaka: 同じ数は打ち消し・プラスは大きい数・マイナスは小さい数・持ち越し', () => {
   assert.equal(hagetaka.resolve(5, [15, 15, 3], [0, 1, 2]), 2, '15どうしは打ち消し、次に大きい3が取る');
   assert.equal(hagetaka.resolve(-3, [1, 2, 9], [0, 1, 2]), 0, 'マイナスは一番小さい数');
@@ -1538,7 +1660,7 @@ test('手札の公開: 終わったあと・観戦者・上がった人・抜け
   s = df.applyMove(s, { play: ids(s, 0, 's9') }, 0); // P1 が上がった
   assert.ok(df.viewFor(s, 0).hands[2], '上がった人');
   assert.equal(df.viewFor(s, 1).hands[2], null, 'まだ遊んでいる人には見えない');
-  // ハゲタカ・ワードバスケット・キャット＆チョコレート: 観戦者
+  // ハゲタカ・ワードバスケット・キャット＆チョコレート: 観戦者と抜けた人
   assert.ok(hagetaka.viewFor(hagetaka.init({}, 3), -1).hands[1]);
   assert.ok(wbk.viewFor(wbk.init({}, 3), -1).hands[1]);
   assert.ok(cc.viewFor(cc.init({}, 3), -1).hands[1]);
@@ -1564,5 +1686,10 @@ test('ログ: 次のラウンド（試合）になったら最初から', () => 
   assert.ok(s.history.length > 5);
   s = df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
   assert.equal(s.history[0], '第2ラウンド', '前のラウンドのログは消える');
+  let w = wordwolf.init({ rounds: 3 }, 3);
+  w = wordwolf.tick(w); // 投票へ
+  for (const p of [0, 1, 2]) w = wordwolf.applyMove(w, { vote: (p + 1) % 3 }, p); // 同数
+  w = wordwolf.tick(w); // 次のラウンド
+  assert.ok(w.history[0].startsWith("第2/3ラウンド"), w.history[0]);
 });
 console.log(`\n${n} tests passed`);
