@@ -99,14 +99,14 @@ export function tick(s) {
 export const canActOutOfTurn = () => true;
 export const quietMove = isDrawMove;
 
-// 描いている人には、前の人の絵だけ（言葉は見せない）。ほかの人には何も見せない。答え合わせで全部見せる
+// 描いた絵はみんなに見せる（言葉は答え合わせまで見せない）。描いている人には前の人の絵を大きく見せる
 export function viewFor(s, seat) {
   if (s.phase === 'end') return s;
   const me = seat === s.turn;
   const prev = s.chain[s.chain.length - 1];
   return {
     ...s,
-    chain: s.chain.map((e) => ({ seat: e.seat })),
+    chain: s.chain.map((e) => ({ seat: e.seat, shapes: e.shapes })),
     prev: me && prev ? { seat: prev.seat, shapes: prev.shapes } : null,
     draft: me ? s.draft : [],
   };

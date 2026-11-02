@@ -548,7 +548,8 @@ test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
   let v = eshiritori.viewFor(s, 1);
   assert.equal(v.prev.shapes.length, 1, '次の人は前の絵が見える');
   assert.equal(v.chain[0].word, undefined, '言葉は見えない');
-  assert.equal(eshiritori.viewFor(s, 2).prev, null, 'ほかの人には絵も見えない');
+  assert.equal(eshiritori.viewFor(s, 2).chain[0].shapes.length, 1, '描いた絵はみんなに見える（ログ）');
+  assert.equal(eshiritori.viewFor(s, 2).chain[0].word, undefined);
   s = eshiritori.applyMove(s, line, 1);
   s = eshiritori.applyMove(s, { submit: true, word: 'すいか' }, 1);
   // 3人目は時間切れ（言葉なし）

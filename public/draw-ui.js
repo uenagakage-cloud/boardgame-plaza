@@ -241,14 +241,27 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
         if (!pad.shapes.some((x) => x.type !== 'erase')) { toast('絵を描いてください'); return; }
         sendMove({ submit: true, word: w });
       };
-      ui.actions.append(h('span', 'muted small', '言葉はほかの人には最後まで見えません。文字は絵に書かないでね'));
+      ui.actions.append(h('span', 'muted small', '言葉は答え合わせまでほかの人には見えません。文字は絵に書かないでね'));
     } else {
       showPad(false);
       setForm('wait', false, '', '');
       ui.top.append(h('div', 'dr-wait', `${nameOf(v, s.turn)} さんが描いています…`),
-        h('div', 'muted', '絵は答え合わせまでのお楽しみ。自分の番では、前の人の絵だけが見られます。'));
+        h('div', 'muted', '言葉は答え合わせまでひみつ。描いた絵は下のログで見られます。'));
     }
     ui.bottom.append(chips(v, (i) => [`${s.chain.filter((e) => e.seat === i).length}枚`, i === s.turn ? ' turn' : '']));
+    // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
+    if (s.chain.length) {
+      const log = h('div', 'dr-log');
+      log.append(h('div', 'dr-label', `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`));
+      const grid = h('div', 'dr-log-grid');
+      s.chain.forEach((e, i) => {
+        const card = h('div', 'dr-log-card');
+        card.append(thumb(e.shapes), h('div', 'muted small', `${i + 1}. ${nameOf(v, e.seat)} さん`));
+        grid.append(card);
+      });
+      log.append(grid);
+      ui.bottom.append(log);
+    }
   }
 
   // ================= 絵の伝言ゲーム =================

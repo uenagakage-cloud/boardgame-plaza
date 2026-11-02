@@ -1430,3 +1430,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .dr-item.text .dr-word { background: #fff6d6; color: #3a2c00; border-radius: 12px; }
 .dr-arrow { font-size: 1.4rem; color: var(--muted); line-height: 1; }
 .wb-player.done { border-color: #2a9d5c; }
+.dr-bottom { display: grid; gap: 10px; }
+.dr-log { display: grid; gap: 6px; }
+.dr-log-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.dr-log-card { display: grid; gap: 2px; text-align: center; }
+.dr-log-card .dr-thumb { border-width: 1px; border-radius: 8px; }
