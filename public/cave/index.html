@@ -23,6 +23,24 @@
   .pbtn.down { grid-column: 2; grid-row: 2; } .pbtn.right { grid-column: 3; grid-row: 2; }
   .pbtn.jump { pointer-events: auto; width: 112px; height: 112px; border-radius: 50%; font-size: 18px; flex-direction: column; line-height: 1.2; }
   .pbtn.jump small { font-size: 11px; font-weight: 400; opacity: .85; }
+  /* みんなでレースのパネル */
+  #mp { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,10,.55); z-index: 3; }
+  #mp[hidden] { display: none; }
+  .mp-box { width: min(92vw, 380px); max-height: 92vh; overflow: auto; background: #1d2236; color: #fff; border: 1px solid #556;
+    border-radius: 14px; padding: 16px; display: grid; gap: 10px; font-size: 14px; }
+  .mp-box h2 { margin: 0; font-size: 18px; color: #ffe27a; }
+  .mp-box p { margin: 0; color: #cde; }
+  .mp-row { display: flex; gap: 6px; }
+  .mp-box input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 7px 9px; border-radius: 8px; border: 1px solid #667; background: #0f1220; color: #fff; }
+  .mp-box button { font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 8px; border: 1px solid #667; background: #2c3350; color: #fff; cursor: pointer; touch-action: manipulation; }
+  .mp-box button.main { background: #e0a82e; border-color: #e0a82e; color: #1a1300; font-weight: 700; }
+  .mp-box button:disabled { opacity: .5; cursor: default; }
+  .mp-code { font-size: 26px; font-weight: 800; letter-spacing: .15em; color: #ffe27a; }
+  .mp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .mp-list li { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.06); border-radius: 8px; padding: 6px 8px; }
+  .mp-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .mp-list .mp-res { margin-left: auto; color: #ffe27a; font-variant-numeric: tabular-nums; }
+  #mpErr { color: #ff9a8a; min-height: 1em; }
   #rotate { display: none; position: fixed; left: 0; right: 0; top: 52px; text-align: center; color: #cde; font-size: 14px; }
   @media (pointer: coarse) {
     #pad { display: flex; }
@@ -34,7 +52,28 @@
 </head>
 <body>
 <canvas id="c" width="960" height="544"></canvas>
-<div id="top"><a href="/">← ゲームいっぱい</a><button id="btnRetry" type="button">↺ やり直し</button></div>
+<div id="top"><a href="/">← ゲームいっぱい</a><button id="btnMulti" type="button">👥 みんなで</button><button id="btnRetry" type="button">↺ やり直し</button></div>
+<div id="mp" hidden>
+  <div class="mp-box">
+    <div id="mpMenu" style="display:grid;gap:10px">
+      <h2>👥 みんなでレース</h2>
+      <p>同じ洞窟を同時にスタートして、だれが先に脱出できるか競争！ ほかの人は半透明で見えます（ぶつかりません）。</p>
+      <div class="mp-row"><input id="mpName" maxlength="12" placeholder="なまえ"></div>
+      <button id="mpCreate" class="main" type="button">部屋を作る</button>
+      <div class="mp-row"><input id="mpCode" maxlength="4" placeholder="部屋コード" autocapitalize="characters"><button id="mpJoin" type="button">参加</button></div>
+    </div>
+    <div id="mpRoom" style="display:none;gap:10px">
+      <h2>👥 みんなでレース</h2>
+      <div class="mp-row" style="align-items:center;justify-content:space-between"><span>部屋コード <span id="mpCodeShow" class="mp-code"></span></span><button id="mpCopy" type="button">招待リンクをコピー</button></div>
+      <ul id="mpList" class="mp-list"></ul>
+      <p id="mpInfo"></p>
+      <button id="mpStart" class="main" type="button">スタート！</button>
+      <button id="mpLeave" type="button">部屋を出る</button>
+    </div>
+    <p id="mpErr"></p>
+    <button id="mpClose" type="button">とじる</button>
+  </div>
+</div>
 <div id="rotate">📱 横向きにすると大きな画面で遊べます</div>
 <div id="pad">
   <div class="cluster">
@@ -320,11 +359,13 @@ const sfx = {
 const keys = {};
 let spaceLock = false;
 addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return; // 名前・部屋コードの入力中
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   initAudio();
   if (actx && actx.state === 'suspended') actx.resume();
   if (e.repeat) return;
   keys[e.code] = true;
+  if (mp.room) return; // みんなでレース中は、スタートとやり直しはできない
   if (state === 'title' && (e.code === 'Space' || e.code === 'Enter')) startGame();
   else if (state === 'clear' && (e.code === 'KeyR' || e.code === 'Enter')) startGame();
   else if (state === 'play' && e.code === 'KeyR') startGame();
@@ -361,9 +402,10 @@ for (const el of document.querySelectorAll('.pbtn')) {
 cv.addEventListener('pointerdown', () => {
   initAudio();
   if (actx && actx.state === 'suspended') actx.resume();
+  if (mp.room) return;
   if (state === 'title' || state === 'clear') startGame();
 });
-document.getElementById('btnRetry').addEventListener('click', e => { e.currentTarget.blur(); if (state !== 'title') startGame(); });
+document.getElementById('btnRetry').addEventListener('click', e => { e.currentTarget.blur(); if (state !== 'title' && !mp.room) startGame(); });
 addEventListener('contextmenu', e => e.preventDefault());
 
 // ===== ゲーム状態 =====
@@ -674,6 +716,7 @@ function update() {
     if (p.y + p.h < 8) {
       state = 'clear';
       sfx.clear();
+      mpFinish();
       if (best === null || playFrames < best) {
         best = playFrames;
         try { localStorage.setItem('caveJumpBest', String(best)); } catch (e) { /* 保存できなくても続行 */ }
@@ -685,14 +728,17 @@ function update() {
     }
   }
 
-  // カメラ
+  // カメラ: 自分のキャラを画面の少し下寄りに置いて、なめらかについていく
   let target;
   if (state === 'title') target = (Math.sin(tick * 0.004 - Math.PI / 2) * 0.5 + 0.5) * (WORLD_H - H);
-  else if (state === 'intro') target = (NS - 1) * H;
-  else target = (NS - 1 - layerOf(p.y + p.h / 2)) * H;
+  else target = Math.max(0, Math.min(WORLD_H - H, p.y + p.h / 2 - H * 0.58));
   if (state === 'title') camY = target;
-  else camY += (target - camY) * (state === 'intro' ? 0.08 : 0.22);
-  if (Math.abs(target - camY) < 0.5) camY = target;
+  else {
+    // 離れているほど速く追う（速く落ちても見失わない）
+    const d = target - camY;
+    camY += d * Math.min(1, 0.1 + Math.abs(d) / 1200);
+    if (Math.abs(target - camY) < 0.2) camY = target;
+  }
 
   for (let i = particles.length - 1; i >= 0; i--) {
     const q = particles[i];
@@ -712,35 +758,39 @@ function update() {
   if (shake < 0.3) shake = 0;
   if (banner.t > 0) banner.t--;
   if (message.t > 0) message.t--;
+  mpUpdate();
 }
 
 // ===== 描画 =====
-function drawPlayer() {
-  const cx = p.x + p.w / 2, by = p.y + p.h - camY;
+// q: 描くキャラ（自分は p）。look: { color: 服の色, mine: 自分か }
+function drawPlayer(q = p, look = { mine: true }) {
+  const cx = q.x + q.w / 2, by = q.y + q.h - camY;
   let sx = 1, sy = 1;
-  if (p.charging) { sy = 1 - 0.3 * p.charge; sx = 1 + 0.2 * p.charge; }
-  if (p.squash > 0) { sy *= 1 - p.squash * 0.35; sx *= 1 + p.squash * 0.3; }
-  if (!p.ground && !p.climb) { const k = Math.min(0.15, Math.abs(p.vy) * 0.012); sy *= 1 + k; sx *= 1 - k * 0.6; }
+  if (q.charging) { sy = 1 - 0.3 * q.charge; sx = 1 + 0.2 * q.charge; }
+  if (q.squash > 0) { sy *= 1 - q.squash * 0.35; sx *= 1 + q.squash * 0.3; }
+  if (!q.ground && !q.climb) { const k = Math.min(0.15, Math.abs(q.vy) * 0.012); sy *= 1 + k; sx *= 1 - k * 0.6; }
 
   // ヘッドランプの光
+  if (look.mine) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const lg = ctx.createRadialGradient(cx, by - 20, 4, cx, by - 20, 90);
   lg.addColorStop(0, 'rgba(255,220,140,0.25)'); lg.addColorStop(1, 'rgba(255,220,140,0)');
   ctx.fillStyle = lg; ctx.fillRect(cx - 90, by - 110, 180, 180);
   ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(cx, by);
-  ctx.scale(sx * (p.climb ? 1 : p.face), sy);
-  const moving = p.ground && !p.charging && p.gtype !== 'slope' && Math.abs(p.vx) > 0.3 && p.gtype !== 'ice';
-  const legA = moving ? Math.sin(p.anim * 0.35) * 3 : 0;
+  ctx.scale(sx * (q.climb ? 1 : q.face), sy);
+  const moving = q.ground && !q.charging && q.gtype !== 'slope' && Math.abs(q.vx) > 0.3 && q.gtype !== 'ice';
+  const legA = moving ? Math.sin(q.anim * 0.35) * 3 : 0;
 
-  if (p.climb) {
-    const a = Math.sin(p.climbAnim * 0.26) * 3;
+  if (q.climb) {
+    const a = Math.sin(q.climbAnim * 0.26) * 3;
     ctx.fillStyle = '#3a2a20';
     ctx.fillRect(-7, -7 + a, 5, 7); ctx.fillRect(2, -7 - a, 5, 7);
-    ctx.fillStyle = '#b8402a'; ctx.fillRect(-9, -20, 18, 14);
+    ctx.fillStyle = look.color || '#b8402a'; ctx.fillRect(-9, -20, 18, 14);
     ctx.fillStyle = '#6b4a2a'; ctx.fillRect(-6, -19, 12, 10); // リュック
     ctx.fillStyle = '#f0c49a'; ctx.fillRect(-11, -24 - a, 4, 5); ctx.fillRect(7, -24 + a, 4, 5); // 手
     ctx.fillStyle = '#e8b923'; ctx.beginPath(); ctx.arc(0, -23, 7, Math.PI, 0); ctx.fill(); ctx.fillRect(-7, -23, 14, 4);
@@ -748,28 +798,28 @@ function drawPlayer() {
     ctx.fillStyle = '#3a2a20';
     ctx.fillRect(-7, -7, 5, 7 + Math.min(0, legA)); ctx.fillRect(2, -7, 5, 7 - Math.max(0, legA));
     ctx.fillStyle = '#6b4a2a'; ctx.fillRect(-11, -19, 5, 11); // リュック
-    ctx.fillStyle = '#c94a32'; ctx.fillRect(-8, -20, 16, 14);
-    ctx.fillStyle = '#8f2f1f'; ctx.fillRect(-8, -9, 16, 3);
+    ctx.fillStyle = look.color || '#c94a32'; ctx.fillRect(-8, -20, 16, 14);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-8, -9, 16, 3);
     ctx.fillStyle = '#f0c49a'; ctx.fillRect(-6, -28, 13, 9); // 顔
     ctx.fillStyle = '#222'; ctx.fillRect(3, -25, 2, 3); // 目
     ctx.fillStyle = '#e8b923'; ctx.beginPath(); ctx.arc(0, -26, 8, Math.PI, 0); ctx.fill(); ctx.fillRect(-8, -27, 17, 3);
     ctx.fillStyle = '#fff6b0'; ctx.fillRect(6, -31, 4, 4); // ランプ
     ctx.fillStyle = '#f0c49a';
-    if (p.charging) { ctx.fillRect(-10, -12, 4, 4); ctx.fillRect(7, -12, 4, 4); }
-    else if (!p.ground) { ctx.fillRect(-10, -26, 4, 5); ctx.fillRect(7, -26, 4, 5); }
+    if (q.charging) { ctx.fillRect(-10, -12, 4, 4); ctx.fillRect(7, -12, 4, 4); }
+    else if (!q.ground) { ctx.fillRect(-10, -26, 4, 5); ctx.fillRect(7, -26, 4, 5); }
     else ctx.fillRect(4, -15, 4, 5);
   }
   ctx.restore();
 
-  if (p.charging) {
-    const gx = cx - 18, gy = p.y - camY - 16;
+  if (q.charging && look.mine) {
+    const gx = cx - 18, gy = q.y - camY - 16;
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(gx - 2, gy - 2, 40, 9);
-    ctx.fillStyle = `hsl(${120 - p.charge * 120},90%,55%)`;
-    ctx.fillRect(gx, gy, 36 * p.charge, 5);
-    if (p.charge >= 1 && tick % 10 < 5) { ctx.fillStyle = '#fff'; ctx.fillRect(gx, gy, 36, 5); }
+    ctx.fillStyle = `hsl(${120 - q.charge * 120},90%,55%)`;
+    ctx.fillRect(gx, gy, 36 * q.charge, 5);
+    if (q.charge >= 1 && tick % 10 < 5) { ctx.fillStyle = '#fff'; ctx.fillRect(gx, gy, 36, 5); }
     // ジャンプ方向の矢印
-    const ang = p.jdir === 0 ? -Math.PI / 2 : (p.jdir > 0 ? -Math.PI / 3.2 : -Math.PI + Math.PI / 3.2);
-    const len = 22 + p.charge * 26, ox = cx, oy = p.y - camY + 6;
+    const ang = q.jdir === 0 ? -Math.PI / 2 : (q.jdir > 0 ? -Math.PI / 3.2 : -Math.PI + Math.PI / 3.2);
+    const len = 22 + q.charge * 26, ox = cx, oy = q.y - camY + 6;
     const ex = ox + Math.cos(ang) * len, ey = oy + Math.sin(ang) * len;
     ctx.strokeStyle = 'rgba(255,240,180,0.85)'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(ox + Math.cos(ang) * 14, oy + Math.sin(ang) * 14); ctx.lineTo(ex, ey); ctx.stroke();
@@ -815,7 +865,7 @@ function drawHUD() {
   ctx.fillStyle = '#fff6d8'; ctx.fillRect(gx - 4, gy1 - 4, 12, 4);
 
   ctx.font = `12px ${FONT}`; ctx.textBaseline = 'alphabetic';
-  if (!TOUCH) textShadow('A/D:移動  W/S:はしご  SPACE長押し→離す:ジャンプ(ため中にA/Dで方向)  R:リスタート', W / 2, H - 10, 'rgba(255,255,255,0.75)', 'center');
+  if (!TOUCH) textShadow(`A/D:移動  W/S:はしご  SPACE長押し→離す:ジャンプ(ため中にA/Dで方向)${mp.room ? '' : '  R:リスタート'}`, W / 2, H - 10, 'rgba(255,255,255,0.75)', 'center');
 }
 
 function drawPanel(lines, y0) {
@@ -860,7 +910,7 @@ function render() {
   }
   ctx.globalAlpha = 1;
 
-  if (state !== 'title') drawPlayer();
+  if (state !== 'title') { drawOthers(); drawPlayer(); }
   // 浮かぶ文字
   ctx.textBaseline = 'middle';
   for (const q of popups) {
@@ -883,6 +933,7 @@ function render() {
 
   if (state === 'play' || state === 'intro') {
     drawHUD();
+    drawRaceHud();
     if (banner.t > 0) {
       const a = Math.min(1, banner.t / 30, (150 - banner.t) / 20);
       ctx.globalAlpha = Math.max(0, a);
@@ -899,9 +950,22 @@ function render() {
     }
   }
 
-  if (state === 'title') {
+  if (state === 'title' && mp.goAt) {
+    // みんなでレースのカウントダウン
     ctx.fillStyle = 'rgba(0,0,10,0.6)'; ctx.fillRect(0, 0, W, H);
-    drawPanel(TOUCH ? [
+    const left = Math.ceil((mp.goAt - performance.now()) / 1000);
+    drawPanel([
+      ['みんなでレース', 34, '#ffe27a', 0],
+      [`${mp.room ? mp.room.members.length : 0}人で同時にスタート！ 先に脱出した人の勝ち`, 18, '#fff', 50],
+      [left > 0 ? String(left) : 'GO!', 96, '#fff', 160],
+    ], 120);
+  } else if (state === 'title') {
+    ctx.fillStyle = 'rgba(0,0,10,0.6)'; ctx.fillRect(0, 0, W, H);
+    drawPanel(mp.room ? [
+      ['洞窟脱出ジャンプ', 52, '#ffe27a', 0],
+      [`みんなでレース（部屋 ${mp.room.code}・${mp.room.members.length}人）`, 22, '#fff', 70],
+      ['「👥 みんなで」から部屋を開いて、ホストがスタートします', 17, '#cde', 110],
+    ] : TOUCH ? [
       ['洞窟脱出ジャンプ', 52, '#ffe27a', 0],
       ['足をすべらせ、深い洞窟の底へ…。力をためて跳び、頂上の光を目指せ!', 17, '#fff', 62],
       ['◀ ▶ : 左右に歩く', 18, '#cde', 120],
@@ -925,14 +989,191 @@ function render() {
 
   if (state === 'clear') {
     ctx.fillStyle = 'rgba(0,0,10,0.55)'; ctx.fillRect(0, 0, W, H);
+    const me = mp.room && memberOf(mp.you);
     drawPanel([
       ['脱出成功!', 56, '#ffe27a', 0],
-      ['ついに洞窟の外へ出た!', 20, '#fff', 60],
+      [me && me.rank ? `${me.rank}位でゴール！` : 'ついに洞窟の外へ出た!', me && me.rank ? 30 : 20, me && me.rank === 1 ? '#ffe27a' : '#fff', 60],
       [`タイム ${fmtTime(playFrames)}`, 22, '#fff', 120],
       [`ジャンプ ${jumps} 回   落下 ${falls} 回`, 20, '#fff', 156],
       [best !== null ? `ベストタイム ${fmtTime(best)}${best === playFrames ? '  (新記録!)' : ''}` : '', 18, '#9be7ff', 192],
-      [tick % 60 < 40 ? (TOUCH ? 'タップでもう一度' : 'R キーでもう一度') : '', 22, '#fff', 260],
+      [mp.room ? '' : tick % 60 < 40 ? (TOUCH ? 'タップでもう一度' : 'R キーでもう一度') : '', 22, '#fff', 260],
     ], 140);
+    drawRaceHud();
+  }
+}
+
+// ===== みんなでレース =====
+// 動きは各自で計算し、サーバー（/cave/ws）は位置を配るだけ。ほかの人は半透明で表示する
+const mp = { ws: null, room: null, you: null, others: new Map(), goAt: 0, sentFinish: false };
+const $ = id => document.getElementById(id);
+const inRace = () => !!(mp.room && mp.room.phase === 'race');
+const memberOf = id => mp.room && mp.room.members.find(m => m.id === id);
+try { $('mpName').value = localStorage.getItem('name') || ''; } catch (e) { /* なくてもよい */ }
+function mpShow(v) { $('mp').hidden = !v; if (v) mpRender(); }
+function mpErr(msg) { $('mpErr').textContent = msg || ''; }
+function mpConnect(then) {
+  if (mp.ws && mp.ws.readyState === 1) { then(); return; }
+  if (mp.ws && mp.ws.readyState === 0) { mp.ws.addEventListener('open', then, { once: true }); return; }
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/cave/ws');
+  mp.ws = ws;
+  ws.addEventListener('open', then, { once: true });
+  ws.onmessage = e => { try { mpOnMsg(JSON.parse(e.data)); } catch (err) { /* 壊れたメッセージは無視 */ } };
+  ws.onerror = () => mpErr('つながりませんでした');
+  ws.onclose = () => {
+    if (mp.ws !== ws) return;
+    mp.ws = null; mp.others.clear(); mp.goAt = 0;
+    if (mp.room) { mp.room = null; mpErr('接続が切れました'); state = 'title'; mpShow(true); }
+    mpRender();
+  };
+}
+const mpSend = m => { if (mp.ws && mp.ws.readyState === 1) mp.ws.send(JSON.stringify(m)); };
+function myName() {
+  const n = $('mpName').value.trim().slice(0, 12) || '名無し';
+  try { localStorage.setItem('name', n); } catch (e) { /* 保存できなくても続行 */ }
+  return n;
+}
+function mpOnMsg(m) {
+  if (m.t === 'error') { mpErr(m.msg); return; }
+  if (m.t === 'room') {
+    const prev = mp.room;
+    mp.room = m; mp.you = m.you;
+    mpErr('');
+    for (const id of [...mp.others.keys()]) if (!m.members.some(x => x.id === id)) mp.others.delete(id);
+    // レースが終わってロビーにもどった
+    if (m.phase === 'lobby' && prev && prev.phase === 'race') { state = 'title'; mp.goAt = 0; mp.others.clear(); mpShow(true); }
+    try { history.replaceState(null, '', '#' + m.code); } catch (e) { /* そのまま */ }
+    mpRender();
+    return;
+  }
+  if (m.t === 'go') {
+    mp.goAt = performance.now() + m.in; mp.sentFinish = false; mp.others.clear();
+    state = 'title'; mpShow(false);
+    return;
+  }
+  if (m.t === 'pos') {
+    let o = mp.others.get(m.id);
+    if (!o) { o = { x: m.x, y: m.y, w: 20, h: 28, anim: 0, climbAnim: 0, squash: 0, gtype: 'rock', jdir: 0 }; mp.others.set(m.id, o); }
+    Object.assign(o, { tx: m.x, ty: m.y, face: m.f, climb: !!m.c, charging: m.ch > 0, charge: m.ch, ground: !!m.g, vy: m.vy, vx: m.vx, seen: tick });
+    return;
+  }
+  if (m.t === 'gone') mp.others.delete(m.id);
+}
+function mpRender() {
+  const r = mp.room;
+  $('btnMulti').style.display = r && r.phase === 'race' ? 'none' : '';
+  $('btnRetry').style.display = r ? 'none' : '';
+  $('mpMenu').style.display = r ? 'none' : 'grid';
+  $('mpRoom').style.display = r ? 'grid' : 'none';
+  $('mpClose').style.display = r && r.phase === 'race' && !mp.sentFinish ? 'none' : '';
+  if (!r) return;
+  $('mpCodeShow').textContent = r.code;
+  const list = $('mpList');
+  list.replaceChildren();
+  const ordered = [...r.members].sort((a, b) => (a.rank || 99) - (b.rank || 99));
+  for (const m of ordered) {
+    const li = document.createElement('li');
+    const dot = document.createElement('span'); dot.className = 'mp-dot'; dot.style.background = m.color;
+    const nm = document.createElement('span');
+    nm.textContent = m.name + (m.id === r.you ? '（あなた）' : '') + (m.id === r.host ? ' 👑' : '');
+    li.append(dot, nm);
+    if (m.done || r.phase === 'race') {
+      const res = document.createElement('span'); res.className = 'mp-res';
+      res.textContent = m.done ? `${m.rank}位 ${fmtTime(m.time)}` : '登っています…';
+      li.append(res);
+    }
+    list.append(li);
+  }
+  const host = r.host === r.you, racing = r.phase === 'race';
+  const left = r.members.filter(m => !m.done).length;
+  $('mpInfo').textContent = racing
+    ? (left ? `まだ ${left}人が登っています。${host ? '「ロビーにもどる」で終わりにできます' : ''}` : 'みんなゴールしました！')
+    : (host ? 'みんなそろったら「スタート！」' : 'ホストがスタートするのを待っています');
+  $('mpStart').style.display = host ? '' : 'none';
+  $('mpStart').textContent = racing ? 'ロビーにもどる' : 'スタート！';
+}
+$('btnMulti').addEventListener('click', e => { e.currentTarget.blur(); mpErr(''); mpShow(true); });
+$('mpClose').addEventListener('click', () => mpShow(false));
+$('mpCreate').addEventListener('click', () => { const name = myName(); mpConnect(() => mpSend({ t: 'create', name })); });
+$('mpJoin').addEventListener('click', () => {
+  const code = $('mpCode').value.trim().toUpperCase();
+  if (!code) { mpErr('部屋コードを入れてください'); return; }
+  const name = myName(); mpConnect(() => mpSend({ t: 'join', code, name }));
+});
+$('mpCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('mpJoin').click(); });
+$('mpStart').addEventListener('click', () => mpSend({ t: inRace() ? 'lobby' : 'start' }));
+$('mpLeave').addEventListener('click', () => {
+  mpSend({ t: 'leave' }); mp.room = null; mp.others.clear(); mp.goAt = 0; state = 'title';
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* そのまま */ }
+  mpRender();
+});
+$('mpCopy').addEventListener('click', async () => {
+  const url = location.origin + location.pathname + '#' + mp.room.code;
+  try { await navigator.clipboard.writeText(url); $('mpCopy').textContent = 'コピーしました'; }
+  catch (e) { prompt('このリンクを送ってください', url); }
+  setTimeout(() => { $('mpCopy').textContent = '招待リンクをコピー'; }, 1500);
+});
+// 招待リンク（/cave/#ABCD）で開いたら、部屋コードを入れておく
+{
+  const m = location.hash.match(/^#([A-Za-z0-9]{4})$/);
+  if (m) { $('mpCode').value = m[1].toUpperCase(); mpShow(true); }
+}
+// 毎フレーム: カウントダウン・位置を送る・ほかの人をなめらかに動かす
+function mpUpdate() {
+  if (mp.goAt && performance.now() >= mp.goAt) { mp.goAt = 0; startGame(); }
+  if (inRace() && (state === 'intro' || state === 'play' || state === 'clear') && tick % 4 === 0) {
+    mpSend({ t: 'pos', x: p.x, y: p.y, f: p.face, c: p.climb, ch: p.charging ? p.charge : 0, g: p.ground, vy: p.vy, vx: p.vx });
+  }
+  for (const o of mp.others.values()) {
+    const d = Math.hypot(o.tx - o.x, o.ty - o.y);
+    if (d > 160) { o.x = o.tx; o.y = o.ty; } else { o.x += (o.tx - o.x) * 0.3; o.y += (o.ty - o.y) * 0.3; }
+    o.anim++;
+    if (o.climb && d > 0.5) o.climbAnim++;
+  }
+}
+function mpFinish() {
+  if (!inRace() || mp.sentFinish) return;
+  mp.sentFinish = true;
+  mpSend({ t: 'finish', time: playFrames, jumps, falls });
+  setTimeout(() => { if (mp.room) mpShow(true); }, 2500);
+}
+// 高さ（m）
+const heightOf = y => Math.max(0, (WORLD_H - y) / T * 0.5);
+function drawOthers() {
+  if (!mp.room) return;
+  ctx.textBaseline = 'alphabetic';
+  for (const [id, o] of mp.others) {
+    const m = memberOf(id);
+    if (!m || o.y + o.h < camY - 40 || o.y > camY + H + 40) continue;
+    ctx.globalAlpha = 0.72;
+    drawPlayer(o, { color: m.color });
+    ctx.globalAlpha = 1;
+    ctx.font = `bold 12px ${FONT}`;
+    textShadow(m.name, o.x + o.w / 2, o.y - camY - 14, m.color, 'center');
+  }
+}
+// みんなの高さ（左の一覧と右のゲージ）
+function drawRaceHud() {
+  if (!inRace()) return;
+  const rows = mp.room.members.map(m => {
+    const me = m.id === mp.you, o = mp.others.get(m.id);
+    const y = me ? p.y + p.h : o ? o.y + o.h : WORLD_H;
+    return { m, me, y, h: m.done ? Infinity : heightOf(y) };
+  }).sort((a, b) => (a.m.rank || 99) - (b.m.rank || 99) || b.h - a.h);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(10, 120, 210, 10 + rows.length * 18);
+  ctx.font = `12px ${FONT}`; ctx.textBaseline = 'top';
+  rows.forEach((r, i) => {
+    const y = 126 + i * 18;
+    ctx.fillStyle = r.m.color; ctx.fillRect(18, y + 2, 10, 10);
+    textShadow(`${i + 1}. ${r.m.name}${r.me ? '（あなた）' : ''}`, 34, y, r.me ? '#ffe9a8' : '#fff');
+    textShadow(r.m.done ? `ゴール ${fmtTime(r.m.time)}` : `${r.h.toFixed(1)}m`, 212, y, '#cde', 'right');
+  });
+  // ゲージにほかの人の位置
+  const gx = W - 22, gy1 = 20, gy2 = H - 40;
+  for (const r of rows) {
+    if (r.me) continue;
+    const prog = r.m.done ? 1 : 1 - Math.min(1, Math.max(0, r.y / WORLD_H));
+    ctx.fillStyle = r.m.color; ctx.fillRect(gx - 9, gy2 - (gy2 - gy1) * prog - 2, 6, 4);
   }
 }
 
@@ -959,7 +1200,7 @@ fit();
 requestAnimationFrame(frame);
 
 // テスト用フック
-window.__game = { p, map, keys, update, get state() { return state; }, T, H, NS };
+window.__game = { p, map, keys, update, get state() { return state; }, get camY() { return camY; }, mp, T, H, NS };
 </script>
 </body>
 </html>

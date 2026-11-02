@@ -49,6 +49,7 @@ import * as chinchiro from './public/games/chinchiro.js';
 import * as roulette from './public/games/roulette.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 import { mountDino } from './dino/server/mount.js';
+import { mountCaveRelay } from './cave-relay.js';
 import { createRequire } from 'node:module';
 // ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
 const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
@@ -153,6 +154,7 @@ async function loadStatic(file) {
 
 // ディノラッシュ（リアルタイムのアクションゲーム）は別のしくみなので、/dino/ の下でまるごと動かす
 const dino = await mountDino('/dino');
+const cave = mountCaveRelay('/cave/ws');
 
 const server = http.createServer(async (req, res) => {
   if (dino.handle(req, res)) return;
@@ -786,6 +788,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 // WebSocket: /dino/ws はディノラッシュ、それ以外はこのアプリ
 server.on('upgrade', (req, socket, head) => {
   if (dino.upgrade(req, socket, head)) return;
+  if (cave.upgrade(req, socket, head)) return;
   if (req.url.startsWith('/soul/')) return; // ソウルバレッジの socket.io が受け持つ
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });
