@@ -232,6 +232,11 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
       if (s.prev) prevBox.append(h('div', 'dr-label', `${nameOf(v, s.prev.seat)} さんの絵（何の絵か考えて、最後の文字から始まる言葉を描こう）`), thumb(s.prev.shapes, 'dr-thumb prev'));
       else prevBox.append(h('div', 'dr-label', 'はじめの文字'), h('div', 'dr-word big', `「${s.start}」から始まる言葉を描こう`));
       ui.top.append(prevBox);
+      // その前の絵も並べて、前の絵のお題を予想するヒントにする（新しい順）
+      if (s.chain.length >= 2) {
+        const older = s.chain.slice(0, -1).map((e, i) => [e, i]).reverse();
+        ui.top.append(logBox(v, `その前の絵（ヒントに）`, older.map(([e, i]) => [e, `${s.chain.length - i}つ前・${nameOf(v, e.seat)} さん`])));
+      }
       showPad(true);
       pad.load(`${v.code}:${v.gameNo}:${done}`, s.draft, true);
       setForm(`${v.code}:${v.gameNo}:${done}`, true, '描いた言葉（ひらがな。例：りんご→ごりら）', 'できた！');
@@ -245,23 +250,24 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
     } else {
       showPad(false);
       setForm('wait', false, '', '');
-      ui.top.append(h('div', 'dr-wait', `${nameOf(v, s.turn)} さんが描いています…`),
-        h('div', 'muted', '言葉は答え合わせまでひみつ。描いた絵は下のログで見られます。'));
+      ui.top.append(h('div', 'dr-wait', `${nameOf(v, s.turn)} さんが描いています…`));
+      // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
+      if (s.chain.length) ui.top.append(logBox(v, `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`, s.chain.map((e, i) => [e, `${i + 1}. ${nameOf(v, e.seat)} さん`])));
     }
     ui.bottom.append(chips(v, (i) => [`${s.chain.filter((e) => e.seat === i).length}枚`, i === s.turn ? ' turn' : '']));
-    // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
-    if (s.chain.length) {
-      const log = h('div', 'dr-log');
-      log.append(h('div', 'dr-label', `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`));
-      const grid = h('div', 'dr-log-grid');
-      s.chain.forEach((e, i) => {
-        const card = h('div', 'dr-log-card');
-        card.append(thumb(e.shapes), h('div', 'muted small', `${i + 1}. ${nameOf(v, e.seat)} さん`));
-        grid.append(card);
-      });
-      log.append(grid);
-      ui.bottom.append(log);
+  }
+  // 絵の一覧。items = [[{ shapes }, 説明], ...]
+  function logBox(v, title, items) {
+    const log = h('div', 'dr-log');
+    log.append(h('div', 'dr-label', title));
+    const grid = h('div', 'dr-log-grid');
+    for (const [e, text] of items) {
+      const card = h('div', 'dr-log-card');
+      card.append(thumb(e.shapes), h('div', 'muted small', text));
+      grid.append(card);
     }
+    log.append(grid);
+    return log;
   }
 
   // ================= 絵の伝言ゲーム =================
