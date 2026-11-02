@@ -212,10 +212,10 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
       setForm('end', false, '', '');
       const list = h('div', 'dr-chain');
       const start = h('div', 'dr-card start');
-      start.append(h('div', 'dr-word big', eshiritori.START_WORD), h('div', 'muted small', 'はじまり'));
+      start.append(h('div', 'dr-word big', `「${s.start}」`), h('div', 'muted small', 'はじめの文字'));
       list.append(start);
       s.chain.forEach((e, i) => {
-        const prev = i ? s.chain[i - 1].word : eshiritori.START_WORD;
+        const prev = i ? s.chain[i - 1].word : s.start;
         const ok = eshiritori.links(prev, e.word);
         list.append(h('div', 'dr-link ' + (ok ? 'ok' : 'ng'), ok ? `○ 「${eshiritori.lastKana(prev || '？')}」でつながった` : '× つながらなかった'));
         const card = h('div', 'dr-card' + (ok ? '' : ' ng'));
@@ -227,10 +227,10 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
     }
 
     if (drawingNow) {
-      // 前の人の絵（最初の人は「しりとり」）
+      // 前の人の絵（最初の人は、はじめの文字）
       const prevBox = h('div', 'dr-prev');
       if (s.prev) prevBox.append(h('div', 'dr-label', `${nameOf(v, s.prev.seat)} さんの絵（何の絵か考えて、最後の文字から始まる言葉を描こう）`), thumb(s.prev.shapes, 'dr-thumb prev'));
-      else prevBox.append(h('div', 'dr-label', 'はじまりの言葉'), h('div', 'dr-word big', `${eshiritori.START_WORD}（「り」から始まる言葉を描こう）`));
+      else prevBox.append(h('div', 'dr-label', 'はじめの文字'), h('div', 'dr-word big', `「${s.start}」から始まる言葉を描こう`));
       ui.top.append(prevBox);
       showPad(true);
       pad.load(`${v.code}:${v.gameNo}:${done}`, s.draft, true);

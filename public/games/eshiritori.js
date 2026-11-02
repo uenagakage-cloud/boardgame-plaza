@@ -1,13 +1,13 @@
 // 絵しりとり（サーバーとブラウザで共通）
 // 2〜8人の協力ゲーム。言葉は書かずに、絵だけでしりとりをつなぐ。
-// 流れ: 順番に1人ずつ描く。描く人は「前の人の絵」だけを見て（最初の人は「しりとり」）、
+// 流れ: 順番（毎回ランダム）に1人ずつ描く。描く人は「前の人の絵」を見て（最初の人はランダムに決まる「はじめの文字」から）、
 //       その言葉の最後の文字から始まる言葉を考えて描き、描いた言葉（ひらがな）をこっそり登録する。
 //       全員が決めた回数描いたら答え合わせ。絵と言葉を順に見せて、何回つながったかが記録。
 // 「ん」で終わる言葉は登録できない。時間切れのときは、そこまでの絵を言葉なしで出す（つながらない）。
 // 濁点・半濁点（が↔か、ぱ↔は）と小さい文字（ゃ↔や）は同じとみなし、のばす音（ー）は1つ前の文字で考える。
 // 手: 描く手（drawing.js の { stroke } / { undo } / { clear }。みんなには送らない）/ { submit: true, word: 'ことば' } / { resign: true }
 import { applyDraw, isDrawMove, normalizeText } from './drawing.js';
-import { pickOptions, optionText, label } from './util.js';
+import { pickOptions, optionText, label, shuffle, pick } from './util.js';
 
 export const id = 'eshiritori';
 export const title = '絵しりとり';
@@ -16,7 +16,8 @@ export const minPlayers = 2;
 export const maxPlayers = 8;
 export const lobbyReturn = true;
 export const logTitle = 'ログ';
-export const START_WORD = 'しりとり';
+// はじめの文字（毎回この中からランダム。始めにくい文字は入れない）
+export const START_KANA = [...'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ'];
 export const OPTIONS = [
   { key: 'laps', label: '描く回数', values: [2, 1, 3], names: ['1人2回', '1人1回', '1人3回'] },
   { key: 'seconds', label: '描く時間', values: [90, 60, 120, 180], names: ['90秒', '60秒', '120秒', '180秒'] },
@@ -50,10 +51,11 @@ export function checkWord(text) {
 
 const active = (s) => [...Array(s.players).keys()].filter((p) => !s.out[p]);
 
-export function init(options, players = 2) {
+export function init(options, players = 2, rng) {
   const opts = normalizeOptions(options);
   const s = {
     players, options: opts, out: Array(players).fill(false),
+    start: pick(START_KANA, rng), order: shuffle([...Array(players).keys()], rng), next: 0,
     total: players * opts.laps, chain: [], turn: -1, draft: [], phase: 'draw',
     endsAt: null, tickAt: null, result: null, history: [],
   };
@@ -63,8 +65,9 @@ export function init(options, players = 2) {
 
 function nextTurn(s) {
   if (s.chain.length >= s.total || active(s).length < 2 && s.chain.length) { finish(s); return; }
-  let p = s.turn;
-  do p = (p + 1) % s.players; while (s.out[p]);
+  // 決めた順番（ランダム）でまわす。抜けた人は飛ばす
+  let p;
+  do p = s.order[s.next++ % s.players]; while (s.out[p]);
   s.turn = p;
   s.draft = [];
   s.endsAt = Date.now() + s.options.seconds * 1000;
@@ -75,7 +78,7 @@ function finish(s) {
   s.phase = 'end';
   s.endsAt = null;
   s.tickAt = null;
-  const ok = s.chain.filter((e, i) => links(i ? s.chain[i - 1].word : START_WORD, e.word)).length;
+  const ok = s.chain.filter((e, i) => links(i ? s.chain[i - 1].word : s.start, e.word)).length;
   s.linked = ok;
   s.history.push(`答え合わせ：${s.chain.length}枚中 ${ok}回つながった`);
   s.result = { winners: active(s), team: 0, reason: `${s.chain.length}枚中 ${ok}回つながった` };
@@ -114,7 +117,7 @@ export function viewFor(s, seat) {
 
 export function phaseText(s, you) {
   if (s.result) return null;
-  if (you === s.turn) return s.chain.length ? '前の人の絵が何かを考えて、その最後の文字から始まる言葉を描こう' : '「しりとり」の「り」から始まる言葉を描こう';
+  if (you === s.turn) return s.chain.length ? '前の人の絵が何かを考えて、その最後の文字から始まる言葉を描こう' : `「${s.start}」から始まる言葉を描こう`;
   return null;
 }
 

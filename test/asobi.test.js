@@ -536,8 +536,22 @@ test('eshiritori: つながり方（濁点・小さい文字・のばす音）',
   assert.throws(() => eshiritori.checkWord('cat'), /ひらがな/);
 });
 
+test('eshiritori: はじめの文字と順番は毎回ランダム', () => {
+  const starts = new Set(), firsts = new Set();
+  for (let seed = 1; seed <= 30; seed++) {
+    const s = eshiritori.init({}, 4, seeded(seed));
+    assert.ok(eshiritori.START_KANA.includes(s.start));
+    assert.deepEqual(s.order.slice().sort(), [0, 1, 2, 3], '順番は全員1回ずつ');
+    assert.equal(s.turn, s.order[0]);
+    starts.add(s.start);
+    firsts.add(s.turn);
+  }
+  assert.ok(starts.size > 5 && firsts.size > 1, 'いろいろ変わる');
+});
+
 test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
-  let s = eshiritori.init({ laps: 1, seconds: 60 }, 3);
+  let s = eshiritori.init({ laps: 1, seconds: 60 }, 3, seeded(2));
+  s = { ...s, start: 'り', order: [0, 1, 2], next: 1, turn: 0 }; // 順番とはじめの文字を決めて試す
   assert.equal(s.turn, 0);
   assert.ok(eshiritori.quietMove(line), '描く手はみんなに送らない');
   assert.throws(() => eshiritori.applyMove(s, line, 1), /番ではありません/);
@@ -558,7 +572,7 @@ test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
   s = eshiritori.tick(s);
   assert.ok(s.result);
   assert.equal(s.chain[2].word, null);
-  assert.equal(s.linked, 2, 'しりとり→りす→すいか はつながり、時間切れはつながらない');
+  assert.equal(s.linked, 2, 'り→りす→すいか はつながり、時間切れはつながらない');
 });
 
 test('edengon: お題→絵→言葉と伝言して、ホストが発表を進める', () => {
