@@ -18,6 +18,8 @@ import * as tanks from '../public/games/tanks.js';
 import * as hbball from '../public/games/hbball.js';
 import * as chinchiro from '../public/games/chinchiro.js';
 import * as roulette from '../public/games/roulette.js';
+import * as eshiritori from '../public/games/eshiritori.js';
+import * as edengon from '../public/games/edengon.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -518,6 +520,87 @@ test('chinchiro: 比べ方（強い役が勝ち・倍率・ヒフミは2倍払�
   assert.equal(chinchiro.compare(r([1, 2, 3]), r([2, 2, 1])), -2, '子のヒフミは2倍払い');
   assert.equal(chinchiro.compare(r([1, 3, 6]), r([1, 2, 3])), 2, '親のヒフミは2倍払い');
   assert.equal(chinchiro.compare(r([1, 3, 6]), r([2, 4, 6])), 0, '目なしどうしは引き分け');
+});
+
+// ---------- 絵しりとり・絵の伝言ゲーム ----------
+const line = { stroke: { type: 'line', x1: 10, y1: 10, x2: 200, y2: 200, c: 1 } };
+
+test('eshiritori: つながり方（濁点・小さい文字・のばす音）', () => {
+  assert.ok(eshiritori.links('しりとり', 'りんご'));
+  assert.ok(eshiritori.links('りんご', 'こま'), '濁点はなくてもよい');
+  assert.ok(eshiritori.links('きしゃ', 'やかん'), '小さい文字は大きく');
+  assert.ok(eshiritori.links('コーヒー', 'ひよこ'), 'のばす音は1つ前の文字');
+  assert.ok(!eshiritori.links('りんご', 'いぬ'));
+  assert.equal(eshiritori.checkWord('ゴリラ'), 'ごりら');
+  assert.throws(() => eshiritori.checkWord('みかん'), /ん/);
+  assert.throws(() => eshiritori.checkWord('cat'), /ひらがな/);
+});
+
+test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
+  let s = eshiritori.init({ laps: 1, seconds: 60 }, 3);
+  assert.equal(s.turn, 0);
+  assert.ok(eshiritori.quietMove(line), '描く手はみんなに送らない');
+  assert.throws(() => eshiritori.applyMove(s, line, 1), /番ではありません/);
+  assert.throws(() => eshiritori.applyMove(s, { submit: true, word: 'りす' }, 0), /絵を描いて/);
+  s = eshiritori.applyMove(s, line, 0);
+  s = eshiritori.applyMove(s, { submit: true, word: 'りす' }, 0);
+  assert.equal(s.turn, 1);
+  let v = eshiritori.viewFor(s, 1);
+  assert.equal(v.prev.shapes.length, 1, '次の人は前の絵が見える');
+  assert.equal(v.chain[0].word, undefined, '言葉は見えない');
+  assert.equal(eshiritori.viewFor(s, 2).prev, null, 'ほかの人には絵も見えない');
+  s = eshiritori.applyMove(s, line, 1);
+  s = eshiritori.applyMove(s, { submit: true, word: 'すいか' }, 1);
+  // 3人目は時間切れ（言葉なし）
+  s = eshiritori.applyMove(s, line, 2);
+  clock = s.tickAt;
+  s = eshiritori.tick(s);
+  assert.ok(s.result);
+  assert.equal(s.chain[2].word, null);
+  assert.equal(s.linked, 2, 'しりとり→りす→すいか はつながり、時間切れはつながらない');
+});
+
+test('edengon: お題→絵→言葉と伝言して、ホストが発表を進める', () => {
+  let s = edengon.init({ start: 'write' }, 3);
+  const ctx = { hostSeat: 0 };
+  assert.equal(edengon.kindAt(s, 0), 'text');
+  for (const p of [0, 1, 2]) s = edengon.applyMove(s, { text: `お題${p}` }, p, null, ctx);
+  assert.equal(s.step, 1, '全員出したら次へ');
+  // 1番の人は 0番の人のお題を描く
+  const t = edengon.viewFor(s, 1).task;
+  assert.equal(t.kind, 'draw');
+  assert.equal(t.prev.text, 'お題0');
+  assert.equal(edengon.viewFor(s, 1).chains[0].items.length, 0, 'ほかの伝言は見えない');
+  s = edengon.applyMove(s, line, 1, null, ctx);
+  s = edengon.applyMove(s, { submit: true }, 1, null, ctx);
+  s = edengon.applyMove(s, { unsubmit: true }, 1, null, ctx);
+  assert.equal(s.done[1], false, '直せる');
+  s = edengon.applyMove(s, { submit: true }, 1, null, ctx);
+  s = edengon.applyMove(s, line, 2, null, ctx);
+  s = edengon.applyMove(s, { submit: true }, 2, null, ctx);
+  // 0番の人は時間切れ → 描いたところまで（何もなし）
+  clock = s.tickAt;
+  s = edengon.tick(s);
+  assert.equal(s.step, 2);
+  assert.equal(edengon.viewFor(s, 2).task.prev.kind, 'draw', '2番の人は 0番の伝言の絵を見る');
+  for (const p of [0, 1, 2]) s = edengon.applyMove(s, { text: `こたえ${p}` }, p, null, ctx);
+  assert.equal(s.phase, 'reveal');
+  assert.deepEqual(s.chains[0].items.map((x) => x.kind), ['text', 'draw', 'text']);
+  assert.equal(s.chains[0].items[2].text, 'こたえ2');
+  assert.equal(edengon.viewFor(s, 1).chains[0].items.length, 1, '発表は1つずつ');
+  assert.throws(() => edengon.applyMove(s, { next: true }, 1, null, ctx), /ホスト/);
+  for (let i = 0; i < 9; i++) s = edengon.applyMove(s, { next: true }, 0, null, ctx);
+  assert.ok(s.result, '全部見せたら終わり');
+});
+
+test('edengon: お題を配るときは絵から始まる・抜けた人の番は埋まる', () => {
+  let s = edengon.init({ start: 'random' }, 4, seeded(3));
+  assert.equal(edengon.kindAt(s, 0), 'draw');
+  assert.ok(edengon.viewFor(s, 0).task.prev.text, 'お題が配られている');
+  s = edengon.applyMove(s, { resign: true }, 3, null, { hostSeat: 0 });
+  for (const p of [0, 1, 2]) { s = edengon.applyMove(s, line, p); s = edengon.applyMove(s, { submit: true }, p); }
+  assert.equal(s.step, 1);
+  assert.equal(s.chains[3].items[1].shapes.length, 0, '抜けた人の分は空の絵');
 });
 
 console.log(`\n${n} tests passed`);
