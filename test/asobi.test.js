@@ -595,6 +595,25 @@ test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
   assert.equal(s.linked, 2, 'り→りす→すいか はつながり、時間切れはつながらない');
 });
 
+test('eshiritori: 時間切れでも、言葉を書いてあって絵もあれば成立', () => {
+  let s = eshiritori.init({ laps: 1 }, 2, seeded(4));
+  s = { ...s, start: 'り', order: [0, 1], next: 1, turn: 0 };
+  assert.ok(eshiritori.quietMove({ draftWord: 'り' }), '入力中の言葉はみんなに送らない');
+  s = eshiritori.applyMove(s, line, 0);
+  s = eshiritori.applyMove(s, { draftWord: 'リス' }, 0);
+  assert.equal(eshiritori.viewFor(s, 1).draftWord, '', 'ほかの人には見えない');
+  clock = s.tickAt;
+  s = eshiritori.tick(s);
+  assert.equal(s.chain[0].word, 'りす', '書いてあった言葉で成立');
+  assert.match(s.history.at(-1), /書いてあった言葉で成立/);
+  // 言葉がだめ（「ん」で終わる）なら、これまでどおり時間切れ
+  s = eshiritori.applyMove(s, line, 1);
+  s = eshiritori.applyMove(s, { draftWord: 'すいかん' }, 1);
+  clock = s.tickAt;
+  s = eshiritori.tick(s);
+  assert.equal(s.chain[1].word, null);
+});
+
 test('edengon: お題→絵→言葉と伝言して、ホストが発表を進める', () => {
   let s = edengon.init({ start: 'write' }, 3);
   const ctx = { hostSeat: 0 };

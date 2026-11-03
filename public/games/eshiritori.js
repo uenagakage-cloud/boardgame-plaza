@@ -3,7 +3,8 @@
 // 流れ: 順番（毎回ランダム）に1人ずつ描く。描く人は「前の人の絵」を見て（最初の人はランダムに決まる「はじめの文字」から）、
 //       その言葉の最後の文字から始まる言葉を考えて描き、描いた言葉（ひらがな）をこっそり登録する。
 //       全員が決めた回数描いたら答え合わせ。絵と言葉を順に見せて、何回つながったかが記録。
-// 「ん」で終わる言葉は登録できない。時間切れのときは、そこまでの絵を言葉なしで出す（つながらない）。
+// 「ん」で終わる言葉は登録できない。時間切れのとき、入力欄に正しい言葉が書いてあって絵もあれば、そのまま出す（できた！を押したのと同じ）。
+// そうでなければ、そこまでの絵を言葉なしで出す（つながらない）。入力中の言葉は { draftWord } でサーバーに覚えておく（みんなには送らない）。
 // 濁点・半濁点（が↔か、ぱ↔は）と小さい文字（ゃ↔や）は同じとみなし、のばす音（ー）は1つ前の文字で考える。
 // 手: 描く手（drawing.js の { stroke } / { undo } / { clear }。描くたびにみんなに送る＝リアルタイムで見える）/ { submit: true, word: 'ことば' } / { resign: true }
 import { applyDraw, isDrawMove, normalizeText } from './drawing.js';
@@ -73,6 +74,7 @@ function nextTurn(s, rng) {
   } while (s.out[p]);
   s.turn = p;
   s.draft = [];
+  s.draftWord = '';
   s.endsAt = Date.now() + s.options.seconds * 1000;
   s.tickAt = s.endsAt;
 }
@@ -101,18 +103,24 @@ export const resultText = (s) => `答え合わせ！ ${s.chain.length}枚中 ${s
 
 function submit(s, seat, word, rng) {
   s.chain.push({ seat, word, shapes: s.draft });
-  s.history.push(word ? `${label(seat)} が描きました（${s.chain.length}/${s.total}）` : `${label(seat)} は時間切れ（${s.chain.length}/${s.total}）`);
+  const late = s.endsAt && Date.now() >= s.endsAt - 50;
+  s.history.push(!word ? `${label(seat)} は時間切れ（${s.chain.length}/${s.total}）` : late ? `${label(seat)} が描きました（時間切れ・書いてあった言葉で成立）（${s.chain.length}/${s.total}）` : `${label(seat)} が描きました（${s.chain.length}/${s.total}）`);
   nextTurn(s, rng);
 }
 
 export function tick(s, rng) {
   if (s.phase !== 'draw') return { ...s, tickAt: null };
   const ns = clone(s);
-  submit(ns, ns.turn, null, rng);
+  // 言葉を書いてあって絵もあれば、時間切れでも成立
+  let word = null;
+  try { word = s.draftWord && s.draft.some((x) => x.type !== 'erase') ? checkWord(s.draftWord) : null; } catch { word = null; }
+  submit(ns, ns.turn, word, rng);
   return ns;
 }
 
 export const canActOutOfTurn = () => true;
+// 入力中の言葉はみんなには送らない
+export const quietMove = (mv) => !!(mv && mv.draftWord != null);
 
 // 描いた絵はみんなに見せる（言葉は答え合わせまで見せない）。描いている人には前の人の絵を大きく見せる
 export function viewFor(s, seat) {
@@ -125,6 +133,7 @@ export function viewFor(s, seat) {
     chain: s.chain.map((e) => ({ seat: e.seat, shapes: e.shapes, len: e.word ? [...e.word].length : 0 })),
     prev: me && prev ? { seat: prev.seat, shapes: prev.shapes, len: prev.word ? [...prev.word].length : 0 } : null,
     draft: s.draft, // 描いている絵はリアルタイムでみんなに見せる
+    draftWord: me ? s.draftWord : '',
   };
 }
 
@@ -152,6 +161,7 @@ export function applyMove(s, mv, seat, rng) {
   }
   if (seat !== s.turn || s.phase !== 'draw') throw new Error('今はあなたの番ではありません');
   if (isDrawMove(mv)) { ns.draft = applyDraw(s.draft, mv); return ns; }
+  if (mv.draftWord != null) { ns.draftWord = String(mv.draftWord).slice(0, 20); return ns; }
   if (mv.submit) {
     const word = checkWord(mv.word);
     if (!s.draft.some((x) => x.type !== 'erase')) throw new Error('絵を描いてください');

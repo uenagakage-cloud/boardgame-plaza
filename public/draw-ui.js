@@ -161,12 +161,16 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
     el.replaceChildren(root);
     ui = { el, game, root, info, timer, top, padSlot, form, input, ok, actions, bottom, formKey: null };
     form.addEventListener('submit', (e) => { e.preventDefault(); ui.onSubmit?.(input.value.trim()); });
+    // 入力中の言葉を少しずつサーバーへ（絵しりとりで、時間切れでも書いてあれば成立する）
+    let typing = null;
+    input.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => ui.onType?.(input.value.trim()), 300); });
+    input.addEventListener('blur', () => { clearTimeout(typing); ui.onType?.(input.value.trim()); });
     return ui;
   }
   // 入力欄の中身は、お題が変わったときだけ空にする
   function setForm(key, show, placeholder, button) {
     ui.form.hidden = !show;
-    if (ui.formKey !== key) { ui.formKey = key; ui.input.value = ''; }
+    if (ui.formKey !== key) { ui.formKey = key; ui.input.value = ''; ui.sentWord = ''; }
     ui.input.placeholder = placeholder;
     ui.ok.textContent = button;
   }
@@ -197,6 +201,7 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
     const left = Math.max(0, Math.ceil((s.endsAt - now()) / 1000));
     ui.timer.textContent = `${left}秒`;
     ui.timer.classList.toggle('hurry', left <= 10);
+    if (left <= 2 && ui.onType) ui.onType(ui.input.value.trim()); // 時間切れの直前に、入力中の言葉を送っておく
   }
   setInterval(updateTimer, 250);
 
@@ -205,6 +210,7 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
     const s = v.state, me = v.you;
     skeleton(el, 'eshiritori');
     ui.state = s;
+    ui.onType = null; // 入力中の言葉を送るのは、自分が描いているときだけ
     updateTimer();
     const drawingNow = s.phase === 'draw' && me === s.turn;
     const done = s.chain.length;
@@ -246,13 +252,17 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
       showPad(true);
       pad.load(`${v.code}:${v.gameNo}:${done}`, s.draft, true);
       setForm(`${v.code}:${v.gameNo}:${done}`, true, '描いた言葉（ひらがな。例：りんご→ごりら）', 'できた！');
+      // 読み込み直したときは、サーバーに覚えてある言葉を入れ直す
+      const wkey = `${v.code}:${v.gameNo}:${done}`;
+      if (ui.restoreKey !== wkey) { ui.restoreKey = wkey; if (!ui.input.value && s.draftWord) { ui.input.value = s.draftWord; ui.sentWord = s.draftWord; } }
+      ui.onType = (word) => { if (word !== ui.sentWord) { ui.sentWord = word; sendMove({ draftWord: word }); } };
       ui.onSubmit = (word) => {
         let w;
         try { w = eshiritori.checkWord(word); } catch (e) { toast(e.message); return; }
         if (!pad.shapes.some((x) => x.type !== 'erase')) { toast('絵を描いてください'); return; }
         sendMove({ submit: true, word: w });
       };
-      ui.actions.append(h('span', 'muted small', '言葉は答え合わせまでほかの人には見えません。文字は絵に書かないでね'));
+      ui.actions.append(h('span', 'muted small', '言葉は答え合わせまでほかの人には見えません。文字は絵に書かないでね。言葉を書いておけば、「できた！」を押す前に時間切れになってもそのまま出せます'));
     } else {
       showPad(false);
       setForm('wait', false, '', '');
