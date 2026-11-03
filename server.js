@@ -50,6 +50,7 @@ import * as roulette from './public/games/roulette.js';
 import * as eshiritori from './public/games/eshiritori.js';
 import * as edengon from './public/games/edengon.js';
 import * as babanuki from './public/games/babanuki.js';
+import * as cave from './public/games/cave.js';
 import * as jijinuki from './public/games/jijinuki.js';
 import { simulate as towerPhysics } from './lib/towerbattle-physics.js';
 import { mountDino } from './dino/server/mount.js';
@@ -58,7 +59,7 @@ import { createRequire } from 'node:module';
 // ソウルバレッジ（Express + socket.io の CommonJS）は /soul/ の下で動かす
 const mountSoul = createRequire(import.meta.url)('./soul/server.cjs');
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, hbball, chinchiro, roulette };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, cave, hbball, chinchiro, roulette };
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -175,7 +176,7 @@ async function loadStatic(file) {
 
 // ディノラッシュ（リアルタイムのアクションゲーム）は別のしくみなので、/dino/ の下でまるごと動かす
 const dino = await mountDino('/dino');
-const cave = mountCaveRelay('/cave/ws');
+const caveRelay = mountCaveRelay('/cave/ws');
 
 const server = http.createServer(async (req, res) => {
   if (dino.handle(req, res)) return;
@@ -809,7 +810,7 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 // WebSocket: /dino/ws はディノラッシュ、それ以外はこのアプリ
 server.on('upgrade', (req, socket, head) => {
   if (dino.upgrade(req, socket, head)) return;
-  if (cave.upgrade(req, socket, head)) return;
+  if (caveRelay.upgrade(req, socket, head)) return;
   if (req.url.startsWith('/soul/')) return; // ソウルバレッジの socket.io が受け持つ
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });

@@ -44,11 +44,12 @@ import * as roulette from './games/roulette.js';
 import * as eshiritori from './games/eshiritori.js';
 import * as edengon from './games/edengon.js';
 import * as babanuki from './games/babanuki.js';
+import * as cave from './games/cave.js';
 import * as jijinuki from './games/jijinuki.js';
 import { asobiRenderers } from './asobi-ui.js';
 import { drawGameRenderers, drawShapes } from './draw-ui.js';
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, hbball, chinchiro, roulette };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, cave, hbball, chinchiro, roulette };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
 const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro","roulette","eshiritori","edengon"]);
 const GAME_INFO = {
@@ -63,6 +64,7 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  cave: { icon: '🧗', desc: '力をためてジャンプし、全10層の洞窟を登って脱出する。氷・斜面・宙吊りのはしごに注意。1人でも、最大8人の同時レースでも。スマホ対応（横画面がおすすめ）。' },
   babanuki: { icon: '🃏', desc: 'となりの人から1枚ずつ引いて、そろったら捨てる。最後にババ（ジョーカー）が残った人の負け。2〜6人・CPUあり。' },
   jijinuki: { icon: '👴', desc: 'ジョーカーなしのババ抜き。はじめに1枚だけ抜いておくので、どれがジジか最後まで分からない。2〜6人・CPUあり。' },
   eshiritori: { icon: '✏️', desc: '言葉は書かずに絵だけでしりとり。前の人の絵が何かを当てて、続きを描く。最後に答え合わせ。2〜8人。' },
@@ -273,8 +275,6 @@ const ACTION_GAMES = [
     desc: 'Undertale 風の弾幕サバイバル。ソロ・バトルロイヤル・5ステージのボスを協力して倒すストーリー。難易度は5段階（かんたん〜神）。スマホ対応。' },
   { key: 'walker', icon: '🦵', title: '関節ウォーカー', players: '1人', href: '/walker/',
     desc: '股関節・膝・足首を1つずつ動かして、50m先のゴールまで歩かせる。頭か胴体が地面に着いたら失敗。タイムを競おう。スマホ対応。' },
-  { key: 'cave', icon: '🧗', title: '洞窟脱出ジャンプ', players: '1人〜', href: '/cave/',
-    desc: '力をためてジャンプし、全10層の洞窟を登って脱出する。氷・斜面・宙吊りのはしごに注意。落ちたら下の層からやり直し。「みんなで」で最大8人の同時レースもできる。スマホ対応（横画面がおすすめ）。' },
 ];
 
 function renderLobby() {
@@ -315,7 +315,7 @@ function renderLobby() {
       head.append(h('span', 'card-icon', GAME_INFO[key].icon), h('h3', null, shortTitle),
         h('span', 'card-players', multi ? (g.minPlayers === 1 ? `1〜${g.maxPlayers}人` : `${g.minPlayers}〜${g.maxPlayers}人`) : '2人'));
       card.append(head, h('p', 'muted', GAME_INFO[key].desc));
-      groups[key === 'tanks' ? ACTION_GROUP : multi ? 1 : 0][1].append(card); // VSタンク（リアルタイムの撃ち合い）はアクションへ
+      groups[key === 'tanks' || key === 'cave' ? ACTION_GROUP : multi ? 1 : 0][1].append(card); // VSタンク・洞窟脱出ジャンプ（リアルタイム）はアクションへ
       let getOptions = () => ({});
       if (key === 'gungi') {
         const label = h('label', 'option-toggle');
@@ -2518,6 +2518,42 @@ function renderPaint(el, v) {
   }));
 }
 
+// ---------- 洞窟脱出ジャンプ ----------
+// ゲームは /cave/ を iframe で埋めこんで動かす。部屋の様子（スタートまでの時間・順位）を送り、ゴールの知らせを受け取る
+let caveFrame = null;
+function caveState(v) {
+  const s = v.state;
+  return {
+    type: 'cave-state', you: v.you, startIn: s.startAt - (Date.now() + serverOffset),
+    members: v.seats.map((p, i) => ({ seat: i, name: p ? p.name : '?', done: !!s.results[i], time: s.results[i] ? s.results[i].frames : 0, rank: s.rank.indexOf(i) + 1 || 0 })).filter((m, i) => !s.out[i]),
+  };
+}
+function renderCave(el, v) {
+  const s = v.state;
+  const key = `${v.code}:${v.gameNo}`;
+  if (!caveFrame || caveFrame.key !== key || !el.contains(caveFrame.root)) {
+    const root = h('div', 'cave-room');
+    const frame = h('iframe', 'cave-frame');
+    frame.title = '洞窟脱出ジャンプ';
+    frame.src = `/cave/?room=${encodeURIComponent(key)}&seat=${v.you}`;
+    frame.allow = 'autoplay';
+    const info = h('div', 'cave-info');
+    root.append(frame, info);
+    el.replaceChildren(root);
+    caveFrame = { key, root, frame, info };
+    frame.addEventListener('load', () => { try { frame.contentWindow.postMessage(caveState(view), location.origin); frame.focus(); } catch { /* まだ準備中 */ } });
+  }
+  try { caveFrame.frame.contentWindow.postMessage(caveState(v), location.origin); } catch { /* 読み込み中 */ }
+  // 順位（ゴールした順）
+  const rows = s.rank.map((p, i) => `${i + 1}位 ${v.seats[p]?.name || '?'}（${cave.fmtTime(s.results[p].frames)}）`);
+  caveFrame.info.replaceChildren(h('div', 'muted small', rows.length ? rows.join('　') : 'ゴールした人の順位がここに出ます。ゲームの画面をタップ（クリック）してから操作してください'));
+}
+addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !e.data || !view || view.game !== 'cave') return;
+  if (e.data.type === 'cave-ready' && caveFrame) caveFrame.frame.contentWindow.postMessage(caveState(view), location.origin);
+  if (e.data.type === 'cave-finish' && view.you >= 0 && !view.state.results[view.you]) sendMove({ finish: { jumps: e.data.jumps, falls: e.data.falls } });
+});
+
 // 過去のイラスト（サーバーに2日間保存された絵）
 function ptTimeAgo(t) {
   const m = Math.max(0, Math.floor((Date.now() + serverOffset - t) / 60000));
@@ -3938,7 +3974,7 @@ async function gnClick(here, ts, s, v, legal) {
   render();
 }
 
-const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, hagetaka: renderHagetaka, itchi: renderItchi };
+const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobblet, othello: renderOthello, wordbasket: renderWordBasket, catchoco: renderCatChoco, werewolf: renderWerewolf, ito: renderIto, daifugo: renderDaifugo, poker: renderPoker, blokus: renderBlokus, paint: renderPaint, skull: renderSkull, gungi: renderGungi, towerbattle: renderTower, hitblow: renderHitBlow, dotsboxes: renderDotsBoxes, asasore: renderAsasore, geister: renderGeister, mancala: renderMancala, connect4: renderConnect4, wordwolf: renderWordWolf, cave: renderCave, hagetaka: renderHagetaka, itchi: renderItchi };
 
 {
   const asobi = asobiRenderers({ h, hk, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset });

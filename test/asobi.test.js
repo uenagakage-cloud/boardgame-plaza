@@ -23,6 +23,7 @@ import * as edengon from '../public/games/edengon.js';
 import * as babanuki from '../public/games/babanuki.js';
 import * as jijinuki from '../public/games/jijinuki.js';
 import * as oldmaid from '../public/games/oldmaid.js';
+import * as cave from '../public/games/cave.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -703,6 +704,29 @@ test('jijinuki: 1枚抜いておき、その相方が最後に残る', () => {
   assert.equal(left.length, 1);
   assert.equal(left[0].r, end.removed.r, '残ったのは抜いたカードと同じ数字');
   assert.ok(jijinuki.viewFor(end, 0).removed, '終わったら見せる');
+});
+
+// ---------- 洞窟脱出ジャンプ（部屋） ----------
+test('cave: みんな同時にスタートし、ゴールした順に順位（タイムはサーバーが数える）', () => {
+  let s = cave.init({}, 3);
+  assert.equal(s.startAt, clock + cave.COUNTDOWN_MS);
+  clock = s.startAt + 60_000;
+  s = cave.applyMove(s, { finish: { jumps: 20, falls: 2 } }, 1);
+  assert.deepEqual(s.rank, [1]);
+  assert.equal(s.results[1].frames, 3600, '60秒');
+  assert.equal(cave.applyMove(s, { finish: {} }, 1), s, '2回目は無視');
+  s = cave.applyMove(s, { resign: true }, 2);
+  assert.ok(!s.result);
+  clock += 30_000;
+  s = cave.applyMove(s, { finish: { jumps: 5, falls: 0 } }, 0);
+  assert.ok(s.result, 'ゴールしていない人がいなくなったら終わり');
+  assert.equal(s.result.winner, 1);
+  // 1人でも遊べる・時間切れ
+  let solo = cave.init({}, 1);
+  clock = solo.tickAt;
+  solo = cave.tick(solo);
+  assert.ok(solo.result);
+  assert.equal(solo.result.winner, null);
 });
 
 console.log(`\n${n} tests passed`);
