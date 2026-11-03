@@ -235,13 +235,13 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
     if (drawingNow) {
       // 前の人の絵（最初の人は、はじめの文字）
       const prevBox = h('div', 'dr-prev');
-      if (s.prev) prevBox.append(h('div', 'dr-label', `${nameOf(v, s.prev.seat)} さんの絵（何の絵か考えて、最後の文字から始まる言葉を描こう）`), thumb(s.prev.shapes, 'dr-thumb prev'));
+      if (s.prev) prevBox.append(h('div', 'dr-label', `${nameOf(v, s.prev.seat)} さんの絵（何の絵か考えて、最後の文字から始まる言葉を描こう）`), thumb(s.prev.shapes, 'dr-thumb prev'), h('div', 'dr-len', lenText(s.prev.len)));
       else prevBox.append(h('div', 'dr-label', 'はじめの文字'), h('div', 'dr-word big', `「${s.start}」から始まる言葉を描こう`));
       ui.top.append(prevBox);
       // その前の絵も並べて、前の絵のお題を予想するヒントにする（新しい順）
       if (s.chain.length >= 2) {
         const older = s.chain.slice(0, -1).map((e, i) => [e, i]).reverse();
-        ui.top.append(logBox(v, `その前の絵（ヒントに）`, older.map(([e, i]) => [e, `${s.chain.length - i}つ前・${nameOf(v, e.seat)} さん`])));
+        ui.top.append(logBox(v, `その前の絵（ヒントに）`, older.map(([e, i]) => [e, `${s.chain.length - i}つ前・${nameOf(v, e.seat)} さん`, lenText(e.len)])));
       }
       showPad(true);
       pad.load(`${v.code}:${v.gameNo}:${done}`, s.draft, true);
@@ -259,20 +259,23 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
       // 描いているところをリアルタイムで見せる（言葉はひみつ）
       ui.top.append(h('div', 'dr-label', `✏️ ${nameOf(v, s.turn)} さんが描いています（リアルタイム）`), thumb(s.draft, 'dr-thumb live'));
       // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
-      if (s.chain.length) ui.top.append(logBox(v, `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`, s.chain.map((e, i) => [e, `${i + 1}. ${nameOf(v, e.seat)} さん`])));
+      if (s.chain.length) ui.top.append(logBox(v, `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`, s.chain.map((e, i) => [e, `${i + 1}. ${nameOf(v, e.seat)} さん`, lenText(e.len)])));
     }
     // 描く順に並べる（1周ごとにシャッフルし直す）
     ui.bottom.append(h('div', 'dr-label', `描く順番${s.options.laps > 1 ? `（${s.lap || 1}周目・1周ごとに入れかわる）` : ''}`),
       chips(v, (i) => [`${s.chain.filter((e) => e.seat === i).length}枚`, i === s.turn ? ' turn' : ''], s.order, (k) => `${k + 1}`));
   }
-  // 絵の一覧。items = [[{ shapes }, 説明], ...]
+  // お題の文字数（言葉はひみつ）: ○○○（3文字）
+  const lenText = (n) => (n ? `お題：${'○'.repeat(n)}（${n}文字）` : 'お題：なし（時間切れ）');
+  // 絵の一覧。items = [[{ shapes }, 説明, 文字数?], ...]
   function logBox(v, title, items) {
     const log = h('div', 'dr-log');
     log.append(h('div', 'dr-label', title));
     const grid = h('div', 'dr-log-grid');
-    for (const [e, text] of items) {
+    for (const [e, text, len] of items) {
       const card = h('div', 'dr-log-card');
       card.append(thumb(e.shapes), h('div', 'muted small', text));
+      if (len) card.append(h('div', 'dr-len small', len));
       grid.append(card);
     }
     log.append(grid);

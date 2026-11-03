@@ -121,8 +121,9 @@ export function viewFor(s, seat) {
   const prev = s.chain[s.chain.length - 1];
   return {
     ...s,
-    chain: s.chain.map((e) => ({ seat: e.seat, shapes: e.shapes })),
-    prev: me && prev ? { seat: prev.seat, shapes: prev.shapes } : null,
+    // 言葉は見せず、文字数だけ（○○○）。時間切れは 0
+    chain: s.chain.map((e) => ({ seat: e.seat, shapes: e.shapes, len: e.word ? [...e.word].length : 0 })),
+    prev: me && prev ? { seat: prev.seat, shapes: prev.shapes, len: prev.word ? [...prev.word].length : 0 } : null,
     draft: s.draft, // 描いている絵はリアルタイムでみんなに見せる
   };
 }
