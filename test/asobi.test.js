@@ -20,6 +20,9 @@ import * as chinchiro from '../public/games/chinchiro.js';
 import * as roulette from '../public/games/roulette.js';
 import * as eshiritori from '../public/games/eshiritori.js';
 import * as edengon from '../public/games/edengon.js';
+import * as babanuki from '../public/games/babanuki.js';
+import * as jijinuki from '../public/games/jijinuki.js';
+import * as oldmaid from '../public/games/oldmaid.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -71,7 +74,7 @@ function playOut(mod, players, options = {}, seed = 1, maxSteps = 20000) {
 const allCpu = [
   [morris, 2], [hex, 2], [checkers, 2], [domino, 2], [domino, 4], [ccheckers, 2], [ccheckers, 3], [ccheckers, 6],
   [ludo, 2], [ludo, 4], [sevens, 3], [sevens, 6], [speed, 2], [memory, 1], [memory, 3], [blackjack, 1], [blackjack, 4],
-  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3], [chinchiro, 2], [chinchiro, 5], [roulette, 1], [roulette, 4],
+  [lastcard, 3], [pigtail, 4], [yacht, 1], [yacht, 3], [koikoi, 2], [tanks, 2], [tanks, 4], [hbball, 1], [hbball, 3], [chinchiro, 2], [chinchiro, 5], [roulette, 1], [roulette, 4], [babanuki, 2], [babanuki, 4], [babanuki, 6], [jijinuki, 3], [jijinuki, 5],
 ];
 for (const [mod, players] of allCpu) {
   test(`${mod.id}: ${players}人の CPU 対戦が最後まで進む`, () => {
@@ -655,6 +658,51 @@ test('edengon: お題を配るときは絵から始まる・抜けた人の番�
   for (const p of [0, 1, 2]) { s = edengon.applyMove(s, line, p); s = edengon.applyMove(s, { submit: true }, p); }
   assert.equal(s.step, 1);
   assert.equal(s.chains[3].items[1].shapes.length, 0, '抜けた人の分は空の絵');
+});
+
+// ---------- ババ抜き・ジジ抜き ----------
+test('babanuki: 配ったときにペアを捨て、ジョーカーは最後まで残る', () => {
+  for (let seed = 1; seed <= 10; seed++) {
+    const s = babanuki.init({}, 4, seeded(seed));
+    for (const h of s.hands) {
+      const ranks = h.filter((c) => !oldmaid.isJoker(c)).map((c) => c.r);
+      assert.equal(new Set(ranks).size, ranks.length, '同じ数字は残っていない');
+    }
+    assert.equal(s.hands.flat().filter(oldmaid.isJoker).length, 1);
+    assert.equal(s.hands.flat().length + s.discards.length * 2, 53);
+    const v = babanuki.viewFor(s, 0);
+    assert.equal(v.hands[1], null, 'ほかの人の手札は見えない');
+    assert.equal(v.handCounts[1], s.hands[1].length);
+  }
+  const end = playOut(babanuki, 4, {}, 7);
+  assert.ok(oldmaid.isJoker(end.hands[end.loser][0]) && end.hands[end.loser].length === 1, '負けた人はババだけ持っている');
+  assert.equal(end.rank.length, 3);
+});
+
+test('babanuki: 引いて、そろったら捨て、引かれた人が次に引く', () => {
+  const c = (id, s, r) => ({ id, s, r });
+  let s = { ...babanuki.init({}, 3, seeded(1)), hands: [[c(1, 's', 5), c(2, 'h', 9)], [c(3, 'd', 5), oldmaid.JOKER], [c(4, 'c', 9), c(5, 's', 2)]], turn: 0, rank: [], discards: [] };
+  s = babanuki.applyMove(s, { draw: 0 }, 0);
+  assert.deepEqual(s.hands[0].map((x) => x.id), [2], '5がそろって捨てた');
+  assert.equal(s.discards.length, 1);
+  assert.equal(s.turn, 1, '引かれた人が次に引く');
+  assert.equal(babanuki.viewFor(s, 2).last.card, null, '何を引いたかは本人たちだけ');
+  assert.equal(babanuki.viewFor(s, 1).last.card.id, 3);
+  assert.throws(() => babanuki.applyMove(s, { draw: 0 }, 0), /あなたの番ではありません/);
+  s = babanuki.applyMove(s, { shuffle: true }, 0, seeded(2));
+  assert.equal(s.hands[0].length, 1, '手札はいつでも混ぜられる');
+});
+
+test('jijinuki: 1枚抜いておき、その相方が最後に残る', () => {
+  const s = jijinuki.init({}, 3, seeded(5));
+  assert.ok(s.removed, '1枚抜いてある');
+  assert.equal(s.hands.flat().filter(oldmaid.isJoker).length, 0, 'ジョーカーはない');
+  assert.equal(jijinuki.viewFor(s, 0).removed, null, '抜いたカードは終わるまでひみつ');
+  const end = playOut(jijinuki, 3, {}, 5);
+  const left = end.hands[end.loser];
+  assert.equal(left.length, 1);
+  assert.equal(left[0].r, end.removed.r, '残ったのは抜いたカードと同じ数字');
+  assert.ok(jijinuki.viewFor(end, 0).removed, '終わったら見せる');
 });
 
 console.log(`\n${n} tests passed`);

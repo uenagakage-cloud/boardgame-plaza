@@ -43,10 +43,12 @@ import * as chinchiro from './games/chinchiro.js';
 import * as roulette from './games/roulette.js';
 import * as eshiritori from './games/eshiritori.js';
 import * as edengon from './games/edengon.js';
+import * as babanuki from './games/babanuki.js';
+import * as jijinuki from './games/jijinuki.js';
 import { asobiRenderers } from './asobi-ui.js';
 import { drawGameRenderers, drawShapes } from './draw-ui.js';
 
-const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball, chinchiro, roulette };
+const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, hbball, chinchiro, roulette };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
 const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro","roulette","eshiritori","edengon"]);
 const GAME_INFO = {
@@ -61,6 +63,8 @@ const GAME_INFO = {
   daifugo: { icon: '👑', desc: '強いカードを出して先に手札をなくそう。8切り・革命あり。' },
   poker: { icon: '♠', desc: 'テキサスホールデム。チップを賭けて役で勝負。' },
   blokus: { icon: '🟦', desc: '角どうしをつなげてピースを置き、陣地を広げよう。2〜4人。' },
+  babanuki: { icon: '🃏', desc: 'となりの人から1枚ずつ引いて、そろったら捨てる。最後にババ（ジョーカー）が残った人の負け。2〜6人・CPUあり。' },
+  jijinuki: { icon: '👴', desc: 'ジョーカーなしのババ抜き。はじめに1枚だけ抜いておくので、どれがジジか最後まで分からない。2〜6人・CPUあり。' },
   eshiritori: { icon: '✏️', desc: '言葉は書かずに絵だけでしりとり。前の人の絵が何かを当てて、続きを描く。最後に答え合わせ。2〜8人。' },
   edengon: { icon: '📨', desc: 'お題→絵→言葉→絵…と伝言していく。最後に、どう変わっていったかをみんなで見る。3〜8人。' },
   itchi: { icon: '🤝', desc: 'お題に全員で同じ答えを書けたら一致！ 何問そろうか、協力して以心伝心を目指す。2〜8人。' },
@@ -4006,6 +4010,8 @@ const FX_RULES = {
   wordwolf: (e) => (/話し合いスタート/.test(e) ? ['話し合いスタート！', 'info'] : /^投票の時間/.test(e) ? ['投票の時間！', 'info']
     : /が処刑されました/.test(e) ? [`⚔ ${e}`, 'big'] : /→ 正解！ 逆転/.test(e) ? ['ウルフの逆転勝ち！', 'big']
     : /→ ウルフの勝ち/.test(e) ? ['🐺 ウルフの勝ち', 'bad'] : /→ 市民の勝ち/.test(e) ? ['市民の勝ち！', 'good'] : null),
+  babanuki: (e) => (/あがり！/.test(e) ? [e.replace(/（.*$/, ' あがり！'), 'good'] : /の負け/.test(e) ? ['🃏 ' + e, 'big'] : /ペアで捨てた/.test(e) ? ['ペア！', 'info'] : null),
+  jijinuki: (e) => (/あがり！/.test(e) ? [e.replace(/（.*$/, ' あがり！'), 'good'] : /の負け/.test(e) ? ['👴 ' + e, 'big'] : /ペアで捨てた/.test(e) ? ['ペア！', 'info'] : null),
   eshiritori: (e) => (/^答え合わせ/.test(e) ? ['✏️ 答え合わせ！', 'big'] : /時間切れ/.test(e) ? ['時間切れ！', 'bad'] : null),
   edengon: (e) => (/^みんなの伝言を発表/.test(e) ? ['📨 伝言の発表！', 'big'] : /^\d+\/\d+：/.test(e) ? [e.replace(/^\d+\/\d+：/, ''), 'info'] : null),
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),

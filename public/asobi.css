@@ -476,3 +476,27 @@
 .rl-mini { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: .72rem; font-weight: 800; }
 .rl-mini.red { background: #d62f2f; } .rl-mini.black { background: #222; } .rl-mini.green { background: #1c8a43; }
 @media (max-width: 600px) { .rl-grid { grid-template-rows: repeat(3, 34px) 30px 30px; } .rl-cell { font-size: .68rem; } }
+
+/* ---------- ババ抜き・ジジ抜き ---------- */
+.om { width: min(100%, 760px); display: grid; gap: 12px; }
+.om-last { text-align: center; font-weight: 700; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px; }
+.om-good { color: #1f7a4b; font-weight: 800; text-align: center; }
+.om-bad { color: #c0392b; font-weight: 900; text-align: center; font-size: 1.1rem; }
+.om-target { display: grid; gap: 8px; background: radial-gradient(circle at 50% 40%, #2e7d4f, #1b5434); border-radius: 16px; padding: 14px; color: #fff; box-shadow: var(--shadow); }
+.om-target .cc-hand-title { color: #fff; }
+.om-target .muted { color: rgba(255, 255, 255, .8); }
+.om-fan { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 16px; }
+.om-card { border: 0; padding: 0; background: transparent; border-radius: 8px; transition: transform .12s; }
+.om-card.can { cursor: pointer; }
+.om-card.can:hover { transform: translateY(-6px); }
+.om-card.sel { transform: translateY(-14px) scale(1.12); }
+.om-card.sel .pcard { box-shadow: 0 0 0 4px #ffd43b, 0 6px 12px rgba(0, 0, 0, .45); }
+.om-discards { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.om-pair { display: inline-flex; gap: 2px; }
+.om-hand-title { display: flex; align-items: center; gap: 10px; }
+.om-result { display: grid; gap: 8px; justify-items: center; }
+.om-rank { font-weight: 800; }
+.om-removed { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.om-lose { font-size: .7rem; font-weight: 800; color: #fff; background: #c0392b; border-radius: 99px; padding: 0 7px; }
+.pcard.joker { color: #7b2ff7; }
+.pcard.joker .pc-rank { font-size: .55em; letter-spacing: -.02em; }

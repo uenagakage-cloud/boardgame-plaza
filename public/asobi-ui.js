@@ -18,6 +18,7 @@ import * as tanks from './games/tanks.js';
 import * as hbball from './games/hbball.js';
 import * as chinchiro from './games/chinchiro.js';
 import * as roulette from './games/roulette.js';
+import * as oldmaid from './games/oldmaid.js';
 import { SUIT_MARK, RANK_LABEL } from './games/util.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -87,6 +88,7 @@ export function asobiRenderers(api) {
   // トランプ（A=1）
   function card(c, extra = '') {
     if (!c) return h('span', 'pcard back ' + extra);
+    if (c.s === 'j') { const j = h('span', `pcard joker ${extra}`); j.append(h('span', 'pc-rank', 'JOKER'), h('span', 'pc-suit', '🃏')); return j; }
     const red = c.s === 'h' || c.s === 'd';
     const e = h('span', `pcard ${red ? 'red' : 'black'} ${extra}`);
     e.append(h('span', 'pc-rank', RANK_LABEL[c.r]), h('span', 'pc-suit', SUIT_MARK[c.s]));
@@ -780,6 +782,105 @@ export function asobiRenderers(api) {
     el.replaceChildren(root);
   }
 
+  // ================= ババ抜き・ジジ抜き =================
+  // まちがって引かないよう、1回目のタップは選ぶだけ。同じカードをもう一度タップするか「このカードを引く」で決まる
+  function renderOldMaid(el, v, act) {
+    const s = v.state, me = v.you, L = local(v);
+    const tgt = oldmaid.target(s);
+    const baba = s.mode === 'baba';
+    const root = h('div', 'om');
+    root.append(players(v, (i) => {
+      const r = s.rank.indexOf(i);
+      return r >= 0 ? `${r + 1}位で抜けた` : `${s.handCounts[i]}枚`;
+    }, null, (chip, i) => {
+      if (!s.result && i === tgt) chip.append(h('span', 'wb-vote', '引かれる人'));
+      if (s.result && i === s.loser) chip.append(h('span', 'om-lose', baba ? 'ババ' : 'ジジ'));
+    }));
+    // 直前に引いたもの（何を引いたかは、引いた人と引かれた人だけに見える）
+    const la = s.last;
+    if (la && !s.result) {
+      const box = h('div', 'om-last');
+      const what = la.card ? oldmaid.name(la.card) : '1枚';
+      if (me === la.to) {
+        if (la.card && oldmaid.isJoker(la.card)) box.append(h('div', 'om-bad', '😱 ババを引いてしまった…'));
+        else if (la.pair) box.append(h('div', 'om-good', `✨ ${what} を引いてペア！ 2枚捨てた`));
+        else box.append(h('div', null, `${nameOf(v, la.from)} から ${what} を引いた`));
+      } else if (me === la.from) {
+        if (la.card && oldmaid.isJoker(la.card)) box.append(h('div', 'om-good', '😏 ババを引かせた！'));
+        else box.append(h('div', null, `${nameOf(v, la.to)} に ${what} を引かれた${la.pair ? '（ペアで捨てられた）' : ''}`));
+      } else box.append(h('div', null, `${nameOf(v, la.to)} が ${nameOf(v, la.from)} から1枚引いた${la.pair ? `（ペア！ ${la.pair.map((c) => oldmaid.name(c)).join('・')} を捨てた）` : ''}`));
+      root.append(box);
+    }
+    // 引かれる人の手札（裏向き）
+    if (!s.result && tgt >= 0) {
+      const area = h('div', 'om-target' + (act ? ' active' : ''));
+      area.append(h('div', 'cc-hand-title', act ? `${nameOf(v, tgt)} さんの手札から1枚えらんで引こう（${s.handCounts[tgt]}枚）` : `${nameOf(v, s.turn)} さんが ${nameOf(v, tgt)} さんの手札から引いています（${s.handCounts[tgt]}枚）`));
+      const row = h('div', 'om-fan');
+      const faces = s.hands[tgt]; // 観戦者・抜けた人には表が見える
+      for (let i = 0; i < s.handCounts[tgt]; i++) {
+        const on = act && L.sel === i;
+        const b = h('button', 'om-card' + (on ? ' sel' : '') + (act ? ' can' : ''));
+        b.append(card(faces ? faces[i] : null));
+        b.disabled = !act;
+        b.onclick = () => {
+          if (L.sel === i) { L.sel = null; sendMove({ draw: i }); return; }
+          L.sel = i;
+          render();
+        };
+        row.append(b);
+      }
+      area.append(row);
+      if (act) {
+        const bar = h('div', 'uno-actions');
+        if (L.sel != null) {
+          const go = hk(h('button', 'btn primary pg-go', 'このカードを引く'), 'space enter');
+          go.onclick = () => { const i = L.sel; L.sel = null; sendMove({ draw: i }); };
+          const cancel = hk(h('button', 'btn', 'やめる'), 'escape');
+          cancel.onclick = () => { L.sel = null; render(); };
+          bar.append(go, cancel);
+        } else {
+          const rnd = hk(h('button', 'btn', 'どれか1枚引く'), 'space enter');
+          rnd.onclick = () => sendMove({ draw: Math.floor(Math.random() * s.handCounts[tgt]) });
+          bar.append(rnd, h('span', 'muted small', 'カードをタップして選び、もう一度タップで引く'));
+        }
+        area.append(bar);
+      }
+      root.append(area);
+    }
+    // 捨てたペア
+    const disc = h('div', 'om-discards');
+    disc.append(h('span', 'muted small', `捨てたペア ${s.discards.length}組`));
+    for (const pair of s.discards.slice(-3)) { const p = h('span', 'om-pair'); p.append(...pair.map((c) => card(c, 'small'))); disc.append(p); }
+    root.append(disc);
+    // 結果
+    if (s.result) {
+      const res = h('div', 'om-result');
+      res.append(h('div', 'om-rank', s.rank.map((p, i) => `${i + 1}位 ${nameOf(v, p)}`).join('　')));
+      if (s.loser >= 0) res.append(h('div', 'om-bad', `${nameOf(v, s.loser)} さんの負け（最後に${baba ? 'ババ' : 'ジジ'}が残った）`));
+      if (!baba && s.removed) { const r = h('div', 'om-removed'); r.append(h('span', null, 'はじめに抜いておいたカード：'), card(s.removed)); res.append(r); }
+      root.append(res);
+    }
+    // 自分の手札
+    if (me >= 0 && s.hands[me] && s.hands[me].length) {
+      const hand = h('div', 'uno-hand om-hand');
+      for (const c of s.hands[me]) hand.append(card(c));
+      const title = h('div', 'cc-hand-title om-hand-title');
+      title.append(h('span', null, `あなたの手札（${s.hands[me].length}枚）`));
+      if (!s.result && !s.out[me]) {
+        const mix = hk(h('button', 'btn small', '🔀 混ぜる'), 's');
+        mix.onclick = () => sendMove({ shuffle: true });
+        title.append(mix);
+      }
+      root.append(title, hand);
+    } else if (me >= 0 && !s.result && s.rank.includes(me)) root.append(h('div', 'om-good', `あがり！ ${s.rank.indexOf(me) + 1}位で抜けました。みんなの手札が見えます`));
+    if (s.seesAll && !s.result) {
+      const others = [...Array(s.players).keys()].filter((i) => i !== me && s.hands[i] && s.hands[i].length);
+      const p = revealPanel(v, others.map((i) => [i, s.hands[i].map((c) => card(c, 'small'))]));
+      if (p) root.append(p);
+    }
+    el.replaceChildren(root);
+  }
+
   // ================= ヨット =================
   const DIE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
   function renderYacht(el, v, act) {
@@ -1400,6 +1501,6 @@ export function asobiRenderers(api) {
   return { clear, renderers: {
     morris: renderMorris, hex: renderHex, checkers: renderCheckers, domino: renderDomino, ccheckers: renderCChecker, ludo: renderLudo,
     sevens: renderSevens, speed: renderSpeed, memory: renderMemory, blackjack: renderBlackjack, lastcard: renderLastcard,
-    pigtail: renderPigtail, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball, chinchiro: renderChinchiro, roulette: renderRoulette,
+    pigtail: renderPigtail, babanuki: renderOldMaid, jijinuki: renderOldMaid, yacht: renderYacht, koikoi: renderKoikoi, tanks: renderTanks, hbball: renderHbball, chinchiro: renderChinchiro, roulette: renderRoulette,
   } };
 }
