@@ -209,17 +209,23 @@
 .uno-hand-card.drawn .lc-card { box-shadow: 0 0 0 3px #ffd84a, 0 2px 4px rgba(0, 0, 0, .35); }
 
 /* ---------- ぶたのしっぽ ---------- */
-.pg { width: min(100%, 560px); display: grid; gap: 12px; }
+.pg { width: min(100%, 640px); display: grid; gap: 12px; }
 .pg-ring { position: relative; width: 100%; aspect-ratio: 1; background: radial-gradient(circle at 50% 50%, #2e7d4f, #1b5434); border-radius: 50%; box-shadow: var(--shadow); }
 .pg-slot { position: absolute; border: 0; padding: 0; background: transparent; }
-.pg-slot .pcard.small { width: 22px; height: 32px; }
+.pg-slot .pcard.small { width: 34px; height: 50px; transition: box-shadow .12s; }
+.pg-slot { transition: left .12s, top .12s, transform .12s; z-index: 1; }
+.pg-slot.sel { z-index: 3; }
+.pg-slot.sel .pcard { box-shadow: 0 0 0 3px #ffd43b, 0 4px 10px rgba(0, 0, 0, .5); }
+.pg-hand .uno-hand-card.sel { transform: translateY(-10px); }
+.pg-hand .uno-hand-card.sel .pcard { box-shadow: 0 0 0 4px #ffd43b; }
+.pg-go { font-size: 1.1rem; padding: 10px 22px; }
 .pg-slot.can { cursor: pointer; }
 .pg-slot.can:hover .pcard { box-shadow: 0 0 0 2px #ffd43b; }
 .pg-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 6px; color: #fff; text-align: center; }
 .pg-pile { position: relative; width: 70px; height: 100px; display: grid; place-items: center; }
 .pg-pile .pcard { position: absolute; }
 .pg-took { font-weight: 900; color: #ffd43b; }
-@media (max-width: 600px) { .pg-slot .pcard.small { width: 16px; height: 24px; } .pg-slot .pcard .pc-rank, .pg-slot .pcard .pc-suit { display: none; } }
+@media (max-width: 600px) { .pg-slot .pcard.small { width: 24px; height: 36px; } .pg-slot .pcard .pc-rank, .pg-slot .pcard .pc-suit { display: none; } }
 
 /* ---------- ヨット ---------- */
 .yt { width: min(100%, 620px); display: grid; gap: 12px; }
@@ -364,7 +370,7 @@
   .yt > * { grid-column: 1; }
   .yt > .yt-sheet { grid-column: 2; grid-row: 1 / span 8; }
   .yt-die { width: 54px; height: 54px; font-size: 2.6rem; }
-  .pg { width: min(100%, 560px, calc(100vh - 300px)); }
+  .pg { width: min(100%, 640px, calc(100vh - 260px)); }
 }
 
 /* ---------- チンチロ ---------- */

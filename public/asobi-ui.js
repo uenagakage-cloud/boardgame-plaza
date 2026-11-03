@@ -707,8 +707,16 @@ export function asobiRenderers(api) {
   }
 
   // ================= ぶたのしっぽ =================
+  // まちがって押さないよう、1回目のタップは「選ぶ」だけ。同じカードをもう一度タップするか、「めくる／出す」ボタンで決まる
   function renderPigtail(el, v, act) {
-    const s = v.state, me = v.you;
+    const s = v.state, me = v.you, L = local(v);
+    const sel = act ? L.sel : null; // { ring: 位置 } か { hand: カードid }
+    const choose1 = (x) => {
+      const same = sel && sel.ring === x.ring && sel.hand === x.hand;
+      if (same) { L.sel = null; sendMove(x.ring != null ? { flip: x.ring } : { play: x.hand }); return; }
+      L.sel = x;
+      render();
+    };
     const root = h('div', 'pg');
     root.append(players(v, (i) => `${s.handCounts[i]}枚`));
     const ring = h('div', 'pg-ring');
@@ -716,13 +724,16 @@ export function asobiRenderers(api) {
     s.ring.forEach((c, i) => {
       if (!c) return;
       const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const b = h('button', 'pg-slot' + (act ? ' can' : ''));
-      b.style.left = `${50 + Math.cos(a) * 43}%`;
-      b.style.top = `${50 + Math.sin(a) * 43}%`;
-      b.style.transform = `translate(-50%, -50%) rotate(${a + Math.PI / 2}rad)`;
+      const on = sel && sel.ring === i;
+      const b = h('button', 'pg-slot' + (act ? ' can' : '') + (on ? ' sel' : ''));
+      // 選んだカードは少し内側に出して大きくする
+      const r = on ? 37 : 43;
+      b.style.left = `${50 + Math.cos(a) * r}%`;
+      b.style.top = `${50 + Math.sin(a) * r}%`;
+      b.style.transform = `translate(-50%, -50%) rotate(${a + Math.PI / 2}rad)${on ? ' scale(1.5)' : ''}`;
       b.append(card(null, 'small'));
       b.disabled = !act;
-      b.onclick = () => sendMove({ flip: i });
+      b.onclick = () => choose1({ ring: i });
       ring.append(b);
     });
     const mid = h('div', 'pg-mid');
@@ -734,28 +745,38 @@ export function asobiRenderers(api) {
     ring.append(mid);
     root.append(ring);
     if (act) {
-      // キーボード・マウスで、輪のどれか1枚をめくる
-      const flip = hk(h('button', 'btn primary', '輪からどれか1枚めくる'), 'space enter');
-      const left = s.ring.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
-      flip.onclick = () => sendMove({ flip: left[Math.floor(Math.random() * left.length)] });
       const bar = h('div', 'uno-actions');
-      bar.append(flip);
+      if (sel) {
+        // 選んだカードで決める
+        const go = hk(h('button', 'btn primary pg-go', sel.ring != null ? 'このカードをめくる' : 'この手札を出す'), 'space enter');
+        go.onclick = () => choose1(sel);
+        const cancel = hk(h('button', 'btn', 'やめる'), 'escape');
+        cancel.onclick = () => { L.sel = null; render(); };
+        bar.append(go, cancel);
+      } else {
+        // キーボード・マウスで、輪のどれか1枚をめくる
+        const flip = hk(h('button', 'btn primary', '輪からどれか1枚めくる'), 'space enter');
+        const left = s.ring.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
+        flip.onclick = () => sendMove({ flip: left[Math.floor(Math.random() * left.length)] });
+        bar.append(flip);
+      }
       root.append(bar);
     }
     if (me >= 0 && s.hands[me] && s.hands[me].length) {
-      const hand = h('div', 'uno-hand');
+      const hand = h('div', 'uno-hand pg-hand');
       let nk = 0;
       for (const c of s.hands[me]) {
-        const b = h('button', 'uno-hand-card' + (act ? ' playable' : ''));
-        b.append(card(c, 'small'));
+        const on = sel && sel.hand === c.id;
+        const b = h('button', 'uno-hand-card' + (act ? ' playable' : '') + (on ? ' sel' : ''));
+        b.append(card(c));
         b.disabled = !act;
         if (act && nk < 9) hk(b, String(++nk));
-        b.onclick = () => sendMove({ play: c.id });
+        b.onclick = () => choose1({ hand: c.id });
         hand.append(b);
       }
-      root.append(h('div', 'cc-hand-title', `あなたの手札（${s.hands[me].length}枚・タップで出す）`), hand);
+      root.append(h('div', 'cc-hand-title', `あなたの手札（${s.hands[me].length}枚・タップで選んでから出す）`), hand);
     }
-    if (act) root.append(h('p', 'muted small as-help', '輪のカードをタップしてめくります。真ん中の一番上とマークか数字が同じだと、山を全部引き取り…'));
+    if (act) root.append(h('p', 'muted small as-help', sel ? 'もう一度同じカードをタップするか「めくる／出す」で決定。ほかのカードをタップすると選び直し' : '輪のカードか手札をタップして選び、もう一度タップ（または下のボタン）で決定。真ん中の一番上とマークか数字が同じだと、山を全部引き取り…'));
     el.replaceChildren(root);
   }
 
