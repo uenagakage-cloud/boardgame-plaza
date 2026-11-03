@@ -174,11 +174,14 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
     if (show && pad.root.parentNode !== ui.padSlot) ui.padSlot.append(pad.root);
     if (!show && pad.root.parentNode) pad.root.remove();
   }
-  function chips(v, label) {
+  // order: 並べる順（なければ席の順）
+  function chips(v, label, order = v.seats.map((_, i) => i), prefix) {
     const box = h('div', 'uno-players dr-chips');
-    v.seats.forEach((p, i) => {
+    order.forEach((i, k) => {
+      const p = v.seats[i];
       const [text, cls] = label(i);
       const chip = h('div', 'wb-player' + (i === v.you ? ' me' : '') + (v.state.out[i] ? ' out' : '') + (cls || ''));
+      if (prefix) chip.append(h('span', 'dr-order', prefix(k)));
       chip.append(h('span', 'pname', p ? p.name : '?'));
       if (text) chip.append(h('span', 'wb-count', text));
       box.append(chip);
@@ -258,7 +261,9 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery
       // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
       if (s.chain.length) ui.top.append(logBox(v, `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`, s.chain.map((e, i) => [e, `${i + 1}. ${nameOf(v, e.seat)} さん`])));
     }
-    ui.bottom.append(chips(v, (i) => [`${s.chain.filter((e) => e.seat === i).length}枚`, i === s.turn ? ' turn' : '']));
+    // 描く順に並べる（1周ごとにシャッフルし直す）
+    ui.bottom.append(h('div', 'dr-label', `描く順番${s.options.laps > 1 ? `（${s.lap || 1}周目・1周ごとに入れかわる）` : ''}`),
+      chips(v, (i) => [`${s.chain.filter((e) => e.seat === i).length}枚`, i === s.turn ? ' turn' : ''], s.order, (k) => `${k + 1}`));
   }
   // 絵の一覧。items = [[{ shapes }, 説明], ...]
   function logBox(v, title, items) {

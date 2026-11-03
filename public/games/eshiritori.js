@@ -59,19 +59,32 @@ export function init(options, players = 2, rng) {
     total: players * opts.laps, chain: [], turn: -1, draft: [], phase: 'draw',
     endsAt: null, tickAt: null, result: null, history: [],
   };
-  nextTurn(s);
+  nextTurn(s, rng);
   return s;
 }
 
-function nextTurn(s) {
+function nextTurn(s, rng) {
   if (s.chain.length >= s.total || active(s).length < 2 && s.chain.length) { finish(s); return; }
-  // 決めた順番（ランダム）でまわす。抜けた人は飛ばす
+  // 決めた順番（ランダム）でまわす。抜けた人は飛ばす。1周したら順番をシャッフルし直す（同じ人が続けて描かないように）
   let p;
-  do p = s.order[s.next++ % s.players]; while (s.out[p]);
+  do {
+    if (s.next >= s.players) newLap(s, rng);
+    p = s.order[s.next++];
+  } while (s.out[p]);
   s.turn = p;
   s.draft = [];
   s.endsAt = Date.now() + s.options.seconds * 1000;
   s.tickAt = s.endsAt;
+}
+
+function newLap(s, rng) {
+  const last = s.turn;
+  for (let tries = 0; tries < 20; tries++) {
+    s.order = shuffle(s.order.slice(), rng);
+    if (s.order[0] !== last) break;
+  }
+  s.next = 0;
+  s.lap = (s.lap || 1) + 1;
 }
 
 function finish(s) {
@@ -86,16 +99,16 @@ function finish(s) {
 
 export const resultText = (s) => `答え合わせ！ ${s.chain.length}枚中 ${s.linked}回つながりました`;
 
-function submit(s, seat, word) {
+function submit(s, seat, word, rng) {
   s.chain.push({ seat, word, shapes: s.draft });
   s.history.push(word ? `${label(seat)} が描きました（${s.chain.length}/${s.total}）` : `${label(seat)} は時間切れ（${s.chain.length}/${s.total}）`);
-  nextTurn(s);
+  nextTurn(s, rng);
 }
 
-export function tick(s) {
+export function tick(s, rng) {
   if (s.phase !== 'draw') return { ...s, tickAt: null };
   const ns = clone(s);
-  submit(ns, ns.turn, null);
+  submit(ns, ns.turn, null, rng);
   return ns;
 }
 
@@ -124,7 +137,7 @@ export const scoreOf = (s, seat) => `${s.chain.filter((e) => e.seat === seat).le
 
 const clone = (s) => ({ ...s, out: s.out.slice(), chain: s.chain.slice(), history: s.history.slice() });
 
-export function applyMove(s, mv, seat) {
+export function applyMove(s, mv, seat, rng) {
   if (s.result) throw new Error('ゲームは終了しています');
   mv = mv || {};
   if (s.out[seat]) throw new Error('抜けています');
@@ -133,7 +146,7 @@ export function applyMove(s, mv, seat) {
     ns.out[seat] = true;
     ns.history.push(`${label(seat)} が抜けました`);
     if (active(ns).length < 2) finish(ns);
-    else if (seat === s.turn) nextTurn(ns);
+    else if (seat === s.turn) nextTurn(ns, rng);
     return ns;
   }
   if (seat !== s.turn || s.phase !== 'draw') throw new Error('今はあなたの番ではありません');
@@ -141,7 +154,7 @@ export function applyMove(s, mv, seat) {
   if (mv.submit) {
     const word = checkWord(mv.word);
     if (!s.draft.some((x) => x.type !== 'erase')) throw new Error('絵を描いてください');
-    submit(ns, seat, word);
+    submit(ns, seat, word, rng);
     return ns;
   }
   throw new Error('不明な操作です');

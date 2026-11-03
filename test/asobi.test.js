@@ -549,6 +549,24 @@ test('eshiritori: はじめの文字と順番は毎回ランダム', () => {
   assert.ok(starts.size > 5 && firsts.size > 1, 'いろいろ変わる');
 });
 
+test('eshiritori: 1周ごとに順番をシャッフルし直し、同じ人が続けて描かない', () => {
+  const orders = new Set();
+  for (let seed = 1; seed <= 20; seed++) {
+    const rng = seeded(seed);
+    let s = eshiritori.init({ laps: 3 }, 4, rng);
+    const drawers = [];
+    while (!s.result) {
+      drawers.push(s.turn);
+      s = eshiritori.applyMove(s, line, s.turn, rng);
+      s = eshiritori.applyMove(s, { submit: true, word: 'かめ' }, s.turn, rng);
+    }
+    for (let lap = 0; lap < 3; lap++) assert.deepEqual(drawers.slice(lap * 4, lap * 4 + 4).sort(), [0, 1, 2, 3], '1周で全員1回ずつ');
+    for (let i = 1; i < drawers.length; i++) assert.notEqual(drawers[i], drawers[i - 1], '同じ人が続けて描かない');
+    orders.add(drawers.slice(0, 4).join('') + drawers.slice(4, 8).join(''));
+  }
+  assert.ok(orders.size > 10, '並び順も毎回変わる');
+});
+
 test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
   let s = eshiritori.init({ laps: 1, seconds: 60 }, 3, seeded(2));
   s = { ...s, start: 'り', order: [0, 1, 2], next: 1, turn: 0 }; // 順番とはじめの文字を決めて試す
