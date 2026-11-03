@@ -1436,3 +1436,13 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .dr-log-card { display: grid; gap: 2px; text-align: center; }
 .dr-log-card .dr-thumb { border-width: 1px; border-radius: 8px; }
 .dr-thumb.live { border-color: var(--accent); }
+/* 過去の絵（絵しりとり・伝言ゲーム） */
+.pt-gal-card.wide { grid-column: 1 / -1; cursor: default; }
+.gal-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; align-items: center; }
+.gal-cell { flex: 0 0 170px; display: grid; gap: 2px; text-align: center; }
+.gal-cell canvas { width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border); display: block; background: #fffdf7; }
+.gal-cell.ng canvas { border-color: #e0453a; }
+.gal-link { font-weight: 900; color: #1f7a4b; }
+.gal-cell.ng .gal-link { color: #c0392b; }
+.gal-text { background: #fff6d6; color: #3a2c00; border-radius: 8px; padding: 14px 6px; font-weight: 800; overflow-wrap: anywhere; }
+.gal-arrow { flex: none; color: var(--muted); font-weight: 900; }

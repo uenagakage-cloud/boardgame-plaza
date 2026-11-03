@@ -213,3 +213,9 @@ export function applyMove(s, mv, seat, rng, ctx) {
   }
   throw new Error('不明な操作です');
 }
+
+// 全員を回り終わったら（発表の前に）、全部の伝言を「過去の絵」に保存する（サーバーが呼ぶ）
+export function archive(s) {
+  if (s.phase !== 'reveal' && s.phase !== 'end') return null;
+  return { key: 'all', game: 'edengon', chains: s.chains.map((ch) => ({ items: ch.items.map((it) => ({ ...it })) })) };
+}

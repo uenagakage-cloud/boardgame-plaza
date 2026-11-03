@@ -71,14 +71,18 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-// ---------- お絵かきの履歴（みんなでポンコツペイント） ----------
+// ---------- お絵かきの履歴（みんなでポンコツペイント・絵しりとり・絵の伝言ゲーム） ----------
 // 答え発表になった絵を保存して、ロビーやゲーム中に見られるようにする。2日より前のものは消す
+// ポンコツペイントは絵1枚ずつ、絵しりとりと伝言ゲームは1ゲーム分（items / chains）をまとめて1つにする（game で見分ける）
 const GALLERY_FILE = process.env.GALLERY_FILE || path.join(ROOT, 'data', 'paint-gallery.json');
 const GALLERY_KEEP_MS = 2 * 24 * 60 * 60 * 1000;
 const GALLERY_MAX_POINTS = 1_000_000; // 全部の絵の点の数の上限（大きくなりすぎないように、古いものから消す）
 let gallery = [];
 try { gallery = JSON.parse(await readFile(GALLERY_FILE, 'utf8')); } catch { gallery = []; }
-const artPoints = (e) => e.shapes.reduce((a, x) => a + (x.pts ? x.pts.length : 2), 0);
+const shapePoints = (shapes) => (shapes || []).reduce((a, x) => a + (x.pts ? x.pts.length : 2), 0);
+const artPoints = (e) => shapePoints(e.shapes)
+  + (e.items || []).reduce((a, it) => a + shapePoints(it.shapes), 0)
+  + (e.chains || []).reduce((a, ch) => a + ch.items.reduce((b, it) => b + shapePoints(it.shapes), 0), 0);
 
 function pruneGallery() {
   const limit = Date.now() - GALLERY_KEEP_MS;
@@ -114,7 +118,19 @@ function archiveArt(room) {
   const key = `${room.gameNo}:${a.key}`;
   if (room.archivedKey === key) return;
   room.archivedKey = key;
-  const nameOf = (seat) => room.seats[seat]?.name || '?';
+  const nameOf = (seat) => (seat < 0 ? '' : room.seats[seat]?.name || '?');
+  if (a.game) {
+    // 絵しりとり・伝言ゲーム: 席の番号を名前にして、1ゲーム分をそのまま入れる
+    const named = (it) => ({ ...it, seat: undefined, name: nameOf(it.seat) });
+    gallery.push({
+      id: crypto.randomUUID(), at: Date.now(), game: a.game, ...a, key: undefined,
+      ...(a.items ? { items: a.items.map(named) } : {}),
+      ...(a.chains ? { chains: a.chains.map((ch) => ({ items: ch.items.map(named) })) } : {}),
+    });
+    pruneGallery();
+    saveGallery();
+    return;
+  }
   gallery.push({
     id: crypto.randomUUID(), at: Date.now(), theme: a.theme, tag: a.tag, mode: a.mode, shapes: a.shapes,
     painter: nameOf(a.painter), correct: a.correct.map(nameOf), guessers: a.guessers,
@@ -128,7 +144,8 @@ function sendGallery(req, res) {
   const before = Number(url.searchParams.get('before')) || Infinity;
   const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit')) || 12));
   pruneGallery();
-  const older = gallery.filter((e) => e.at < before).reverse();
+  const game = url.searchParams.get('game') || 'paint';
+  const older = gallery.filter((e) => e.at < before && (e.game || 'paint') === game).reverse();
   const body = JSON.stringify({ items: older.slice(0, limit), more: older.length > limit, keepHours: GALLERY_KEEP_MS / 3600000 });
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(body);
 }

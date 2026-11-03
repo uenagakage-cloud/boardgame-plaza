@@ -146,3 +146,12 @@ export function applyMove(s, mv, seat) {
   }
   throw new Error('不明な操作です');
 }
+
+// 答え合わせになったら、1ゲーム分の絵を「過去の絵」に保存する（サーバーが呼ぶ）
+export function archive(s) {
+  if (s.phase !== 'end' || !s.chain.some((e) => e.shapes.length)) return null;
+  return {
+    key: 'end', game: 'eshiritori', start: s.start, linked: s.linked,
+    items: s.chain.map((e, i) => ({ seat: e.seat, word: e.word, shapes: e.shapes, ok: links(i ? s.chain[i - 1].word : s.start, e.word) })),
+  };
+}

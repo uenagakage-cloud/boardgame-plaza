@@ -44,7 +44,7 @@ import * as roulette from './games/roulette.js';
 import * as eshiritori from './games/eshiritori.js';
 import * as edengon from './games/edengon.js';
 import { asobiRenderers } from './asobi-ui.js';
-import { drawGameRenderers } from './draw-ui.js';
+import { drawGameRenderers, drawShapes } from './draw-ui.js';
 
 const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, yacht, koikoi, tanks, hbball, chinchiro, roulette };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
@@ -467,7 +467,7 @@ function renderLobby() {
         painterSel.title = '固定にすると、部屋を作った人（ホスト）がずっと描きます';
         painterSel.addEventListener('change', () => { [...turns.options].forEach((o) => { o.textContent = turnsLabel(Number(o.value)); }); });
         const gal = h('button', 'btn small', '🖼 過去のイラスト');
-        gal.onclick = () => openPaintGallery();
+        gal.onclick = () => openGallery('paint');
         card.append(gal);
         getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value, painter: painterSel.value });
       }
@@ -493,6 +493,11 @@ function renderLobby() {
           card.append(cpuLabel);
         }
         getOptions = () => ({ ...Object.fromEntries(selects.map(([k, sel, values]) => [k, values.find((x) => String(x) === sel.value)])), ...(cpu ? { cpu: cpu.checked } : {}) });
+      }
+      if (key === 'eshiritori' || key === 'edengon') {
+        const gal = h('button', 'btn small', key === 'edengon' ? '🖼 過去の伝言' : '🖼 過去の絵しりとり');
+        gal.onclick = () => openGallery(key);
+        card.append(gal);
       }
       // 説明・設定は「詳細」の中にしまう（ゲームが多いので、ふだんは名前とボタンだけ）
       const more = h('div', 'card-more');
@@ -2374,7 +2379,7 @@ function buildPaint(el) {
   };
   x.ctx = x.canvas.getContext('2d');
   root.querySelectorAll('.pt-tool').forEach((b) => { b.onclick = () => { ptTool = b.dataset.tool; renderPaint(el, view); }; });
-  q('.pt-gallery-btn').onclick = () => openPaintGallery();
+  q('.pt-gallery-btn').onclick = () => openGallery('paint');
   q('.pt-undo').onclick = () => send({ type: 'move', move: { undo: true } });
   q('.pt-clear').onclick = async () => {
     if (await choose('全部消しますか？', [['yes', '消す'], [null, 'キャンセル']])) send({ type: 'move', move: { clear: true } });
@@ -2533,13 +2538,61 @@ function ptArtCard(e) {
   return card;
 }
 
-async function openPaintGallery() {
+// 絵しりとり: 1ゲーム分を、はじめの文字から順に横に並べる
+function shiritoriArtCard(e) {
+  const card = h('div', 'pt-gal-card wide');
+  card.append(h('div', 'pt-gal-theme', `✏️ 「${e.start}」から ${e.items.length}枚中 ${e.linked}回つながった`), h('div', 'muted small', ptTimeAgo(e.at)));
+  const row = h('div', 'gal-strip');
+  for (const it of e.items) {
+    const cell = h('div', 'gal-cell' + (it.ok ? '' : ' ng'));
+    const cv = h('canvas');
+    cv.width = 1000;
+    cv.height = 750;
+    drawShapes(cv.getContext('2d'), it.shapes);
+    cell.append(h('div', 'gal-link', it.ok ? '○' : '×'), cv, h('b', null, it.word || '（時間切れ）'), h('div', 'muted small', `${it.name} さん`));
+    row.append(cell);
+  }
+  card.append(row);
+  return card;
+}
+// 絵の伝言ゲーム: 伝言ごとに、お題→絵→言葉…を横に並べる
+function dengonArtCard(e) {
+  const card = h('div', 'pt-gal-card wide');
+  card.append(h('div', 'pt-gal-theme', `📨 伝言 ${e.chains.length}つ`), h('div', 'muted small', ptTimeAgo(e.at)));
+  for (const ch of e.chains) {
+    const row = h('div', 'gal-strip');
+    ch.items.forEach((it, i) => {
+      if (i) row.append(h('div', 'gal-arrow', '→'));
+      const cell = h('div', 'gal-cell');
+      if (it.kind === 'draw') {
+        const cv = h('canvas');
+        cv.width = 1000;
+        cv.height = 750;
+        drawShapes(cv.getContext('2d'), it.shapes);
+        cell.append(cv);
+      } else cell.append(h('div', 'gal-text', it.text));
+      cell.append(h('div', 'muted small', it.name ? `${it.name} さん` : '最初のお題'));
+      row.append(cell);
+    });
+    card.append(row);
+  }
+  return card;
+}
+
+const GALLERY = {
+  paint: { title: '過去のイラスト', note: '答え発表まで進んだ絵が新しい順に並びます（2日たつと消えます）。絵をクリックすると大きく表示します。', card: ptArtCard, limit: 12 },
+  eshiritori: { title: '過去の絵しりとり', note: '答え合わせまで進んだゲームが新しい順に並びます（2日たつと消えます）。横にスクロールして見られます。', card: shiritoriArtCard, limit: 5 },
+  edengon: { title: '過去の伝言', note: '最後まで回った伝言が新しい順に並びます（2日たつと消えます）。横にスクロールして見られます。', card: dengonArtCard, limit: 4 },
+};
+
+async function openGallery(game = 'paint') {
+  const conf = GALLERY[game];
   const overlay = h('div', 'modal pt-gal');
   const box = h('div', 'modal-box pt-gal-box');
   const head = h('div', 'pt-gal-head');
   const close = h('button', 'btn small', '閉じる');
-  head.append(h('h3', null, '過去のイラスト'), close);
-  const note = h('p', 'muted small', '答え発表まで進んだ絵が新しい順に並びます（2日たつと消えます）。絵をクリックすると大きく表示します。');
+  head.append(h('h3', null, conf.title), close);
+  const note = h('p', 'muted small', conf.note);
   const grid = h('div', 'pt-gal-grid');
   const more = h('button', 'btn', 'もっと見る');
   more.hidden = true;
@@ -2555,11 +2608,11 @@ async function openPaintGallery() {
   const load = async () => {
     more.disabled = true;
     try {
-      const res = await fetch(`/api/paint-gallery?limit=12${before ? `&before=${before}` : ''}`);
+      const res = await fetch(`/api/paint-gallery?game=${game}&limit=${conf.limit}${before ? `&before=${before}` : ''}`);
       const data = await res.json();
-      grid.append(...data.items.map(ptArtCard));
+      grid.append(...data.items.map(conf.card));
       if (data.items.length) before = String(data.items[data.items.length - 1].at);
-      if (!grid.childElementCount) grid.append(h('p', 'muted', 'まだイラストはありません。'));
+      if (!grid.childElementCount) grid.append(h('p', 'muted', 'まだ絵はありません。'));
       more.hidden = !data.more;
     } catch {
       toast('イラストを読み込めませんでした');
@@ -3887,7 +3940,7 @@ const RENDERERS = { chess: renderChess, shogi: renderShogi, gobblet: renderGobbl
   const asobi = asobiRenderers({ h, hk, send, sendMove, choose, render, revealPanel, now: () => Date.now() + serverOffset });
   asobiClear = asobi.clear;
   Object.assign(RENDERERS, asobi.renderers);
-  Object.assign(RENDERERS, drawGameRenderers({ h, sendMove, choose, toast, now: () => Date.now() + serverOffset }).renderers);
+  Object.assign(RENDERERS, drawGameRenderers({ h, sendMove, choose, toast, openGallery, now: () => Date.now() + serverOffset }).renderers);
 }
 
 // ---------- イベント ----------

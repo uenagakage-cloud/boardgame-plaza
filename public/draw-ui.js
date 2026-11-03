@@ -29,7 +29,7 @@ export function drawShapes(ctx, shapes, preview) {
   if (preview) one(preview);
 }
 
-export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
+export function drawGameRenderers({ h, sendMove, choose, now, toast, openGallery }) {
   const nameOf = (v, seat) => (seat < 0 ? 'お題' : v.seats[seat]?.name || '?');
   const thumb = (shapes, cls = 'dr-thumb') => {
     const cv = h('canvas', cls);
@@ -143,7 +143,10 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
     const head = h('div', 'dr-head');
     const info = h('div', 'dr-info');
     const timer = h('div', 'dr-timer');
-    head.append(info, timer);
+    const gal = h('button', 'btn small', game === 'edengon' ? '🖼 過去の伝言' : '🖼 過去の絵しりとり');
+    gal.type = 'button';
+    gal.onclick = () => openGallery(game);
+    head.append(info, timer, gal);
     const top = h('div', 'dr-top');
     const padSlot = h('div', 'dr-pad-slot');
     const form = h('form', 'dr-form row');
