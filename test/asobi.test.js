@@ -553,7 +553,7 @@ test('eshiritori: 順番に描いて、最後に答え合わせ', () => {
   let s = eshiritori.init({ laps: 1, seconds: 60 }, 3, seeded(2));
   s = { ...s, start: 'り', order: [0, 1, 2], next: 1, turn: 0 }; // 順番とはじめの文字を決めて試す
   assert.equal(s.turn, 0);
-  assert.ok(eshiritori.quietMove(line), '描く手はみんなに送らない');
+  assert.ok(!eshiritori.quietMove?.(line), '描く手はみんなに送る（リアルタイムで見える）');
   assert.throws(() => eshiritori.applyMove(s, line, 1), /番ではありません/);
   assert.throws(() => eshiritori.applyMove(s, { submit: true, word: 'りす' }, 0), /絵を描いて/);
   s = eshiritori.applyMove(s, line, 0);

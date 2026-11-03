@@ -5,7 +5,7 @@
 //       全員が決めた回数描いたら答え合わせ。絵と言葉を順に見せて、何回つながったかが記録。
 // 「ん」で終わる言葉は登録できない。時間切れのときは、そこまでの絵を言葉なしで出す（つながらない）。
 // 濁点・半濁点（が↔か、ぱ↔は）と小さい文字（ゃ↔や）は同じとみなし、のばす音（ー）は1つ前の文字で考える。
-// 手: 描く手（drawing.js の { stroke } / { undo } / { clear }。みんなには送らない）/ { submit: true, word: 'ことば' } / { resign: true }
+// 手: 描く手（drawing.js の { stroke } / { undo } / { clear }。描くたびにみんなに送る＝リアルタイムで見える）/ { submit: true, word: 'ことば' } / { resign: true }
 import { applyDraw, isDrawMove, normalizeText } from './drawing.js';
 import { pickOptions, optionText, label, shuffle, pick } from './util.js';
 
@@ -100,7 +100,6 @@ export function tick(s) {
 }
 
 export const canActOutOfTurn = () => true;
-export const quietMove = isDrawMove;
 
 // 描いた絵はみんなに見せる（言葉は答え合わせまで見せない）。描いている人には前の人の絵を大きく見せる
 export function viewFor(s, seat) {
@@ -111,7 +110,7 @@ export function viewFor(s, seat) {
     ...s,
     chain: s.chain.map((e) => ({ seat: e.seat, shapes: e.shapes })),
     prev: me && prev ? { seat: prev.seat, shapes: prev.shapes } : null,
-    draft: me ? s.draft : [],
+    draft: s.draft, // 描いている絵はリアルタイムでみんなに見せる
   };
 }
 

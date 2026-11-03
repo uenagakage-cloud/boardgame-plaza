@@ -1435,3 +1435,4 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .dr-log-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .dr-log-card { display: grid; gap: 2px; text-align: center; }
 .dr-log-card .dr-thumb { border-width: 1px; border-radius: 8px; }
+.dr-thumb.live { border-color: var(--accent); }

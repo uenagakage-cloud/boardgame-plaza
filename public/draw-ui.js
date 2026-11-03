@@ -1,5 +1,5 @@
 // お絵かきゲーム（絵しりとり・絵の伝言ゲーム）の画面
-// 描いている途中の絵はこの画面が覚えていて、1本描くごとにサーバーへ送る（みんなには送られない）。
+// 描いている途中の絵はこの画面が覚えていて、1本描くごとにサーバーへ送る（絵しりとりはみんなにリアルタイムで見える。伝言ゲームは送られない）。
 // 画面を描き直しても描いている途中の線や入力中の文字が消えないよう、骨組みは作り直さず中身だけ入れかえる。
 import * as drawing from './games/drawing.js';
 import * as eshiritori from './games/eshiritori.js';
@@ -250,7 +250,8 @@ export function drawGameRenderers({ h, sendMove, choose, now, toast }) {
     } else {
       showPad(false);
       setForm('wait', false, '', '');
-      ui.top.append(h('div', 'dr-wait', `${nameOf(v, s.turn)} さんが描いています…`));
+      // 描いているところをリアルタイムで見せる（言葉はひみつ）
+      ui.top.append(h('div', 'dr-label', `✏️ ${nameOf(v, s.turn)} さんが描いています（リアルタイム）`), thumb(s.draft, 'dr-thumb live'));
       // 描き終わった絵のログ（言葉は答え合わせまでひみつ）
       if (s.chain.length) ui.top.append(logBox(v, `描き終わった絵（${s.chain.length}枚・言葉は答え合わせまでひみつ）`, s.chain.map((e, i) => [e, `${i + 1}. ${nameOf(v, e.seat)} さん`])));
     }
