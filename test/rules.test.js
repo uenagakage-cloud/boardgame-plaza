@@ -598,10 +598,23 @@ test('daifugo: 上がり順で順位・次のラウンドでカード交換', ()
   s = df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
   assert.equal(s.phase, 'exchange');
   assert.equal(s.turn, 2, '大貧民から');
-  assert.equal(s.hands[0].length, 20, '大富豪は2枚もらう');
-  s = df.applyMove(s, { give: s.hands[0].slice(0, 2).map((c) => c.id) }, 0);
+  assert.equal(s.hands[0].length, 19, '3人なので大富豪は1枚もらう');
+  assert.deepEqual(s.exchange.map((e) => e.count), [1]);
+  s = df.applyMove(s, { give: s.hands[0].slice(0, 1).map((c) => c.id) }, 0);
   assert.equal(s.phase, 'play');
   assert.equal(s.hands.flat().length, 53);
+});
+test('daifugo: カード交換の枚数（3人以下は1枚ずつ、4人以上は2枚と1枚）', () => {
+  const next = (players, out = []) => {
+    const base = df.init({}, players);
+    const s = { ...base, phase: 'result', lastRanks: [...Array(players).keys()], out: base.out.map((_, i) => out.includes(i)) };
+    return df.applyMove(s, { next: true }, 0, null, { hostSeat: 0 });
+  };
+  assert.deepEqual(next(2).exchange.map((e) => e.count), [1]);
+  assert.deepEqual(next(3).exchange.map((e) => e.count), [1]);
+  assert.deepEqual(next(4).exchange.map((e) => e.count), [2, 1]);
+  assert.deepEqual(next(6).exchange.map((e) => e.count), [2, 1]);
+  assert.deepEqual(next(4, [3]).exchange.map((e) => e.count), [1], '1人抜けて3人になったら1枚ずつ');
 });
 test('daifugo: ランダム対局が必ず終わる', () => {
   let seed = 3;

@@ -25,7 +25,7 @@ export const RULES = [
   ['seqRevolution', '階段革命', '同じマークの階段を4枚以上出すと強さが逆転（「階段」が入っているとき）', false],
   ['spade3', 'スペ3返し', 'ジョーカー1枚には♠3で勝てる', true],
   ['sequence', '階段', '同じマークで3枚以上続く数字を出せる', true],
-  ['exchange', 'カード交換', '2ラウンド目から大貧民⇔大富豪・貧民⇔富豪で交換', true],
+  ['exchange', 'カード交換', '2ラウンド目から大貧民⇔大富豪は2枚・貧民⇔富豪は1枚を交換（3人以下は大貧民⇔大富豪の1枚ずつ）', true],
   ['shibari', 'しばり', '同じマークが続くと、場が流れるまでそのマークしか出せない', false],
   ['elevenBack', '11バック', 'Jを出すと、場が流れるまで強さが逆', false],
   ['fiveSkip', '5飛ばし', '5を出した枚数の分だけ、次の人から順に強制パス（その場が変わるまで出せない）', false],
@@ -212,10 +212,10 @@ function deal(s, rng) {
     s.phase = 'play';
     s.turn = ranks.filter((p) => !s.out[p]).at(-1); // 交換なし: 大貧民から
   } else if (ranks) {
-    // 前のラウンドの順位で交換。貧しい側は一番強いカードを自動で渡す
+    // 前のラウンドの順位で交換。貧しい側は一番強いカードを自動で渡す（3人以下は大貧民⇔大富豪の1枚ずつ）
     const order = ranks.filter((p) => !s.out[p]);
     const m = order.length;
-    const pairs = m >= 4 ? [[order[m - 1], order[0], 2], [order[m - 2], order[1], 1]] : m >= 2 ? [[order[m - 1], order[0], m >= 3 ? 2 : 1]] : [];
+    const pairs = m >= 4 ? [[order[m - 1], order[0], 2], [order[m - 2], order[1], 1]] : m >= 2 ? [[order[m - 1], order[0], 1]] : [];
     for (const [poor, rich, count] of pairs) {
       const strongest = s.hands[poor].slice(-count);
       s.hands[poor] = s.hands[poor].slice(0, -count);
