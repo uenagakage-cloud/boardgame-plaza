@@ -27,7 +27,7 @@ export const RULES = [
   ['exchange', 'カード交換', '2ラウンド目から大貧民⇔大富豪・貧民⇔富豪で交換', true],
   ['shibari', 'しばり', '同じマークが続くと、場が流れるまでそのマークしか出せない', false],
   ['elevenBack', '11バック', 'Jを出すと、場が流れるまで強さが逆', false],
-  ['fiveSkip', '5飛ばし', '5を出した枚数だけ次の人を飛ばす', false],
+  ['fiveSkip', '5飛ばし', '5を出した枚数の分だけ、次の人から順に強制パス（その場が変わるまで出せない）', false],
   ['sevenPass', '7渡し', '7を出した枚数だけ、好きなカードを次の人に渡す', false],
   ['tenDiscard', '10捨て', '10を出した枚数だけ、好きなカードを捨てる', false],
   ['queenBomber', '12ボンバー', 'Qを出した枚数だけ数字を選び、全員その数字のカードを捨てる', false],
@@ -297,12 +297,25 @@ function finishPlayer(ns, prevRanks, p) {
   return note;
 }
 
-// 出したあとの続き（8切りなら場を流す、そうでなければ次の人へ。5飛ばしの人数も）
+// 出したあとの続き（8切りなら場を流す、そうでなければ次の人へ）
+// 5飛ばし: 5の枚数の分だけ、次の人から順に強制パス。ほかの全員がパスになったら場が流れる
 function resumeAfterPlay(ns, seat, resume) {
   if (finishIfOver(ns)) return;
   if (resume.eight) { clearField(ns, seat); return; }
   let next = nextActive(ns, seat);
-  for (let k = 0; k < resume.skips; k++) next = nextActive(ns, next);
+  const forced = [];
+  for (let k = 0; k < resume.skips && next >= 0 && next !== seat && !forced.includes(next); k++) {
+    ns.passed[next] = true;
+    forced.push(next);
+    next = nextActive(ns, next);
+  }
+  if (forced.length) ns.history.push(`${forced.map(label).join('・')} 強制パス（5飛ばし）`);
+  const others = [...Array(ns.players).keys()].filter((p) => p !== seat && playing(ns, p) && !ns.passed[p]);
+  if (forced.length && !others.length) {
+    ns.history.push('場が流れました');
+    clearField(ns, seat);
+    return;
+  }
   ns.turn = next;
 }
 
@@ -461,9 +474,9 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     ns.turnNo++;
     const eight = rules.eightCut && isEightCut(combo);
     if (eight) note += ' 8切り';
-    // 5飛ばし: 出した5の枚数だけ次の人を飛ばす（8切りで流れるときは飛ばさない）
+    // 5飛ばし: 出した5の枚数の分だけ次の人を強制パスにする（8切りで流れるときはなし）
     const skips = rules.fiveSkip && !eight ? cards.filter((c) => c.r === 5).length : 0;
-    if (skips) note += ` 5飛ばし（${skips}人）`;
+    if (skips) note += ` 5飛ばし（${skips}枚）`;
     ns.history.push(note);
     // 7渡し・10捨て・12ボンバー（ジョーカーは数えない）。手札がなくなったら渡す・捨てるはなし
     const count = (r) => cards.filter((c) => c.s !== 'j' && c.r === r).length;

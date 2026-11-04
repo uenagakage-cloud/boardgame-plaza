@@ -1262,7 +1262,23 @@ test('daifugo: しばり・11バック・5飛ばし', () => {
 
   let f = dfState(['s5 h5 s9', 'h7 h8', 'c9 cK', 'd9 dK'], dfRules({ fiveSkip: true }));
   f = df.applyMove(f, { play: ids(f, 0, 's5 h5') }, 0);
-  assert.equal(f.turn, 3, '5を2枚で2人飛ばし');
+  assert.equal(f.turn, 3, '5を2枚で次の2人が強制パス');
+  assert.deepEqual(f.passed, [false, true, true, false]);
+  assert.throws(() => df.applyMove(f, { pass: true }, 1), /あなたの番/, '強制パスの人は動けない');
+  f = df.applyMove(f, { pass: true }, 3);
+  assert.equal(f.field, null, '残りの人もパスしたら、強制パスの人に番は回らず場が流れる');
+  assert.equal(f.turn, 0, '5を出した人が親');
+  // ほかの全員が強制パスなら、すぐ場が流れる
+  let g = dfState(['s5 h5 s9', 'h7 h8', 'c9 cK'], dfRules({ fiveSkip: true }));
+  g = df.applyMove(g, { play: ids(g, 0, 's5 h5') }, 0);
+  assert.equal(g.field, null);
+  assert.equal(g.turn, 0);
+  // 5が1枚なら1人だけ。場が変われば強制パスは終わり
+  let h1 = dfState(['s5 s9', 'h7 h8', 'c9 cK', 'dK d4'], dfRules({ fiveSkip: true }));
+  h1 = df.applyMove(h1, { play: ids(h1, 0, 's5') }, 0);
+  assert.equal(h1.turn, 2);
+  h1 = df.applyMove(h1, { play: ids(h1, 2, 'c9') }, 2);
+  assert.equal(h1.passed[1], false, '次のカードが出たら、また出せる');
 });
 test('daifugo: 都落ち・反則上がり・カード交換なし', () => {
   // 都落ち: 前の大富豪（P1）より先に P2 が上がる
