@@ -1280,6 +1280,32 @@ test('daifugo: しばり・11バック・5飛ばし', () => {
   h1 = df.applyMove(h1, { play: ids(h1, 2, 'c9') }, 2);
   assert.equal(h1.passed[1], false, '次のカードが出たら、また出せる');
 });
+test('daifugo: 階段革命', () => {
+  // 4枚以上の階段で革命。3枚では起きない
+  let a = dfState(['s4 s5 s6 s7 h9', 'h3', 'c3'], dfRules({ seqRevolution: true }));
+  a = df.applyMove(a, { play: ids(a, 0, 's4 s5 s6 s7') }, 0);
+  assert.equal(a.revolution, true, '4枚の階段で革命');
+  assert.match(a.history.at(-1), /階段革命！/);
+  let b = dfState(['s4 s5 s6 h9', 'h3', 'c3'], dfRules({ seqRevolution: true }));
+  b = df.applyMove(b, { play: ids(b, 0, 's4 s5 s6') }, 0);
+  assert.equal(b.revolution, false, '3枚では革命にならない');
+  // もう一度出すと元に戻る
+  let c = { ...dfState(['s4 s5 s6 s7 h9', 'h3', 'c3'], dfRules({ seqRevolution: true })), revolution: true };
+  c = df.applyMove(c, { play: ids(c, 0, 's4 s5 s6 s7') }, 0);
+  assert.equal(c.revolution, false, '革命中なら元に戻る');
+  assert.match(c.history.at(-1), /階段革命返し！/);
+  // ジョーカー入りの階段も4枚なら革命
+  let j = dfState(['s4 s5 JK s7 h9', 'h3', 'c3'], dfRules({ seqRevolution: true }));
+  j = df.applyMove(j, { play: ids(j, 0, 's4 s5 JK s7') }, 0);
+  assert.equal(j.revolution, true);
+  // 入れていなければ起きない。同じ数字4枚の革命は「革命」のまま
+  let d = dfState(['s4 s5 s6 s7 h9', 'h3', 'c3'], dfRules({}));
+  d = df.applyMove(d, { play: ids(d, 0, 's4 s5 s6 s7') }, 0);
+  assert.equal(d.revolution, false, 'ふつうは入っていない');
+  let e = dfState(['s4 h4 c4 d4 h9', 'h3', 'c3'], dfRules({ revolution: false, seqRevolution: true }));
+  e = df.applyMove(e, { play: ids(e, 0, 's4 h4 c4 d4') }, 0);
+  assert.equal(e.revolution, false);
+});
 test('daifugo: 都落ち・反則上がり・カード交換なし', () => {
   // 都落ち: 前の大富豪（P1）より先に P2 が上がる
   let s = dfState(['s4 s6', 'h9', 'c5 c7'], { ...dfRules({ miyakoOchi: true }), lastRanks: [0, 1, 2] });

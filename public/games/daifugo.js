@@ -4,7 +4,7 @@
 // 場と同じ組・同じ枚数で、より強いものだけ出せる。出せない・出さないときはパス。
 // ほかの全員がパスしたら場が流れ、最後に出した人から始める。
 // ルールは部屋を作るときに選べる（RULES）。ふつうは 8切り・革命・スペ3返し・階段・カード交換が入り、
-// しばり・11バック・5飛ばし・7渡し・10捨て・12ボンバー・都落ち・反則上がりは入っていない。ジョーカーは0〜2枚。
+// 階段革命・しばり・11バック・5飛ばし・7渡し・10捨て・12ボンバー・都落ち・反則上がりは入っていない。ジョーカーは0〜2枚。
 // 7渡し・10捨て・12ボンバーは、出した人が続けて選ぶ（s.pending）。選び終わるまで次の人には回らない。
 // 全員の順位が決まったらラウンド終了。次のラウンドは配り直して、
 //   大貧民→大富豪に一番強い2枚、貧民→富豪に一番強い1枚を渡し、大富豪・富豪は好きなカードを同じ枚数返す。
@@ -22,6 +22,7 @@ export const lobbyReturn = true;
 export const RULES = [
   ['eightCut', '8切り', '8を出すと場が流れて、出した人から', true],
   ['revolution', '革命', '同じ数字4枚以上で強さが逆転', true],
+  ['seqRevolution', '階段革命', '同じマークの階段を4枚以上出すと強さが逆転（「階段」が入っているとき）', false],
   ['spade3', 'スペ3返し', 'ジョーカー1枚には♠3で勝てる', true],
   ['sequence', '階段', '同じマークで3枚以上続く数字を出せる', true],
   ['exchange', 'カード交換', '2ラウンド目から大貧民⇔大富豪・貧民⇔富豪で交換', true],
@@ -456,6 +457,10 @@ export function applyMove(s, mv, seat, rng, ctx = {}) {
     if (rules.revolution && combo.type === 'set' && combo.n >= 4) {
       ns.revolution = !ns.revolution;
       note += ns.revolution ? ' 革命！' : ' 革命返し！';
+    }
+    if (rules.seqRevolution && combo.type === 'seq' && combo.n >= 4) {
+      ns.revolution = !ns.revolution;
+      note += ns.revolution ? ' 階段革命！' : ' 階段革命返し！';
     }
     if (rules.elevenBack && covers(combo, 11)) {
       ns.jback = !ns.jback;
