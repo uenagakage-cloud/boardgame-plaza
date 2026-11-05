@@ -2,7 +2,7 @@
 // 2〜6人。全員が「ねこチーム」か「チョコチーム」に秘密で分かれる。
 // 手番の人はピンチ（イベント）を、手札のアイテムを指定の数だけ使って解決する方法を文章で説明する。
 // ほかの全員が成功／失敗を投票し、成功が過半数ならイベントを獲得。最後にチームごとの獲得数で勝敗を決める。
-// 考える時間は部屋を作るときに選ぶ（1〜5分）。時間切れのとき、アイテムと文章がそろっていればそのまま投票へ、そろっていなければ失敗（時間切れ）。
+// 考える時間は部屋を作るときに選ぶ（1分〜3分、30秒きざみ）。時間切れのとき、アイテムと文章がそろっていればそのまま投票へ、そろっていなければ失敗（時間切れ）。
 // 手: { explain: { items: [手札の番号...], text } } / { draft: { items, text } } 書いている途中を覚えておく（みんなには送らない）
 //     { giveUp: true } / { vote: true|false } / { resign: true }
 // カードの文章はこのアプリのオリジナル。
@@ -17,7 +17,7 @@ export const HAND_SIZE = 3;
 export const LAPS = 2; // 全員が2回ずつ手番をしたら終了
 export const TEAM_NAMES = ['ねこチーム', 'チョコチーム'];
 export const MAX_TEXT = 400;
-export const OPTIONS = [{ key: 'minutes', label: '考える時間', values: [1, 2, 3, 4, 5], names: ['1分', '2分', '3分', '4分', '5分'], def: 3 }];
+export const OPTIONS = [{ key: 'seconds', label: '考える時間', values: [60, 90, 120, 150, 180], names: ['1分', '1分30秒', '2分', '2分30秒', '3分'], def: 180 }];
 export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
 export const variantName = (o) => `考える時間${optionText(OPTIONS, normalizeOptions(o)).join('')}`;
 
@@ -126,7 +126,7 @@ function drawItem(s, rng) {
 // 考える時間のカウントを始める
 function startTimer(s) {
   s.draft = null;
-  s.endsAt = Date.now() + s.options.minutes * 60000;
+  s.endsAt = Date.now() + s.options.seconds * 1000;
   s.tickAt = s.endsAt;
 }
 

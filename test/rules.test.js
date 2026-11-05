@@ -397,11 +397,12 @@ test('catchoco: お題（ピンチ）は重複なしで、使うアイテムは1
   assert.ok(all.every((e) => [1, 2, 3].includes(e.count)));
 });
 test('catchoco: 考える時間（選べる・時間切れ）', () => {
-  assert.equal(cc.init({}, 3).options.minutes, 3, 'ふつうは3分');
-  assert.equal(cc.init({ minutes: 9 }, 3).options.minutes, 3, '1〜5分以外はふつう');
-  assert.ok(Math.abs(cc.init({ minutes: 5 }, 3).endsAt - Date.now() - 300000) < 1000);
+  assert.equal(cc.init({}, 3).options.seconds, 180, 'ふつうは3分');
+  assert.equal(cc.init({ seconds: 300 }, 3).options.seconds, 180, '選べない時間はふつう');
+  assert.ok(Math.abs(cc.init({ seconds: 90 }, 3).endsAt - Date.now() - 90000) < 1000, '1分30秒');
+  assert.equal(cc.variantName({ seconds: 150 }), '考える時間2分30秒');
   // 書いていなければ失敗（時間切れ）で次の人へ
-  let s = cc.init({ minutes: 1 }, 3);
+  let s = cc.init({ seconds: 60 }, 3);
   const first = s.turn;
   s = cc.tick(s);
   assert.ok(s.log[0].timedOut);
