@@ -389,6 +389,13 @@ test('catchoco: アイテムは308種類で重複なし', () => {
   assert.equal(all.length, 308);
   assert.equal(new Set(all).size, 308);
 });
+test('catchoco: お題（ピンチ）は重複なしで、使うアイテムは1〜3個', () => {
+  const s = cc.init({}, 2);
+  const all = [...s.events, s.event];
+  assert.ok(all.length >= 190);
+  assert.equal(new Set(all.map((e) => e.text)).size, all.length);
+  assert.ok(all.every((e) => [1, 2, 3].includes(e.count)));
+});
 test('catchoco: 考える時間（選べる・時間切れ）', () => {
   assert.equal(cc.init({}, 3).options.minutes, 3, 'ふつうは3分');
   assert.equal(cc.init({ minutes: 9 }, 3).options.minutes, 3, '1〜5分以外はふつう');
