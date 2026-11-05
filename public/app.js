@@ -51,7 +51,7 @@ import { drawGameRenderers, drawShapes } from './draw-ui.js';
 
 const GAMES = { chess, shogi, gobblet, othello, wordbasket, catchoco, werewolf, ito, daifugo, poker, blokus, paint, eshiritori, edengon, skull, gungi, towerbattle, hitblow, dotsboxes, asasore, geister, mancala, connect4, wordwolf, hagetaka, itchi, morris, hex, checkers, domino, ccheckers, ludo, sevens, speed, memory, blackjack, lastcard, pigtail, babanuki, jijinuki, yacht, koikoi, tanks, cave, hbball, chinchiro, roulette };
 // アソビ大全から入れたゲーム（ロビーの設定を自動で出す）
-const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro","roulette","eshiritori","edengon"]);
+const ASOBI = new Set(["morris","hex","checkers","domino","ccheckers","ludo","sevens","speed","memory","blackjack","lastcard","pigtail","yacht","koikoi","tanks","hbball","chinchiro","roulette","eshiritori","edengon","catchoco"]);
 const GAME_INFO = {
   chess: { icon: '♞', desc: '8×8の盤でキングを詰ませる西洋の定番。' },
   shogi: { icon: '☖', desc: '取った駒を使える日本の将棋。成り・持ち駒あり。' },
@@ -476,11 +476,11 @@ function renderLobby() {
         getOptions = () => ({ turns: Number(turns.value), seconds: Number(secs.value), mode: mode.value, painter: painterSel.value });
       }
       if (ASOBI.has(key) && (g.OPTIONS || g.CPU)) {
-        const selects = (g.OPTIONS || []).map(({ key: k, label, values, names }) => {
+        const selects = (g.OPTIONS || []).map(({ key: k, label, values, names, def }) => {
           const lab = h('label', 'option-toggle');
           const select = h('select', 'size-select');
           values.forEach((val, i) => { const o = h('option', null, names ? names[i] : String(val)); o.value = String(val); select.append(o); });
-          select.value = store.get(`opt:${key}:${k}`, String(values[0]));
+          select.value = store.get(`opt:${key}:${k}`, String(def ?? values[0]));
           select.onchange = () => store.set(`opt:${key}:${k}`, select.value);
           lab.append(h('span', null, label), select);
           card.append(lab);
@@ -1208,6 +1208,31 @@ function renderWordBasket(el, v, act) {
 let cc = null;        // 骨組みの要素（入力中の文章を消さないため作り直さない）
 let ccSel = [];       // 選んだアイテムの id
 let ccTurnKey = '';
+let ccDraftSent = '';  // 最後に送った書きかけ
+let ccDraftTimer = null;
+
+// 書きかけをサーバーに覚えておいてもらう（時間切れでも、そろっていればそのまま投票に出る）
+function ccSendDraft() {
+  clearTimeout(ccDraftTimer);
+  const s = view && view.game === 'catchoco' ? view.state : null;
+  if (!cc || !s || s.result || s.phase !== 'explain' || view.you !== s.turn || s.endsAt <= Date.now() + serverOffset) return;
+  const hand = s.hands[view.you] || [];
+  const draft = { items: ccSel.map((id) => hand.findIndex((c) => c.id === id)).filter((i) => i >= 0), text: cc.text.value };
+  const json = JSON.stringify(draft);
+  if (json === ccDraftSent) return;
+  ccDraftSent = json;
+  send({ type: 'move', move: { draft } });
+}
+const ccQueueDraft = () => { clearTimeout(ccDraftTimer); ccDraftTimer = setTimeout(ccSendDraft, 400); };
+function ccUpdateTimer() {
+  const s = view && view.game === 'catchoco' ? view.state : null;
+  if (!cc || !s || !s.endsAt || s.result) { if (cc) cc.timer.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((s.endsAt - (Date.now() + serverOffset)) / 1000));
+  cc.timer.textContent = `のこり ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  cc.timer.classList.toggle('hurry', left <= 15);
+  if (left <= 2) ccSendDraft(); // 時間切れの直前に、書いたところまでを送っておく
+}
+setInterval(ccUpdateTimer, 250);
 
 function ccItem(card, extra = '') {
   return h('span', 'cc-item ' + extra, card.name);
@@ -1216,6 +1241,7 @@ function ccItem(card, extra = '') {
 function buildCatChoco(el) {
   const root = h('div', 'cc');
   const players = h('div', 'cc-players');
+  const timer = h('div', 'cc-timer');
   const event = h('div', 'cc-event');
   const stage = h('div', 'cc-stage');
   const form = h('form', 'cc-form');
@@ -1233,8 +1259,8 @@ function buildCatChoco(el) {
   const handTitle = h('div', 'cc-hand-title');
   const hand = h('div', 'cc-hand');
   const log = h('div', 'cc-log');
-  root.append(players, event, stage, form, handTitle, hand, log);
-  text.addEventListener('input', () => { count.textContent = `${text.value.length}/${catchoco.MAX_TEXT}`; });
+  root.append(players, timer, event, stage, form, handTitle, hand, log);
+  text.addEventListener('input', () => { count.textContent = `${text.value.length}/${catchoco.MAX_TEXT}`; ccQueueDraft(); });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const s = view.state, myHand = s.hands[view.you] || [];
@@ -1248,17 +1274,26 @@ function buildCatChoco(el) {
     }
   };
   el.replaceChildren(root);
-  return { el, root, players, event, stage, form, text, count, submit, handTitle, hand, log };
+  return { el, root, players, timer, event, stage, form, text, count, submit, handTitle, hand, log };
 }
 
 function renderCatChoco(el, v) {
   const s = v.state, me = v.you;
   if (!cc || cc.el !== el || !el.contains(cc.root)) cc = buildCatChoco(el);
   const key = `${v.code}:${v.gameNo}:${s.turnNo}`;
-  if (key !== ccTurnKey) { ccTurnKey = key; ccSel = []; cc.text.value = ''; cc.count.textContent = ''; }
   const name = (seat) => v.seats[seat]?.name || '?';
   const myTurn = me === s.turn && !s.result && s.phase === 'explain' && !s.out[me];
   const myHand = me >= 0 ? s.hands[me] || [] : [];
+  if (key !== ccTurnKey) {
+    // 新しい番。読み込み直したときは、サーバーに覚えてある書きかけを戻す
+    ccTurnKey = key;
+    const d = myTurn ? s.draft : null;
+    ccSel = d ? d.items.map((i) => myHand[i]?.id).filter((id) => id != null) : [];
+    cc.text.value = d ? d.text : '';
+    cc.count.textContent = d && d.text ? `${d.text.length}/${catchoco.MAX_TEXT}` : '';
+    ccDraftSent = '';
+  }
+  ccUpdateTimer();
   ccSel = ccSel.filter((id) => myHand.some((c) => c.id === id));
 
   // 参加者
@@ -1328,6 +1363,7 @@ function renderCatChoco(el, v) {
       if (ccSel.includes(card.id)) ccSel = ccSel.filter((id) => id !== card.id);
       else if (ccSel.length < s.event.count) ccSel = [...ccSel, card.id];
       else toast(`アイテムは ${s.event.count} 個までです`);
+      ccQueueDraft();
       renderCatChoco(el, view);
     };
     return b;
@@ -1343,7 +1379,7 @@ function renderCatChoco(el, v) {
     const item = h('div', 'cc-log-item ' + (e.success ? 'success' : 'fail'));
     const head = h('div', 'cc-log-head');
     head.append(h('b', null, name(e.seat)), h('span', null, e.event.text),
-      h('span', 'cc-badge', e.gaveUp ? 'ギブアップ' : e.success ? `成功 ${e.ok}-${e.ng}` : `失敗 ${e.ok}-${e.ng}`));
+      h('span', 'cc-badge', e.timedOut ? '時間切れ' : e.gaveUp ? 'ギブアップ' : e.success ? `成功 ${e.ok}-${e.ng}` : `失敗 ${e.ok}-${e.ng}`));
     item.append(head);
     if (e.items.length) {
       const items = h('div', 'cc-items');
@@ -4051,7 +4087,7 @@ const FX_RULES = {
   eshiritori: (e) => (/^答え合わせ/.test(e) ? ['✏️ 答え合わせ！', 'big'] : /時間切れ/.test(e) ? ['時間切れ！', 'bad'] : null),
   edengon: (e) => (/^みんなの伝言を発表/.test(e) ? ['📨 伝言の発表！', 'big'] : /^\d+\/\d+：/.test(e) ? [e.replace(/^\d+\/\d+：/, ''), 'info'] : null),
   ito: (e) => (/大成功/.test(e) ? ['大成功！', 'big'] : /残念/.test(e) ? ['失敗…', 'bad'] : null),
-  catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
+  catchoco: (e) => (/：成功$/.test(e) ? ['成功！', 'good'] : /：時間切れ$/.test(e) ? ['⏰ 時間切れ…', 'bad'] : /時間切れ：書いてあった方法/.test(e) ? ['⏰ 時間切れ！ 書いてあった方法で投票', 'info'] : /：(失敗|ギブアップ)$/.test(e) ? ['失敗…', 'bad'] : null),
   asasore: (e) => (/^今日の正解：/.test(e) ? ['今日の正解！', 'big'] : null),
   // アソビ大全から入れたゲーム
   morris: (e) => (/ミル！/.test(e) ? ['ミル！ 1つ取る', 'big'] : /×/.test(e) ? ['コマを取った！', 'good'] : null),

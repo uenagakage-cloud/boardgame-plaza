@@ -383,11 +383,40 @@ test('werewolf: 怪盗が人狼と交換すると人狼陣営になる', () => {
 });
 
 
-test('catchoco: アイテムは222種類で重複なし', () => {
+test('catchoco: アイテムは308種類で重複なし', () => {
   const s = cc.init({}, 2);
   const all = [...s.itemDeck, ...s.hands.flat()].map((c) => c.name);
-  assert.equal(all.length, 222);
-  assert.equal(new Set(all).size, 222);
+  assert.equal(all.length, 308);
+  assert.equal(new Set(all).size, 308);
+});
+test('catchoco: 考える時間（選べる・時間切れ）', () => {
+  assert.equal(cc.init({}, 3).options.minutes, 3, 'ふつうは3分');
+  assert.equal(cc.init({ minutes: 9 }, 3).options.minutes, 3, '1〜5分以外はふつう');
+  assert.ok(Math.abs(cc.init({ minutes: 5 }, 3).endsAt - Date.now() - 300000) < 1000);
+  // 書いていなければ失敗（時間切れ）で次の人へ
+  let s = cc.init({ minutes: 1 }, 3);
+  const first = s.turn;
+  s = cc.tick(s);
+  assert.ok(s.log[0].timedOut);
+  assert.equal(s.log[0].success, false);
+  assert.notEqual(s.turn, first);
+  assert.ok(s.endsAt, '次の人の時間が始まる');
+  // アイテムと文章がそろっていれば投票へ（時間は止まる）
+  const items = ccPick(s);
+  assert.ok(cc.quietMove({ draft: {} }), '書きかけはみんなに送らない');
+  let d = cc.applyMove(s, { draft: { items, text: 'がんばって解決する' } }, s.turn);
+  assert.equal(cc.viewFor(d, (d.turn + 1) % 3).draft, null, 'ほかの人には見えない');
+  assert.deepEqual(cc.viewFor(d, d.turn).draft.items, items, '本人には戻せる');
+  d = cc.tick(d);
+  assert.equal(d.phase, 'vote');
+  assert.equal(d.story.text, 'がんばって解決する');
+  assert.equal(d.tickAt, null);
+  // 文章が短い・アイテムが足りないと失敗
+  let e = cc.applyMove(s, { draft: { items: [], text: 'がんばって解決する' } }, s.turn);
+  e = cc.tick(e);
+  assert.ok(e.log.at(-1).timedOut);
+  // 番でない人の書きかけは無視
+  assert.equal(cc.applyMove(s, { draft: { items, text: 'x' } }, (s.turn + 1) % 3), s);
 });
 test('wordbasket: 山札から1枚引く', () => {
   const s = wbk.init({}, 2);

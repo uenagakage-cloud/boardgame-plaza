@@ -876,6 +876,9 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* ---------- キャット＆チョコレート ---------- */
 .cc { width: min(100%, 680px); display: grid; gap: 12px; }
+.cc-timer { text-align: center; font-size: 1.3rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.cc-timer:empty { display: none; }
+.cc-timer.hurry { color: #e0261b; }
 .cc-players { display: flex; flex-wrap: wrap; gap: 6px; }
 .wb-player.turn { border-color: #c27a2c; box-shadow: 0 0 0 2px rgba(194, 122, 44, .3); }
 .cc-team { font-size: .72rem; font-weight: 700; border-radius: 99px; padding: 0 7px; }

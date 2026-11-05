@@ -27,13 +27,13 @@ export function makeDeck52(decks = 1) {
 export const label = (seat) => `P${seat + 1}`;
 export const seatNames = (n) => Array.from({ length: n }, (_, i) => `プレイヤー${i + 1}`);
 
-// ロビーで選べる設定。OPTIONS = [{ key, label, values: [既定値, ...], names?: [表示名...] }]
+// ロビーで選べる設定。OPTIONS = [{ key, label, values: [既定値, ...], names?: [表示名...], def?: 既定値（先頭以外にしたいとき） }]
 // 正しい値にそろえる。cpu: true なら「CPUと対戦」も受け付ける（2人用）
 export function pickOptions(o, OPTIONS = [], cpu = false) {
   const out = {};
-  for (const { key, values } of OPTIONS) {
+  for (const { key, values, def } of OPTIONS) {
     const v = o && o[key];
-    out[key] = values.find((x) => String(x) === String(v)) ?? values[0];
+    out[key] = values.find((x) => String(x) === String(v)) ?? def ?? values[0];
   }
   if (cpu) out.cpu = !!(o && o.cpu);
   return out;

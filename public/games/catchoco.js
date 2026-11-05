@@ -2,8 +2,12 @@
 // 2〜6人。全員が「ねこチーム」か「チョコチーム」に秘密で分かれる。
 // 手番の人はピンチ（イベント）を、手札のアイテムを指定の数だけ使って解決する方法を文章で説明する。
 // ほかの全員が成功／失敗を投票し、成功が過半数ならイベントを獲得。最後にチームごとの獲得数で勝敗を決める。
-// 手: { explain: { items: [手札の番号...], text } } / { giveUp: true } / { vote: true|false } / { resign: true }
+// 考える時間は部屋を作るときに選ぶ（1〜5分）。時間切れのとき、アイテムと文章がそろっていればそのまま投票へ、そろっていなければ失敗（時間切れ）。
+// 手: { explain: { items: [手札の番号...], text } } / { draft: { items, text } } 書いている途中を覚えておく（みんなには送らない）
+//     { giveUp: true } / { vote: true|false } / { resign: true }
 // カードの文章はこのアプリのオリジナル。
+import { pickOptions, optionText, label } from './util.js';
+
 export const id = 'catchoco';
 export const title = 'キャット＆チョコレート';
 export const sideNames = ['プレイヤー1', 'プレイヤー2', 'プレイヤー3', 'プレイヤー4', 'プレイヤー5', 'プレイヤー6'];
@@ -13,6 +17,9 @@ export const HAND_SIZE = 3;
 export const LAPS = 2; // 全員が2回ずつ手番をしたら終了
 export const TEAM_NAMES = ['ねこチーム', 'チョコチーム'];
 export const MAX_TEXT = 400;
+export const OPTIONS = [{ key: 'minutes', label: '考える時間', values: [1, 2, 3, 4, 5], names: ['1分', '2分', '3分', '4分', '5分'], def: 3 }];
+export const normalizeOptions = (o) => pickOptions(o, OPTIONS);
+export const variantName = (o) => `考える時間${optionText(OPTIONS, normalizeOptions(o)).join('')}`;
 
 const EVENTS = [
   ['寝坊した！大事な会議まであと10分', 2], ['家の鍵をなくして締め出された', 2], ['無人島に流れ着いてしまった', 3],
@@ -61,6 +68,15 @@ const ITEMS = [
   '透明マント', 'タイムマシンの説明書', '宝の地図', '金の延べ棒', 'ダイヤモンド', '札束', 'クーポン券', '名刺', '履歴書', '卒業アルバム',
   // 追加のアイテム
   '段ボールの家', 'ちゃぶ台', '招待状', 'メガホン', 'ドラゴンの卵', '伝説の剣', '手錠', '虫取り網', 'ハリネズミ', 'おばあちゃん', '赤ちゃん', '警察官', '野球チーム', 'お笑い芸人', 'スマートスピーカー', '電動キックボード', 'ゴーグル', 'シュノーケル', 'ビーチボール', '流しそうめんの道具', 'たこ焼き器', 'ホットプレート', '圧力鍋', 'そろばん', '地球儀', '顕微鏡', '望遠鏡', '扇子', '風鈴', '和太鼓', 'こたつ', '雪だるま', 'かき氷機', 'わたあめ', '焼きいも', 'おでん', '納豆巻き', 'プリン', 'ポップコーン', 'コーラ', '牛乳びん', '炭酸水',
+  // 普通のもの
+  'ティッシュ', 'タオル', 'コップ', 'お皿', 'スプーン', 'フォーク', '割りばし', '爪切り', 'ボールペン', 'ノート', '定規', 'のり', 'セロハンテープ', 'クリップ', '付箋',
+  'リュックサック', '財布', '帽子', '手袋', '靴下', 'スリッパ', 'サンダル', 'ハンカチ', '目覚まし時計', 'リモコン', '乾電池', '延長コード', 'クッション', 'ハンガー', 'シャンプー',
+  '石けん', '体温計', '救急箱', 'タッパー', 'アルミホイル', 'ラップ', 'まな板', 'おたま', 'ゴミ袋', 'カレンダー', 'りんご', '食パン', '生卵', 'チーズ', 'ようかん', 'せんべい',
+  // ちょっと奇抜なもの
+  'しゃべるカボチャ', '自爆スイッチ', 'ちょんまげのかつら', '透明な犬', '10年前の自分からの手紙', '忍者の巻物', '宇宙服', '全自動ほめてくれる機械', 'ピンポン玉1000個', 'ゾウ1頭',
+  '通りすがりの謎のおじさん', 'サボテンの着ぐるみ', '戦国武将', 'マッチョな執事', 'タコの足8本', '一生分のもやし', '校長先生', '自分の背より大きいおにぎり', '人面犬', '呪いの日本人形',
+  'くしゃみが止まらなくなる粉', 'しゃべる冷蔵庫', '逆立ちしかできないサル', '見習いのランプの精', 'UFOの部品', '河童のお皿', '鬼の金棒', '世界一長いフランスパン', '名探偵のパイプ', '100年後のスマホ',
+  '幽霊の友だち', '隣の家の犬', 'ヒーローのマント', '無限に出てくるティッシュ', '誰にも見えないペンキ', '必ず外れる占い師', '歌い続けるハムスター', '時間が3秒だけ止まる時計', 'なぜか温かい石', '空飛ぶ土管',
 ];
 
 function shuffle(arr, rng) {
@@ -77,12 +93,19 @@ function drawItem(s, rng) {
   return s.itemDeck.pop();
 }
 
+// 考える時間のカウントを始める
+function startTimer(s) {
+  s.draft = null;
+  s.endsAt = Date.now() + s.options.minutes * 60000;
+  s.tickAt = s.endsAt;
+}
+
 export function init(options, players = 2, rng) {
   const order = shuffle([...Array(players).keys()], rng);
   const teams = Array(players).fill(0);
   order.forEach((seat, i) => { teams[seat] = i % 2; });
   const s = {
-    players, teams, out: Array(players).fill(false),
+    players, options: normalizeOptions(options), teams, out: Array(players).fill(false),
     itemDeck: shuffle(ITEMS.map((name, i) => ({ id: i, name })), rng), itemDiscard: [],
     events: shuffle(EVENTS.map(([text, count], i) => ({ id: i, text, count })), rng),
     hands: [], won: Array.from({ length: players }, () => []),
@@ -92,6 +115,7 @@ export function init(options, players = 2, rng) {
   };
   for (let p = 0; p < players; p++) s.hands.push(Array.from({ length: HAND_SIZE }, () => drawItem(s, rng)));
   s.event = s.events.pop();
+  startTimer(s);
   return s;
 }
 
@@ -118,6 +142,7 @@ export function viewFor(s, seat) {
     teams: s.teams.map((t, i) => (i === seat || all ? t : null)),
     votes: s.votes.map((v, i) => (v === null ? null : i === seat ? v : 'voted')),
     itemDeck: null, itemDiscard: null, events: null, eventsLeft: s.events.length,
+    draft: seat === s.turn ? s.draft : null,
   };
 }
 
@@ -141,7 +166,7 @@ const clone = (s) => ({
 // 手番を終えて次の人へ。規定のターン数かイベントがなくなったら終了
 function nextTurn(ns, entry, rng) {
   ns.log.push(entry);
-  ns.history.push(`${ns.event.text}：${entry.success ? '成功' : entry.gaveUp ? 'ギブアップ' : '失敗'}`);
+  ns.history.push(`${ns.event.text}：${entry.success ? '成功' : entry.timedOut ? '時間切れ' : entry.gaveUp ? 'ギブアップ' : '失敗'}`);
   if (entry.usedIds) {
     const hand = ns.hands[entry.seat];
     for (const id of entry.usedIds) {
@@ -160,10 +185,13 @@ function nextTurn(ns, entry, rng) {
   do next = (next + 1) % ns.players; while (ns.out[next]);
   ns.turn = next;
   ns.event = ns.events.pop();
+  startTimer(ns);
   return ns;
 }
 
 function finish(ns) {
+  ns.endsAt = null;
+  ns.tickAt = null;
   const [a, b] = teamScores(ns);
   const reason = `${TEAM_NAMES[0]} ${a} 対 ${TEAM_NAMES[1]} ${b}`;
   const team = a === b ? null : a > b ? 0 : 1;
@@ -174,6 +202,43 @@ function finish(ns) {
   };
   return ns;
 }
+
+// 解決方法を調べて、投票に出す形にする
+function storyOf(s, seat, explain) {
+  const idx = Array.isArray(explain.items) ? explain.items : [];
+  const hand = s.hands[seat];
+  if (new Set(idx).size !== idx.length || idx.some((i) => !hand[i])) throw new Error('アイテムの選び方が正しくありません');
+  if (idx.length !== s.event.count) throw new Error(`アイテムをちょうど${s.event.count}個選んでください`);
+  const text = String(explain.text || '').trim().slice(0, MAX_TEXT);
+  if (text.length < 5) throw new Error('解決方法をもう少し詳しく書いてください');
+  return { items: idx.map((i) => hand[i]), text };
+}
+
+function startVote(ns, story, rng) {
+  ns.story = story;
+  ns.phase = 'vote';
+  ns.votes = Array(ns.players).fill(null);
+  ns.draft = null;
+  ns.endsAt = null;
+  ns.tickAt = null;
+  return voters(ns).length ? ns : resolveIfVoted(ns, rng);
+}
+
+// 時間切れ: アイテムと文章がそろっていればそのまま投票へ、そろっていなければ失敗
+export function tick(s, rng) {
+  if (s.result || s.phase !== 'explain') return { ...s, tickAt: null };
+  const ns = clone(s);
+  let story = null;
+  try { story = s.draft ? storyOf(s, s.turn, s.draft) : null; } catch { story = null; }
+  if (story) {
+    ns.history.push(`${label(s.turn)} 時間切れ：書いてあった方法で投票へ`);
+    return startVote(ns, story, rng);
+  }
+  return nextTurn(ns, { seat: s.turn, event: s.event, gaveUp: true, timedOut: true, success: false, items: [], text: '' }, rng);
+}
+
+// 書いている途中はみんなに送らない
+export const quietMove = (mv) => !!(mv && mv.draft);
 
 export function applyMove(s, mv, seat, rng) {
   if (s.result) throw new Error('ゲームは終了しています');
@@ -192,16 +257,14 @@ export function applyMove(s, mv, seat, rng) {
 
   if (mv.explain) {
     if (s.phase !== 'explain' || seat !== s.turn) throw new Error('あなたの番ではありません');
-    const idx = Array.isArray(mv.explain.items) ? mv.explain.items : [];
-    const hand = s.hands[seat];
-    if (new Set(idx).size !== idx.length || idx.some((i) => !hand[i])) throw new Error('アイテムの選び方が正しくありません');
-    if (idx.length !== s.event.count) throw new Error(`アイテムをちょうど${s.event.count}個選んでください`);
-    const text = String(mv.explain.text || '').trim().slice(0, MAX_TEXT);
-    if (text.length < 5) throw new Error('解決方法をもう少し詳しく書いてください');
-    ns.story = { items: idx.map((i) => hand[i]), text };
-    ns.phase = 'vote';
-    ns.votes = Array(ns.players).fill(null);
-    return voters(ns).length ? ns : resolveIfVoted(ns, rng);
+    return startVote(ns, storyOf(s, seat, mv.explain), rng);
+  }
+
+  if (mv.draft) {
+    if (s.phase !== 'explain' || seat !== s.turn) return s; // 時間切れと行きちがったときは何もしない
+    const items = Array.isArray(mv.draft.items) ? mv.draft.items.slice(0, HAND_SIZE) : [];
+    ns.draft = { items, text: String(mv.draft.text || '').slice(0, MAX_TEXT) };
+    return ns;
   }
 
   if (mv.giveUp) {
